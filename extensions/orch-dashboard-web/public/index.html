@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Orchestrator Dashboard</title>
+  <link rel="stylesheet" href="style.css">
+
+</head>
+<body>
+  <div class="dashboard" id="app">
+
+    <!-- Header -->
+    <header class="header" id="header">
+      <span class="header-title">Orchestrator Dashboard</span>
+      <span class="header-badge badge-batch" id="batch-id">—</span>
+      <span class="header-badge badge-phase" id="batch-phase">—</span>
+      <select class="history-select" id="history-select" title="View past batch runs">
+        <option value="">History ▾</option>
+      </select>
+      <div class="header-meta">
+        <span id="last-update">—</span>
+        <span class="connection-dot disconnected" id="conn-dot" title="SSE connection"></span>
+      </div>
+    </header>
+
+    <!-- Summary Bar -->
+    <div class="summary-bar" id="summary-bar">
+      <div class="summary-progress">
+        <div class="progress-bar-bg" id="progress-bar-bg">
+          <!-- Wave segments injected by JS -->
+        </div>
+        <span class="summary-pct" id="overall-pct">0%</span>
+      </div>
+      <div class="summary-counts" id="summary-counts"></div>
+      <div class="summary-elapsed" id="summary-elapsed">—</div>
+      <div class="summary-waves" id="summary-waves"></div>
+    </div>
+
+    <!-- Content -->
+    <div class="content" id="content">
+
+      <!-- Batch History Summary (shown when no live batch or viewing history) -->
+      <div class="panel history-panel" id="history-panel" style="display:none;">
+        <div class="panel-header">Batch Summary</div>
+        <div class="panel-body" id="history-body">
+          <div class="empty-state">No batch history</div>
+        </div>
+      </div>
+
+      <!-- Lanes + Tasks (integrated) -->
+      <div class="panel" id="lanes-tasks-panel">
+        <div class="panel-header">Lanes &amp; Tasks</div>
+        <div class="panel-body" id="lanes-tasks-body"></div>
+      </div>
+
+      <!-- Merge Agents -->
+      <div class="panel" id="merge-panel">
+        <div class="panel-header">Merge Agents</div>
+        <div class="panel-body" id="merge-body">
+          <div class="empty-state">No merge agents active</div>
+        </div>
+      </div>
+
+      <!-- Terminal Viewer (hidden until a session is clicked) -->
+      <div class="panel terminal-panel" id="terminal-panel" style="display:none;">
+        <div class="panel-header">
+          <span id="terminal-title">Terminal</span>
+          <button class="terminal-close" id="terminal-close" title="Close terminal">✕</button>
+        </div>
+        <div class="panel-body" id="terminal-body"></div>
+      </div>
+
+      <!-- Errors (hidden when empty) -->
+      <div class="panel errors-panel" id="errors-panel" style="display:none;">
+        <div class="panel-header">Errors</div>
+        <div class="panel-body" id="errors-body"></div>
+      </div>
+
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <span>Orchestrator Web Dashboard</span>
+      <span id="footer-info">Connecting…</span>
+    </footer>
+
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
