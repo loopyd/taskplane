@@ -14,7 +14,7 @@
  * Configuration: .pi/task-runner.yaml (project-specific settings)
  * Agents: .pi/agents/task-worker.md, .pi/agents/task-reviewer.md
  *
- * Usage: pi -e extensions/task-runner.ts -e extensions/theme-cycler.ts
+ * Usage: pi -e extensions/task-runner.ts
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
@@ -27,7 +27,7 @@ import {
 import { tmpdir } from "os";
 import { join, dirname, basename, resolve } from "path";
 import { parse as yamlParse } from "yaml";
-import { applyExtensionDefaults } from "./themeMap.ts";
+
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -1836,7 +1836,6 @@ export default function (pi: ExtensionAPI) {
 	// ── Session Lifecycle ────────────────────────────────────────────
 
 	pi.on("session_start", async (_event, ctx) => {
-		applyExtensionDefaults(import.meta.url, ctx);
 		widgetCtx = ctx;
 
 		// Kill any running subprocesses

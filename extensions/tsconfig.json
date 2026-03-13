@@ -12,6 +12,6 @@
     "typeRoots": ["../web/node_modules/@types"],
     "baseUrl": "."
   },
-  "include": ["task-runner.ts", "themeMap.ts"],
+  "include": ["task-runner.ts"],
   "exclude": ["tests"]
 }

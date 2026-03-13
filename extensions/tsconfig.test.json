@@ -7,5 +7,5 @@
       "@mariozechner/pi-tui": ["tests/mocks/pi-tui.ts"]
     }
   },
-  "include": ["task-orchestrator.ts", "themeMap.ts", "tests/**/*.ts"]
+  "include": ["task-orchestrator.ts", "tests/**/*.ts"]
 }

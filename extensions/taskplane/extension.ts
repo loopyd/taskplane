@@ -1,5 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { applyExtensionDefaults } from "../themeMap.ts";
+
 import { execSync } from "child_process";
 
 import {
@@ -542,8 +542,6 @@ export default function (pi: ExtensionAPI) {
 	// ── Session Lifecycle ────────────────────────────────────────────
 
 	pi.on("session_start", async (_event, ctx) => {
-		applyExtensionDefaults(import.meta.url, ctx);
-
 		// Load configs
 		orchConfig = loadOrchestratorConfig(ctx.cwd);
 		runnerConfig = loadTaskRunnerConfig(ctx.cwd);
