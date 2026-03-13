@@ -150,17 +150,14 @@ export const DEFAULT_ORCHESTRATOR_CONFIG: OrchestratorConfig = {
 		size_weights: { S: 1, M: 2, L: 4 },
 	},
 	pre_warm: {
-		auto_detect: true,
-		commands: {
-			go_deps: "go mod download",
-			npm_deps: "cd web && npm ci",
-		},
+		auto_detect: false,
+		commands: {},
 		always: [],
 	},
 	merge: {
 		model: "",
 		tools: "read,write,edit,bash,grep,find,ls",
-		verify: ["go build ./..."],
+		verify: [],
 		order: "fewest-files-first",
 	},
 	failure: {
