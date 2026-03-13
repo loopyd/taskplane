@@ -1294,8 +1294,10 @@ export interface ReconciledTaskState {
 	sessionAlive: boolean;
 	/** Whether the .DONE file was found */
 	doneFileFound: boolean;
+	/** Whether the lane worktree still exists on disk */
+	worktreeExists: boolean;
 	/** Action the resume engine should take */
-	action: "reconnect" | "mark-complete" | "mark-failed" | "skip";
+	action: "reconnect" | "mark-complete" | "mark-failed" | "re-execute" | "skip";
 }
 
 /**
@@ -1330,6 +1332,8 @@ export interface ResumePoint {
 	failedTaskIds: string[];
 	/** Task IDs with alive sessions that need reconnection */
 	reconnectTaskIds: string[];
+	/** Task IDs with dead sessions but existing worktrees that need re-execution */
+	reExecuteTaskIds: string[];
 }
 
 // ── Abort (TS-009 Step 5) ────────────────────────────────────────────

@@ -66,8 +66,9 @@ export const ORCH_MESSAGES = {
 	// /orch-resume
 	resumeStarting: (batchId: string, phase: string) =>
 		`🔄 Resuming batch ${batchId} (was: ${phase})...`,
-	resumeReconciled: (batchId: string, completed: number, pending: number, failed: number, reconnecting: number) =>
-		`📊 Batch ${batchId} reconciliation: ${completed} completed, ${pending} pending, ${failed} failed, ${reconnecting} reconnecting`,
+	resumeReconciled: (batchId: string, completed: number, pending: number, failed: number, reconnecting: number, reExecuting: number = 0) =>
+		`📊 Batch ${batchId} reconciliation: ${completed} completed, ${pending} pending, ${failed} failed, ${reconnecting} reconnecting` +
+		(reExecuting > 0 ? `, ${reExecuting} re-executing` : ""),
 	resumeSkippedWaves: (skippedCount: number) =>
 		`⏭️  Skipping ${skippedCount} completed wave(s)`,
 	resumeReconnecting: (sessionCount: number) =>

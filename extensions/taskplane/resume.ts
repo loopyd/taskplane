@@ -2,18 +2,19 @@
  * Resume logic for paused/interrupted batches
  * @module orch/resume
  */
+import { existsSync } from "fs";
 import { join } from "path";
 
 import { runDiscovery } from "./discovery.ts";
 import { executeOrchBatch } from "./engine.ts";
-import { execLog, executeWave, pollUntilTaskComplete, tmuxHasSession } from "./execution.ts";
+import { execLog, executeWave, pollUntilTaskComplete, spawnLaneSession, tmuxHasSession } from "./execution.ts";
 import type { MonitorUpdateCallback } from "./execution.ts";
 import { runGit } from "./git.ts";
 import { mergeWave } from "./merge.ts";
 import { ORCH_MESSAGES } from "./messages.ts";
 import { deleteBatchState, hasTaskDoneMarker, loadBatchState, persistRuntimeState, seedPendingOutcomesForAllocatedLanes, syncTaskOutcomesFromMonitor, upsertTaskOutcome } from "./persistence.ts";
 import { StateFileError } from "./types.ts";
-import type { AllocatedLane, AllocatedTask, LaneExecutionResult, LaneTaskOutcome, LaneTaskStatus, MergeWaveResult, OrchBatchPhase, OrchBatchRuntimeState, OrchestratorConfig, ParsedTask, PersistedBatchState, ReconciledTaskState, ResumeEligibility, ResumePoint, TaskRunnerConfig } from "./types.ts";
+import type { AllocatedLane, AllocatedTask, LaneExecutionResult, LaneTaskOutcome, LaneTaskStatus, MergeWaveResult, OrchBatchPhase, OrchBatchRuntimeState, OrchestratorConfig, ParsedTask, PersistedBatchState, ReconciledTaskState, ResumeEligibility, ResumePoint, TaskRunnerConfig, WaveExecutionResult } from "./types.ts";
 import { buildDependencyGraph } from "./waves.ts";
 import { deleteBranchBestEffort, listWorktrees, removeAllWorktrees, removeWorktree, safeResetWorktree } from "./worktree.ts";
 
@@ -139,10 +140,12 @@ export function reconcileTaskStates(
 	persistedState: PersistedBatchState,
 	aliveSessions: ReadonlySet<string>,
 	doneTaskIds: ReadonlySet<string>,
+	existingWorktrees: ReadonlySet<string> = new Set(),
 ): ReconciledTaskState[] {
 	return persistedState.tasks.map((task) => {
 		const sessionAlive = aliveSessions.has(task.sessionName);
 		const doneFileFound = doneTaskIds.has(task.taskId);
+		const worktreeExists = existingWorktrees.has(task.taskId);
 
 		// Precedence 1: .DONE file found → task completed
 		if (doneFileFound) {
@@ -152,6 +155,7 @@ export function reconcileTaskStates(
 				liveStatus: "succeeded" as LaneTaskStatus,
 				sessionAlive,
 				doneFileFound: true,
+				worktreeExists,
 				action: "mark-complete" as const,
 			};
 		}
@@ -164,6 +168,7 @@ export function reconcileTaskStates(
 				liveStatus: "running" as LaneTaskStatus,
 				sessionAlive: true,
 				doneFileFound: false,
+				worktreeExists,
 				action: "reconnect" as const,
 			};
 		}
@@ -177,17 +182,32 @@ export function reconcileTaskStates(
 				liveStatus: task.status,
 				sessionAlive: false,
 				doneFileFound: false,
+				worktreeExists,
 				action: "skip" as const,
 			};
 		}
 
-		// Precedence 4: Dead session + not terminal + no .DONE → failed
+		// Precedence 4: Session dead + no .DONE + worktree exists → re-execute
+		if (worktreeExists) {
+			return {
+				taskId: task.taskId,
+				persistedStatus: task.status,
+				liveStatus: "pending" as LaneTaskStatus,
+				sessionAlive: false,
+				doneFileFound: false,
+				worktreeExists: true,
+				action: "re-execute" as const,
+			};
+		}
+
+		// Precedence 5: Dead session + not terminal + no .DONE + no worktree → failed
 		return {
 			taskId: task.taskId,
 			persistedStatus: task.status,
 			liveStatus: "failed" as LaneTaskStatus,
 			sessionAlive: false,
 			doneFileFound: false,
+			worktreeExists: false,
 			action: "mark-failed" as const,
 		};
 	});
@@ -220,6 +240,7 @@ export function computeResumePoint(
 	const pendingTaskIds: string[] = [];
 	const failedTaskIds: string[] = [];
 	const reconnectTaskIds: string[] = [];
+	const reExecuteTaskIds: string[] = [];
 
 	for (const task of reconciledTasks) {
 		switch (task.action) {
@@ -234,6 +255,9 @@ export function computeResumePoint(
 				break;
 			case "reconnect":
 				reconnectTaskIds.push(task.taskId);
+				break;
+			case "re-execute":
+				reExecuteTaskIds.push(task.taskId);
 				break;
 			case "mark-failed":
 				failedTaskIds.push(task.taskId);
@@ -282,6 +306,10 @@ export function computeResumePoint(
 				// Tasks with alive sessions need reconnection and remain pending.
 				actualPendingTaskIds.push(taskId);
 			}
+			if (reconciled.action === "re-execute") {
+				// Tasks with existing worktrees need re-execution and remain pending.
+				actualPendingTaskIds.push(taskId);
+			}
 			if (reconciled.action === "skip" && reconciled.persistedStatus === "pending") {
 				// Skipped tasks that were pending need execution
 				actualPendingTaskIds.push(taskId);
@@ -295,6 +323,7 @@ export function computeResumePoint(
 		pendingTaskIds: actualPendingTaskIds,
 		failedTaskIds,
 		reconnectTaskIds,
+		reExecuteTaskIds,
 	};
 }
 
@@ -365,14 +394,24 @@ export async function resumeOrchBatch(
 		}
 	}
 
+	// ── 3b. Detect existing worktrees ────────────────────────────
+	const existingWorktreeTaskIds = new Set<string>();
+	for (const task of persistedState.tasks) {
+		const laneRecord = persistedState.lanes.find(l => l.taskIds.includes(task.taskId));
+		if (laneRecord && laneRecord.worktreePath && existsSync(laneRecord.worktreePath)) {
+			existingWorktreeTaskIds.add(task.taskId);
+		}
+	}
+
 	// ── 4. Reconcile task states ─────────────────────────────────
-	const reconciledTasks = reconcileTaskStates(persistedState, aliveSessions, doneTaskIds);
+	const reconciledTasks = reconcileTaskStates(persistedState, aliveSessions, doneTaskIds, existingWorktreeTaskIds);
 
 	// ── 5. Compute resume point ──────────────────────────────────
 	const resumePoint = computeResumePoint(persistedState, reconciledTasks);
 	const completedTaskSet = new Set(resumePoint.completedTaskIds);
 	const failedTaskSet = new Set(resumePoint.failedTaskIds);
 	const reconnectTaskSet = new Set(resumePoint.reconnectTaskIds);
+	const reExecuteTaskSet = new Set(resumePoint.reExecuteTaskIds);
 
 	onNotify(
 		ORCH_MESSAGES.resumeReconciled(
@@ -381,6 +420,7 @@ export async function resumeOrchBatch(
 			resumePoint.pendingTaskIds.length,
 			resumePoint.failedTaskIds.length,
 			resumePoint.reconnectTaskIds.length,
+			resumePoint.reExecuteTaskIds.length,
 		),
 		"info",
 	);
@@ -507,6 +547,169 @@ export async function resumeOrchBatch(
 		}
 	}
 
+	// ── 8b. Handle re-execute tasks (dead session + existing worktree) ──
+	const reExecuteTasks = reconciledTasks.filter(t => t.action === "re-execute");
+	const reExecuteFinalStatus = new Map<string, LaneTaskStatus>();
+	const reExecAllocatedLanes: AllocatedLane[] = [];
+
+	if (reExecuteTasks.length > 0) {
+		onNotify(
+			`🔄 Re-executing ${reExecuteTasks.length} interrupted task(s) in existing worktrees...`,
+			"info",
+		);
+
+		for (const task of reExecuteTasks) {
+			const parsedTask = discovery.pending.get(task.taskId);
+			if (!parsedTask) continue;
+
+			const laneRecord = persistedState.lanes.find(
+				l => l.taskIds.includes(task.taskId),
+			);
+			if (!laneRecord) continue;
+
+			const allocatedTask: AllocatedTask = {
+				taskId: task.taskId,
+				order: 0,
+				task: parsedTask,
+				estimatedMinutes: 0,
+			};
+			const lane: AllocatedLane = {
+				laneNumber: laneRecord.laneNumber,
+				laneId: laneRecord.laneId,
+				tmuxSessionName: laneRecord.tmuxSessionName,
+				worktreePath: laneRecord.worktreePath,
+				branch: laneRecord.branch,
+				tasks: [allocatedTask],
+				strategy: "round-robin",
+				estimatedLoad: 0,
+				estimatedMinutes: 0,
+			};
+
+			execLog("resume", task.taskId, "re-executing interrupted task in existing worktree", {
+				session: laneRecord.tmuxSessionName,
+				worktree: laneRecord.worktreePath,
+			});
+
+			try {
+				spawnLaneSession(lane, allocatedTask, orchConfig, repoRoot);
+				const pollResult = await pollUntilTaskComplete(
+					lane,
+					allocatedTask,
+					orchConfig,
+					repoRoot,
+					batchState.pauseSignal,
+				);
+
+				if (pollResult.status === "succeeded") {
+					reExecuteFinalStatus.set(task.taskId, "succeeded");
+					completedTaskSet.add(task.taskId);
+					failedTaskSet.delete(task.taskId);
+					reExecuteTaskSet.delete(task.taskId);
+					batchState.succeededTasks++;
+					reExecAllocatedLanes.push(lane);
+					execLog("resume", task.taskId, "re-executed task succeeded");
+				} else {
+					reExecuteFinalStatus.set(task.taskId, "failed");
+					failedTaskSet.add(task.taskId);
+					completedTaskSet.delete(task.taskId);
+					reExecuteTaskSet.delete(task.taskId);
+					batchState.failedTasks++;
+					execLog("resume", task.taskId, `re-executed task ${pollResult.status}: ${pollResult.exitReason}`);
+				}
+			} catch (err: unknown) {
+				reExecuteFinalStatus.set(task.taskId, "failed");
+				failedTaskSet.add(task.taskId);
+				completedTaskSet.delete(task.taskId);
+				reExecuteTaskSet.delete(task.taskId);
+				batchState.failedTasks++;
+				const msg = err instanceof Error ? err.message : String(err);
+				execLog("resume", task.taskId, `re-execution error: ${msg}`);
+			}
+		}
+	}
+
+	// ── 8c. Merge re-executed lane branches before cleanup ───────
+	// Re-executed tasks completed outside the normal wave loop, so their
+	// branches would not be merged by step 10. Merge them now.
+	if (reExecAllocatedLanes.length > 0) {
+		const succeededReExecTaskIds = [...reExecuteFinalStatus.entries()]
+			.filter(([_, status]) => status === "succeeded")
+			.map(([taskId]) => taskId);
+
+		if (succeededReExecTaskIds.length > 0) {
+			onNotify(
+				`🔀 Merging ${reExecAllocatedLanes.length} re-executed lane branch(es)...`,
+				"info",
+			);
+
+			// Build synthetic WaveExecutionResult for mergeWave()
+			const syntheticLaneResults: LaneExecutionResult[] = reExecAllocatedLanes.map(lane => ({
+				laneNumber: lane.laneNumber,
+				laneId: lane.laneId,
+				tasks: lane.tasks.map(t => ({
+					taskId: t.taskId,
+					status: "succeeded" as LaneTaskStatus,
+					startTime: Date.now(),
+					endTime: Date.now(),
+					exitReason: "Re-executed task completed successfully",
+					sessionName: lane.tmuxSessionName,
+					doneFileFound: true,
+				})),
+				overallStatus: "succeeded" as const,
+				startTime: Date.now(),
+				endTime: Date.now(),
+			}));
+
+			const syntheticWaveResult: WaveExecutionResult = {
+				waveIndex: 0,
+				startedAt: Date.now(),
+				endedAt: Date.now(),
+				laneResults: syntheticLaneResults,
+				policyApplied: orchConfig.failure.on_task_failure,
+				stoppedEarly: false,
+				failedTaskIds: [],
+				skippedTaskIds: [],
+				succeededTaskIds: succeededReExecTaskIds,
+				blockedTaskIds: [],
+				laneCount: reExecAllocatedLanes.length,
+				overallStatus: "succeeded",
+				finalMonitorState: null,
+				allocatedLanes: reExecAllocatedLanes,
+			};
+
+			const reExecMergeResult = mergeWave(
+				reExecAllocatedLanes,
+				syntheticWaveResult,
+				0,
+				orchConfig,
+				repoRoot,
+				batchState.batchId,
+			);
+
+			if (reExecMergeResult.status === "succeeded") {
+				onNotify(
+					`✅ Re-executed branch merge complete: ${reExecMergeResult.laneResults.length} lane(s) merged`,
+					"info",
+				);
+
+				// Clean up merged branches
+				const targetBranch = orchConfig.orchestrator.integration_branch;
+				for (const lr of reExecMergeResult.laneResults) {
+					if (lr.result?.status === "SUCCESS" || lr.result?.status === "CONFLICT_RESOLVED") {
+						deleteBranchBestEffort(lr.sourceBranch, repoRoot);
+					}
+				}
+			} else {
+				onNotify(
+					`⚠️ Re-executed branch merge ${reExecMergeResult.status}: ${reExecMergeResult.failureReason || "unknown"}`,
+					"warning",
+				);
+			}
+
+			batchState.mergeResults.push(reExecMergeResult);
+		}
+	}
+
 	// ── 9. Persist state after reconciliation ────────────────────
 	// Track state for persistence
 	const wavePlan = persistedState.wavePlan;
@@ -517,8 +720,11 @@ export async function resumeOrchBatch(
 	for (const task of reconciledTasks) {
 		const persistedTask = persistedState.tasks.find(t => t.taskId === task.taskId);
 		const reconnectStatus = reconnectFinalStatus.get(task.taskId);
+		const reExecuteStatus = reExecuteFinalStatus.get(task.taskId);
 		const status = task.action === "reconnect"
 			? (reconnectStatus || "running")
+			: task.action === "re-execute"
+			? (reExecuteStatus || "pending")
 			: task.liveStatus;
 		const isTerminal = status === "succeeded" || status === "failed" || status === "stalled" || status === "skipped";
 		allTaskOutcomes.push({
@@ -527,9 +733,11 @@ export async function resumeOrchBatch(
 			startTime: persistedTask?.startedAt ?? null,
 			endTime: isTerminal ? Date.now() : null,
 			exitReason: task.action === "mark-complete" ? ".DONE file found on resume"
-				: task.action === "mark-failed" ? "Session dead, no .DONE file on resume"
+				: task.action === "mark-failed" ? "Session dead, no .DONE file, no worktree on resume"
 				: task.action === "reconnect"
 					? (status === "succeeded" ? "Reconnected task completed" : status === "failed" ? "Reconnected task failed" : "Reconnected to alive session")
+				: task.action === "re-execute"
+					? (status === "succeeded" ? "Re-executed task completed" : status === "failed" ? "Re-executed task failed" : "Re-executing in existing worktree")
 				: persistedTask?.exitReason ?? "",
 			sessionName: persistedTask?.sessionName ?? "",
 			doneFileFound: status === "succeeded" ? true : task.doneFileFound,
@@ -711,7 +919,7 @@ export async function resumeOrchBatch(
 					repoRoot,
 					batchState.batchId,
 				);
-				allMergeResults.push(mergeResult);
+				batchState.mergeResults.push(mergeResult);
 
 				// Emit per-lane merge notifications
 				for (const lr of mergeResult.laneResults) {
