@@ -18,7 +18,8 @@ const { execFileSync, exec } = require("child_process");
 // ─── Configuration ──────────────────────────────────────────────────────────
 
 const PUBLIC_DIR = path.join(__dirname, "public");
-const DEFAULT_PORT = 8099;
+const DEFAULT_PORT = 8100;
+const MAX_PORT_ATTEMPTS = 20;
 const POLL_INTERVAL = 2000; // ms between state checks
 
 // REPO_ROOT is resolved after parseArgs() — see initialization below.
@@ -427,7 +428,7 @@ function serveHistoryEntry(req, res, batchId) {
 
 // ─── HTTP Server ────────────────────────────────────────────────────────────
 
-function createServer(port) {
+function createServer() {
   const server = http.createServer((req, res) => {
     const pathname = new URL(req.url, "http://localhost").pathname;
 
@@ -456,10 +457,6 @@ function createServer(port) {
     }
   });
 
-  server.listen(port, () => {
-    console.log(`\n  Orchestrator Dashboard → http://localhost:${port}\n`);
-  });
-
   return server;
 }
 
@@ -473,7 +470,57 @@ function openBrowser(url) {
 
 // ─── Main ───────────────────────────────────────────────────────────────────
 
-function main() {
+/** Try to listen on a port. Resolves with the port on success, rejects on EADDRINUSE. */
+function tryListen(server, port) {
+  return new Promise((resolve, reject) => {
+    const onError = (err) => {
+      server.removeListener("listening", onListening);
+      reject(err);
+    };
+    const onListening = () => {
+      server.removeListener("error", onError);
+      resolve(port);
+    };
+    server.once("error", onError);
+    server.once("listening", onListening);
+    server.listen(port);
+  });
+}
+
+/** Find an available port starting from `start`, trying up to MAX_PORT_ATTEMPTS. */
+async function findPort(server, start, explicit) {
+  // If the user explicitly passed --port, only try that one
+  if (explicit) {
+    try {
+      return await tryListen(server, start);
+    } catch (err) {
+      if (err.code === "EADDRINUSE") {
+        console.error(`\n  Port ${start} is already in use.`);
+        console.error(`  Try: taskplane dashboard --port ${start + 1}\n`);
+        process.exit(1);
+      }
+      throw err;
+    }
+  }
+  // Auto-scan for an available port
+  for (let port = start; port < start + MAX_PORT_ATTEMPTS; port++) {
+    try {
+      return await tryListen(server, port);
+    } catch (err) {
+      if (err.code === "EADDRINUSE") {
+        // Close the server so we can retry on the next port
+        server.close();
+        server = createServer();
+        continue;
+      }
+      throw err;
+    }
+  }
+  console.error(`\n  No available port found in range ${start}-${start + MAX_PORT_ATTEMPTS - 1}.\n`);
+  process.exit(1);
+}
+
+async function main() {
   const opts = parseArgs();
 
   // Resolve project root: --root flag > cwd
@@ -481,7 +528,11 @@ function main() {
   BATCH_STATE_PATH = path.join(REPO_ROOT, ".pi", "batch-state.json");
   BATCH_HISTORY_PATH = path.join(REPO_ROOT, ".pi", "batch-history.json");
 
-  const server = createServer(opts.port);
+  const server = createServer();
+  const explicitPort = process.argv.slice(2).includes("--port");
+  const port = await findPort(server, opts.port, explicitPort);
+
+  console.log(`\n  Orchestrator Dashboard → http://localhost:${port}\n`);
 
   // Broadcast state to all SSE clients on interval
   const pollTimer = setInterval(broadcastState, POLL_INTERVAL);
@@ -507,7 +558,7 @@ function main() {
 
   // Auto-open browser
   if (opts.open) {
-    setTimeout(() => openBrowser(`http://localhost:${opts.port}`), 500);
+    setTimeout(() => openBrowser(`http://localhost:${port}`), 500);
   }
 
   // Graceful shutdown
