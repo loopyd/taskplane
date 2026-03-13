@@ -1,0 +1,149 @@
+# ═══════════════════════════════════════════════════════════════════════
+# Parallel Task Orchestrator Configuration
+# ═══════════════════════════════════════════════════════════════════════
+#
+# Controls the behavior of the task-orchestrator extension, which runs
+# multiple tasks in parallel using git worktrees and TMUX sessions.
+#
+# The orchestrator reads BOTH this file and task-runner.yaml:
+#   - task-runner.yaml   → task areas, reference docs, worker/reviewer config
+#   - task-orchestrator.yaml → lane count, merge strategy, failure handling
+#
+# This separation means the task-runner extension continues to work
+# independently for single-task execution (/task). The orchestrator
+# is an optional layer on top.
+# ═══════════════════════════════════════════════════════════════════════
+
+# ── Orchestrator Core ──────────────────────────────────────────────────
+
+orchestrator:
+  # Maximum parallel lanes (worktrees). Each lane is ~30 MB disk.
+  # Recommended: 2-4 depending on CPU/memory available.
+  max_lanes: 3
+
+  # Where to create worktree directories.
+  # "sibling"       = ../{prefix}-{N}          (alongside main repo, e.g. ../crimsonmoose-wt-1)
+  # "subdirectory"  = .worktrees/{prefix}-{N}  (inside repo, gitignored, e.g. .worktrees/crimsonmoose-wt-1)
+  worktree_location: "subdirectory"
+  worktree_prefix: "crimsonmoose-wt"
+
+  # Integration branch that lanes merge into.
+  integration_branch: "develop"
+
+  # Batch ID format. Used in branch names and logs.
+  # "timestamp"   = 20260308T111750
+  # "sequential"  = batch-001, batch-002, ...
+  batch_id_format: "timestamp"
+
+  # How to spawn lane and agent subprocesses.
+  # "tmux"        = Each subprocess runs in a named TMUX session.
+  #                 User can attach to any session for live visibility.
+  #                 Requires: tmux installed and functional.
+  # "subprocess"  = Headless subprocesses (no TMUX required).
+  #                 Parallel execution and worktrees still work.
+  #                 No drill-down observability (dashboard only).
+  spawn_mode: "subprocess"
+
+  # Prefix for TMUX session names. All sessions are named:
+  #   {tmux_prefix}-lane-{N}, {tmux_prefix}-lane-{N}-worker, etc.
+  # Use a unique prefix to avoid collisions with user TMUX sessions.
+  tmux_prefix: "orch"
+
+# ── Dependency Analysis ────────────────────────────────────────────────
+
+dependencies:
+  # How to determine task dependencies.
+  # "prompt"  = parse ## Dependencies from PROMPT.md (fast, no agent needed)
+  # "agent"   = spawn an agent to analyze all PROMPT.md files (thorough)
+  source: "prompt"
+
+  # Cache dependency analysis to dependencies.json per task area.
+  cache: true
+
+# ── Lane Assignment ────────────────────────────────────────────────────
+
+assignment:
+  # Strategy for assigning tasks to lanes within a wave.
+  # "affinity-first"  = group by file scope overlap, then round-robin
+  # "round-robin"     = simple round-robin (ignores file scope)
+  # "load-balanced"   = assign by estimated duration (task size)
+  strategy: "affinity-first"
+
+  # Task size weights for load-balanced assignment.
+  # Used to estimate relative task duration when balancing lanes.
+  size_weights:
+    S: 1
+    M: 2
+    L: 4
+
+# ── Pre-warming ────────────────────────────────────────────────────────
+
+pre_warm:
+  # Run these commands in each worktree before starting tasks.
+  # Commands run relative to the worktree root.
+  # Use {lane} placeholder for lane number.
+
+  # Auto-detect which commands to run based on task file scope.
+  auto_detect: true
+
+  # Commands to run if auto-detect determines they're needed.
+  commands:
+    go_deps: "go mod download"       # If task touches services/
+    npm_deps: "cd web && npm ci"     # If task touches web/
+
+  # Always run these regardless of file scope.
+  always: []
+
+# ── Merge ──────────────────────────────────────────────────────────────
+
+merge:
+  # Model for merge agents. Use a fast model — merges are mechanical (git merge + write JSON).
+  # Empty = inherit from parent Pi session (often too slow if using Opus/large models).
+  model: "claude-sonnet-4-6"
+  tools: "read,write,edit,bash,grep,find,ls"
+
+  # Verification commands run after each merge.
+  # All must pass or the merge is reverted.
+  verify:
+    - "go build ./..."
+    # - "cd web && npm run type-check"    # Enable when frontend tasks are common
+
+  # Merge order heuristic.
+  # "fewest-files-first"  = lanes with fewer changed files merge first
+  # "sequential"          = merge in lane number order
+  order: "fewest-files-first"
+
+# ── Failure Handling ───────────────────────────────────────────────────
+
+failure:
+  # What to do when a task fails.
+  # "skip-dependents"  = mark failed, remove downstream tasks, continue wave
+  # "stop-wave"        = let current wave finish, don't start next
+  # "stop-all"         = kill all lanes immediately
+  on_task_failure: "skip-dependents"
+
+  # What to do when a merge fails.
+  # "pause"  = pause batch, wait for user intervention
+  # "abort"  = abort entire batch
+  on_merge_failure: "pause"
+
+  # Minutes of no STATUS.md changes before declaring a lane stalled.
+  stall_timeout: 30
+
+  # Maximum minutes for a single worker iteration in TMUX mode.
+  # In subprocess mode, context % tracking handles this via kill_percent.
+  # In TMUX mode, there's no context % visibility, so wall-clock timeout
+  # is the safety net.
+  max_worker_minutes: 30
+
+  # Seconds to wait for graceful shutdown on /orch-abort before force-killing.
+  abort_grace_period: 60
+
+# ── Monitoring ─────────────────────────────────────────────────────────
+
+monitoring:
+  # How often to poll STATUS.md files in worktrees (seconds).
+  poll_interval: 5
+
+  # Write batch progress to this file (for external monitoring).
+  # progress_file: "batch-progress.json"

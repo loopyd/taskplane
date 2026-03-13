@@ -1,0 +1,29 @@
+# ── Node / Build ──────────────────────────────────────────────────────
+node_modules/
+dist/
+*.tgz
+
+# ── Project-local config (scaffolded by `taskplane init`) ─────────────
+# These are instance-specific. Templates live in templates/
+.pi/agents/
+.pi/task-runner.yaml
+.pi/task-orchestrator.yaml
+.pi/damage-control-rules.yaml
+.pi/batch-state.json
+
+# ── Internal docs (moved to .pi/local/) ──────────────────────────────
+docs/internal/
+
+# ── Local working directories ─────────────────────────────────────────
+.pi/local/
+.agents/
+.worktrees/
+
+# ── OS / Editor ──────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
