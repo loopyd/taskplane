@@ -258,7 +258,7 @@ describe("5.1 escapeRegex", () => {
 	});
 
 	test("leaves plain strings unchanged", () => {
-		assertEqual(escapeRegex("crimsonmoose"), "crimsonmoose", "plain string");
+		assertEqual(escapeRegex("taskplane"), "taskplane", "plain string");
 	});
 
 	test("escapes brackets and pipes", () => {

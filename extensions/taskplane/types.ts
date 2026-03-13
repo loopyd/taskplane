@@ -135,10 +135,10 @@ export const DEFAULT_ORCHESTRATOR_CONFIG: OrchestratorConfig = {
 	orchestrator: {
 		max_lanes: 3,
 		worktree_location: "subdirectory",
-		worktree_prefix: "crimsonmoose-wt",
-		integration_branch: "develop",
+		worktree_prefix: "taskplane-wt",
+		integration_branch: "main",
 		batch_id_format: "timestamp",
-		spawn_mode: "tmux",
+		spawn_mode: "subprocess",
 		tmux_prefix: "orch",
 	},
 	dependencies: {
@@ -219,7 +219,7 @@ export interface CreateWorktreeOptions {
 	batchId: string;
 	/** Branch to base the worktree on (e.g. "develop") */
 	baseBranch: string;
-	/** Worktree directory prefix (e.g. "crimsonmoose-wt") */
+	/** Worktree directory prefix (e.g. "taskplane-wt") */
 	prefix: string;
 	/** Full orchestrator config (optional; used for worktree_location) */
 	config?: OrchestratorConfig;

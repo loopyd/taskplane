@@ -32,7 +32,7 @@ export function generateBranchName(laneNumber: number, batchId: string): string 
  *   "subdirectory"  → resolve(repoRoot, ".worktrees") — worktrees inside the repo (gitignored)
  *
  * The returned path is the parent directory; individual worktree dirs are
- * created as children (e.g., `<base>/{prefix}-1` → `<base>/crimsonmoose-wt-1`).
+ * created as children (e.g., `<base>/{prefix}-1` → `<base>/taskplane-wt-1`).
  *
  * @param repoRoot - Absolute path to the main repository root
  * @param config   - Orchestrator config (reads `worktree_location`)
@@ -53,12 +53,12 @@ export function resolveWorktreeBasePath(
  * Generate worktree path based on config's worktree_location setting.
  *
  * Naming rule: basename = {prefix}-{N}
- *   Sibling mode:      ../{prefix}-{N}        (e.g. ../crimsonmoose-wt-1)
- *   Subdirectory mode: .worktrees/{prefix}-{N} (e.g. .worktrees/crimsonmoose-wt-1)
+ *   Sibling mode:      ../{prefix}-{N}        (e.g. ../taskplane-wt-1)
+ *   Subdirectory mode: .worktrees/{prefix}-{N} (e.g. .worktrees/taskplane-wt-1)
  *
  * Uses path.resolve() for Windows path normalization (R002 requirement).
  *
- * @param prefix     - Directory prefix (e.g. "crimsonmoose-wt")
+ * @param prefix     - Directory prefix (e.g. "taskplane-wt")
  * @param laneNumber - Lane number (1-indexed)
  * @param repoRoot   - Absolute path to the main repository root
  * @param config     - Orchestrator config (optional; defaults to subdirectory mode)
@@ -1035,15 +1035,15 @@ export function preserveBranch(
  * entries whose path basename matches `{prefix}-{N}` (where N is a number).
  *
  * Naming invariant: basename = {prefix}-{N}. The prefix comes from config
- * (e.g. "crimsonmoose-wt"), and the lane number is appended with a single
+ * (e.g. "taskplane-wt"), and the lane number is appended with a single
  * dash separator. No extra `-wt-` infix is added.
  *
  * Lane number is extracted from the path basename pattern. Entries with
  * malformed/partial data (missing path, unparseable lane number) are
  * silently skipped — they are not orchestrator worktrees.
  *
- * @param prefix   - Worktree directory prefix (e.g. "crimsonmoose-wt")
- *                   Full basename pattern: `{prefix}-{N}` (e.g. "crimsonmoose-wt-1")
+ * @param prefix   - Worktree directory prefix (e.g. "taskplane-wt")
+ *                   Full basename pattern: `{prefix}-{N}` (e.g. "taskplane-wt-1")
  * @param repoRoot - Absolute path to the main repository root
  * @returns        - WorktreeInfo[] sorted by laneNumber (ascending)
  */
@@ -1053,7 +1053,7 @@ export function listWorktrees(prefix: string, repoRoot: string): WorktreeInfo[] 
 
 	// Build regex pattern to match the worktree basename.
 	// Naming invariant: basename = {prefix}-{N} where N is one or more digits.
-	// Example: prefix "crimsonmoose-wt" matches "crimsonmoose-wt-1", "crimsonmoose-wt-2", etc.
+	// Example: prefix "taskplane-wt" matches "taskplane-wt-1", "taskplane-wt-2", etc.
 	const pattern = new RegExp(`^${escapeRegex(prefix)}-(\\d+)$`);
 
 	for (const entry of entries) {
@@ -1280,7 +1280,7 @@ export function ensureLaneWorktrees(
  * When `targetBranch` is provided, branches with unmerged commits are
  * preserved as `saved/<branch>` refs instead of being force-deleted.
  *
- * @param prefix       - Worktree directory prefix (e.g. "crimsonmoose-wt")
+ * @param prefix       - Worktree directory prefix (e.g. "taskplane-wt")
  * @param repoRoot     - Absolute path to the main repository root
  * @param targetBranch - Optional target branch for unmerged commit detection (e.g. "develop")
  * @returns            - RemoveAllWorktreesResult with per-worktree outcomes

@@ -669,21 +669,21 @@ console.log("\n7.5 — toTmuxPath (extracted from source)");
 
 {
 	console.log("  ▸ converts nested .worktrees path on Windows-style input");
-	const input = "C:\\dev\\crimsonmoose\\.worktrees\\wt-1";
+	const input = "C:\\dev\\taskplane\\.worktrees\\wt-1";
 	const result = toTmuxPathFn(input);
 	// On Windows: resolve → C:\dev\..., replace \→/ → C:/dev/..., drive → /c/dev/...
 	assert(result.includes(".worktrees"), `should preserve .worktrees segment, got: ${result}`);
 	assert(result.includes("wt-1"), `should preserve wt-1 segment, got: ${result}`);
 	assert(!result.includes("\\"), `should not contain backslashes, got: ${result}`);
 	// Exact expected output on Windows
-	assertEqual(result, "/c/dev/crimsonmoose/.worktrees/wt-1", "exact Windows→tmux conversion for nested path");
+	assertEqual(result, "/c/dev/taskplane/.worktrees/wt-1", "exact Windows→tmux conversion for nested path");
 }
 
 {
 	console.log("  ▸ converts simple sibling path");
-	const input = "C:\\dev\\crimsonmoose-wt-1";
+	const input = "C:\\dev\\taskplane-wt-1";
 	const result = toTmuxPathFn(input);
-	assertEqual(result, "/c/dev/crimsonmoose-wt-1", "exact Windows→tmux conversion for sibling path");
+	assertEqual(result, "/c/dev/taskplane-wt-1", "exact Windows→tmux conversion for sibling path");
 }
 
 {
@@ -822,10 +822,10 @@ console.log("\n7.7 — generateWorktreePath (table-driven, extracted from source
 		{
 			label: "Windows-style repoRoot in subdirectory mode",
 			config: { orchestrator: { worktree_location: "subdirectory" } },
-			repoRoot: "C:\\dev\\crimsonmoose",
-			prefix: "crimsonmoose-wt",
+			repoRoot: "C:\\dev\\taskplane",
+			prefix: "taskplane-wt",
 			lane: 2,
-			expected: resolve("C:\\dev\\crimsonmoose", ".worktrees", "crimsonmoose-wt-2"),
+			expected: resolve("C:\\dev\\taskplane", ".worktrees", "taskplane-wt-2"),
 		},
 	];
 
@@ -864,12 +864,12 @@ console.log("\n7.8 — listWorktrees regex pattern (naming invariant: {prefix}-{
 		shouldMatch: boolean;
 		expectedLane?: number;
 	}> = [
-		// Standard prefix "crimsonmoose-wt"
-		{ label: "crimsonmoose-wt prefix, lane 1", prefix: "crimsonmoose-wt", basename: "crimsonmoose-wt-1", shouldMatch: true, expectedLane: 1 },
-		{ label: "crimsonmoose-wt prefix, lane 10", prefix: "crimsonmoose-wt", basename: "crimsonmoose-wt-10", shouldMatch: true, expectedLane: 10 },
-		{ label: "crimsonmoose-wt prefix, old double-wt name (no match)", prefix: "crimsonmoose-wt", basename: "crimsonmoose-wt-wt-1", shouldMatch: false },
-		{ label: "crimsonmoose-wt prefix, no lane number", prefix: "crimsonmoose-wt", basename: "crimsonmoose-wt-", shouldMatch: false },
-		{ label: "crimsonmoose-wt prefix, non-numeric lane", prefix: "crimsonmoose-wt", basename: "crimsonmoose-wt-abc", shouldMatch: false },
+		// Standard prefix "taskplane-wt"
+		{ label: "taskplane-wt prefix, lane 1", prefix: "taskplane-wt", basename: "taskplane-wt-1", shouldMatch: true, expectedLane: 1 },
+		{ label: "taskplane-wt prefix, lane 10", prefix: "taskplane-wt", basename: "taskplane-wt-10", shouldMatch: true, expectedLane: 10 },
+		{ label: "taskplane-wt prefix, old double-wt name (no match)", prefix: "taskplane-wt", basename: "taskplane-wt-wt-1", shouldMatch: false },
+		{ label: "taskplane-wt prefix, no lane number", prefix: "taskplane-wt", basename: "taskplane-wt-", shouldMatch: false },
+		{ label: "taskplane-wt prefix, non-numeric lane", prefix: "taskplane-wt", basename: "taskplane-wt-abc", shouldMatch: false },
 
 		// Short prefix "wt"
 		{ label: "wt prefix, lane 1", prefix: "wt", basename: "wt-1", shouldMatch: true, expectedLane: 1 },
@@ -885,7 +885,7 @@ console.log("\n7.8 — listWorktrees regex pattern (naming invariant: {prefix}-{
 		{ label: "prefix with dots, dot-as-wildcard rejected", prefix: "my.project", basename: "myXproject-1", shouldMatch: false },
 
 		// Different prefix should not match
-		{ label: "wrong prefix, no match", prefix: "crimsonmoose-wt", basename: "other-wt-1", shouldMatch: false },
+		{ label: "wrong prefix, no match", prefix: "taskplane-wt", basename: "other-wt-1", shouldMatch: false },
 
 		// Lane 0 (technically matches regex but filtered by listWorktrees laneNumber < 1 check)
 		{ label: "lane 0 matches regex", prefix: "wt", basename: "wt-0", shouldMatch: true, expectedLane: 0 },

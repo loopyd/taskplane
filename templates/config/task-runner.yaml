@@ -2,181 +2,98 @@
 # Task Runner Configuration
 # ═══════════════════════════════════════════════════════════════════════
 #
-# PROJECT-SPECIFIC: Change this section for each project.
-# RUNNER SETTINGS: Usually keep defaults.
-#
-# To use in a new project, copy this file to .pi/task-runner.yaml
-# and update the project section.
+# Copy this file to `.pi/task-runner.yaml` in your project and customize it.
+# This template is intentionally generic — replace the example paths, test
+# commands, and task areas with ones that fit your repository.
 # ═══════════════════════════════════════════════════════════════════════
 
-# ── Project (change per project) ──────────────────────────────────────
+# ── Project ───────────────────────────────────────────────────────────
 
 project:
-  name: "CrimsonMoose HRIS"
-  description: "Multi-service Go backend + React frontend for HR management"
+  name: "Example Project"
+  description: "Replace with a short description of your project"
 
 paths:
-  tasks: "docs/task-management"
-  architecture: "docs/framework/ARCHITECTURE-GUIDE.md"
+  tasks: "tasks"
+  architecture: "docs/architecture.md"
 
+# ── Verification Commands ─────────────────────────────────────────────
+
+# Add the commands your project uses for validation. Keep only the ones
+# that are relevant to your stack.
 testing:
   commands:
-    unit: "go test -v -short ./..."
-    integration: "go test -v -tags=integration ./tests/integration/..."
-    frontend: "cd web && npm run test && npm run type-check"
-    build: "go build ./..."
-    lint: "golangci-lint run ./..."
+    test: "npm test"
+    build: "npm run build"
+    lint: "npm run lint"
+
+# ── Standards ─────────────────────────────────────────────────────────
 
 standards:
   docs:
-    - "docs/framework/25-service-layer-standards.md"
-    - "docs/framework/22-otel-instrumentation-policy.md"
-    - "docs/framework/TESTING-STANDARDS.md"
+    - "README.md"
+    - "CONTRIBUTING.md"
   rules:
-    - "Handler→Service→Repository pattern must be followed"
-    - "OTel instrumentation required on all service methods"
-    - "Tenant isolation required in all database queries"
-    - "No PII in log output"
-    - "RBAC enforced on all API endpoints"
+    - "Keep changes scoped to the task"
+    - "Update documentation when behavior changes"
+    - "Prefer typed interfaces over unstructured data"
+    - "Avoid destructive changes unless explicitly requested"
 
-# Area-specific standards overrides. Keyed by task_areas name.
-# If an area has an override, those standards replace the global ones
-# for tasks in that area. Omitted keys (docs or rules) fall back to global.
-standards_overrides:
-  task-system:
-    docs:
-      - "docs/framework/33-parallel-task-orchestrator.md"
-      - "docs/framework/TESTING-STANDARDS.md"
-    rules:
-      - "TypeScript strict typing — no 'any' in public interfaces"
-      - "Pure functions must be unit-testable without filesystem or process mocks"
-      - "Error cases must use typed error codes, not bare string throws"
-      - "No PII in log output"
-      - "Structured logging with consistent field names"
-  documentation:
-    docs:
-      - "docs/framework/ARCHITECTURE-GUIDE.md"
-    rules:
-      - "Cross-references between docs must use relative paths"
-      - "Tables must use valid Markdown format"
-      - "No stale links to moved/archived content"
+# Per-area standards overrides. Omit or delete if you do not need them.
+standards_overrides: {}
 
-# ── Runner Settings (usually keep defaults) ───────────────────────────
+# ── Runner Settings ───────────────────────────────────────────────────
 
 worker:
-  model: ""                    # empty = inherit orchestrator model
+  model: ""                    # empty = inherit from parent pi session
   tools: "read,write,edit,bash,grep,find,ls"
   thinking: "off"
   # spawn_mode: "subprocess"   # "subprocess" (default) or "tmux"
-                                # subprocess: headless child process with JSON event stream
-                                #   (context-% tracking, onToolCall/onContextPct callbacks)
-                                # tmux: named TMUX session with drill-down visibility
-                                #   (no JSON stream; uses wall-clock timeout instead of context-%)
-                                # Env override: TASK_RUNNER_SPAWN_MODE=tmux
-  # tmux_prefix: "task"        # TMUX session name prefix (default: "task")
-                                # Sessions become "{prefix}-worker" and "{prefix}-reviewer"
-                                # The parallel orchestrator sets this per-lane (e.g., "orch-lane-1")
-                                # Env override: TASK_RUNNER_TMUX_PREFIX
+  # tmux_prefix: "task"        # used only in tmux mode
 
 reviewer:
-  model: "openai/gpt-5.3-codex"
+  model: ""
   tools: "read,write,bash,grep,find,ls"
   thinking: "off"
 
 context:
-  worker_context_window: 200000  # tokens — match your worker model
-  warn_percent: 70               # create wrap-up signal
-  kill_percent: 85               # kill worker process
-  max_worker_iterations: 20      # per step
-  max_review_cycles: 2           # REVISE retries before continuing
-  no_progress_limit: 3           # consecutive zero-progress iterations before blocking
-  # max_worker_minutes: 30      # Wall-clock timeout for TMUX workers (minutes)
-                                # Only used in TMUX spawn mode (subprocess uses context-% kill)
-                                # Wrap-up signal written at 80%, hard kill at 100%
-                                # Env override: TASK_RUNNER_MAX_WORKER_MINUTES
+  worker_context_window: 200000
+  warn_percent: 70
+  kill_percent: 85
+  max_worker_iterations: 20
+  max_review_cycles: 2
+  no_progress_limit: 3
+  # max_worker_minutes: 30      # used only in tmux mode
 
-# ── Task Creation (used by create-taskplane-task skill) ───────────────
-# Defines where task folders live, what prefixes to use, and what
-# reference docs are available. The skill reads this instead of
-# hardcoding project structure.
+# ── Task Creation / Discovery ─────────────────────────────────────────
 
+# Define the task areas that exist in your project.
 task_areas:
-  # Domains (business features)
-  time-off:
-    path: "docs/task-management/domains/time-off/tasks"
-    prefix: "TO"
-    context: "docs/task-management/domains/time-off/CONTEXT.md"
-  performance-management:
-    path: "docs/task-management/domains/performance-management/tasks"
-    prefix: "PM"
-    context: "docs/task-management/domains/performance-management/CONTEXT.md"
-  employee-management:
-    path: "docs/task-management/domains/employee-management/tasks"
-    prefix: "EM"
-    context: "docs/task-management/domains/employee-management/CONTEXT.md"
-  organization-structure:
-    path: "docs/task-management/domains/organization-structure/tasks"
-    prefix: "ORG"
-    context: "docs/task-management/domains/organization-structure/CONTEXT.md"
-  identity-access:
-    path: "docs/task-management/domains/identity-access/tasks"
-    prefix: "ID"
-    context: "docs/task-management/domains/identity-access/CONTEXT.md"
-  # Platform (cross-cutting infrastructure)
-  notifications:
-    path: "docs/task-management/platform/notifications/tasks"
-    prefix: "NF"
-    context: "docs/task-management/platform/notifications/CONTEXT.md"
-  events-messaging:
-    path: "docs/task-management/platform/events-messaging/tasks"
-    prefix: "EV"
-    context: "docs/task-management/platform/events-messaging/CONTEXT.md"
-  observability:
-    path: "docs/task-management/platform/observability/tasks"
-    prefix: "OB"
-    context: "docs/task-management/platform/observability/CONTEXT.md"
-  demo-provisioning:
-    path: "docs/task-management/platform/demo-provisioning/tasks"
-    prefix: "DM"
-    context: "docs/task-management/platform/demo-provisioning/CONTEXT.md"
-  infrastructure:
-    path: "docs/task-management/platform/infrastructure/tasks"
-    prefix: "INF"
-    context: "docs/task-management/platform/infrastructure/CONTEXT.md"
-  documentation:
-    path: "docs/task-management/platform/documentation/tasks"
+  core:
+    path: "tasks/core"
+    prefix: "CORE"
+    context: "tasks/core/CONTEXT.md"
+  docs:
+    path: "tasks/docs"
     prefix: "DOC"
-    context: "docs/task-management/platform/documentation/CONTEXT.md"
-  task-system:
-    path: "docs/task-management/platform/task-system/tasks"
-    prefix: "TS"
-    context: "docs/task-management/platform/task-system/CONTEXT.md"
+    context: "tasks/docs/CONTEXT.md"
 
-# Reference docs available for Tier 3 context loading.
-# The skill includes relevant ones in PROMPT.md "Context to Read First".
+# Reference docs available for higher-context task prompts.
 reference_docs:
-  architecture: "docs/framework/ARCHITECTURE-GUIDE.md"
-  service_layer: "docs/framework/25-service-layer-standards.md"
-  instrumentation: "docs/framework/22-otel-instrumentation-policy.md"
-  testing: "docs/framework/TESTING-STANDARDS.md"
-  user_employee: "docs/framework/19-user-employee-relationship.md"
-  cross_service: "docs/framework/16-cross-service-contracts.md"
-  capabilities: "docs/task-management/CAPABILITIES.md"
-  touchpoints: "docs/task-management/TOUCHPOINTS.md"
-  services: "docs/task-management/SERVICES.md"
+  overview: "README.md"
+  architecture: "docs/architecture.md"
+  contributing: "CONTRIBUTING.md"
 
-# Docs that should NEVER be loaded during task execution
+# Docs that should never be loaded during task execution.
 never_load:
   - "PROGRESS.md"
   - "HANDOFF-LOG.md"
 
-# Self-documentation targets (where agents should log discoveries)
+# Self-documentation targets (where agents should log useful discoveries).
 self_doc_targets:
   tech_debt: "CONTEXT.md ## Technical Debt / Future Work"
-  cross_service: "AGENTS.md § Cross-Service Contract Patterns"
-  capabilities: "docs/task-management/CAPABILITIES.md"
-  touchpoints: "docs/task-management/TOUCHPOINTS.md"
 
-# Docs requiring explicit user approval to modify
+# Docs requiring explicit user approval to modify.
 protected_docs:
-  - "docs/framework/"
+  - "docs/"
+  - "templates/"
