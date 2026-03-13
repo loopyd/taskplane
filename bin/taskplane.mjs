@@ -215,7 +215,7 @@ orchestrator:
   integration_branch: "${vars.integration_branch}"
   batch_id_format: "timestamp"
   spawn_mode: "subprocess"
-  tmux_prefix: "orch"
+  tmux_prefix: "${vars.tmux_prefix}"
 
 dependencies:
   source: "prompt"
@@ -419,12 +419,14 @@ async function cmdInit(args) {
 
 function getPresetVars(preset, projectRoot) {
 	const dirName = path.basename(projectRoot);
+	const slug = slugify(dirName);
 	const { test: test_cmd, build: build_cmd } = detectStack(projectRoot);
 	return {
 		project_name: dirName,
 		integration_branch: "main",
 		max_lanes: 3,
-		worktree_prefix: `${slugify(dirName)}-wt`,
+		worktree_prefix: `${slug}-wt`,
+		tmux_prefix: `${slug}-orch`,
 		tasks_root: "taskplane-tasks",
 		default_area: "general",
 		default_prefix: "TP",
@@ -447,11 +449,13 @@ async function getInteractiveVars(projectRoot) {
 	const test_cmd = await ask("Test command (agents run this to verify work — blank to skip)", detected.test || "");
 	const build_cmd = await ask("Build command (agents run this after tests — blank to skip)", detected.build || "");
 
+	const slug = slugify(project_name);
 	return {
 		project_name,
 		integration_branch,
 		max_lanes,
-		worktree_prefix: `${slugify(project_name)}-wt`,
+		worktree_prefix: `${slug}-wt`,
+		tmux_prefix: `${slug}-orch`,
 		tasks_root,
 		default_area,
 		default_prefix,
