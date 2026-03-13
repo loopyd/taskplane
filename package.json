@@ -15,7 +15,8 @@
   },
   "pi": {
     "extensions": [
-      "./extensions"
+      "./extensions/task-runner.ts",
+      "./extensions/task-orchestrator.ts"
     ],
     "skills": [
       "./skills"
