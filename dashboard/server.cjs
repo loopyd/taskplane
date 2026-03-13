@@ -6,7 +6,7 @@
  * browser via Server-Sent Events. Zero external dependencies.
  *
  * Usage:
- *   node extensions/taskplane-dashboard/server.js [--port 8099] [--no-open]
+ *   node dashboard/server.cjs [--port 8099] [--root /path/to/project]
  */
 
 const http = require("http");
@@ -17,20 +17,25 @@ const { execFileSync, exec } = require("child_process");
 
 // ─── Configuration ──────────────────────────────────────────────────────────
 
-const REPO_ROOT = path.resolve(__dirname, "..", "..");
-const BATCH_STATE_PATH = path.join(REPO_ROOT, ".pi", "batch-state.json");
 const PUBLIC_DIR = path.join(__dirname, "public");
 const DEFAULT_PORT = 8099;
 const POLL_INTERVAL = 2000; // ms between state checks
+
+// REPO_ROOT is resolved after parseArgs() — see initialization below.
+let REPO_ROOT;
+let BATCH_STATE_PATH;
 
 // ─── CLI Args ───────────────────────────────────────────────────────────────
 
 function parseArgs() {
   const args = process.argv.slice(2);
-  const opts = { port: DEFAULT_PORT, open: true };
+  const opts = { port: DEFAULT_PORT, open: true, root: "" };
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--port" && args[i + 1]) {
       opts.port = parseInt(args[i + 1]) || DEFAULT_PORT;
+      i++;
+    } else if (args[i] === "--root" && args[i + 1]) {
+      opts.root = args[i + 1];
       i++;
     } else if (args[i] === "--no-open") {
       opts.open = false;
@@ -39,10 +44,11 @@ function parseArgs() {
 Orchestrator Web Dashboard
 
 Usage:
-  node extensions/taskplane-dashboard/server.js [options]
+  node dashboard/server.cjs [options]
 
 Options:
   --port <number>   Port to listen on (default: ${DEFAULT_PORT})
+  --root <path>     Project root directory (default: current directory)
   --no-open         Don't auto-open browser
   -h, --help        Show this help
 `);
@@ -468,6 +474,11 @@ function openBrowser(url) {
 
 function main() {
   const opts = parseArgs();
+
+  // Resolve project root: --root flag > cwd
+  REPO_ROOT = path.resolve(opts.root || process.cwd());
+  BATCH_STATE_PATH = path.join(REPO_ROOT, ".pi", "batch-state.json");
+
   const server = createServer(opts.port);
 
   // Broadcast state to all SSE clients on interval

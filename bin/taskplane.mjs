@@ -1,0 +1,706 @@
+#!/usr/bin/env node
+
+/**
+ * Taskplane CLI — Project scaffolding, diagnostics, and dashboard launcher.
+ *
+ * This CLI handles what the pi package system cannot: project-local config
+ * scaffolding, installation health checks, and dashboard management.
+ *
+ * Extensions, skills, and themes are delivered via `pi install npm:taskplane`
+ * and auto-discovered by pi. This CLI is for everything else.
+ */
+
+import fs from "node:fs";
+import path from "node:path";
+import readline from "node:readline";
+import { fileURLToPath } from "node:url";
+import { execSync, spawn } from "node:child_process";
+
+// ─── Paths ──────────────────────────────────────────────────────────────────
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const PACKAGE_ROOT = path.resolve(__dirname, "..");
+const TEMPLATES_DIR = path.join(PACKAGE_ROOT, "templates");
+const DASHBOARD_SERVER = path.join(PACKAGE_ROOT, "dashboard", "server.cjs");
+
+// ─── ANSI Colors ────────────────────────────────────────────────────────────
+
+const c = {
+	reset: "\x1b[0m",
+	bold: "\x1b[1m",
+	dim: "\x1b[2m",
+	red: "\x1b[31m",
+	green: "\x1b[32m",
+	yellow: "\x1b[33m",
+	blue: "\x1b[34m",
+	cyan: "\x1b[36m",
+};
+
+const OK = `${c.green}✅${c.reset}`;
+const WARN = `${c.yellow}⚠️${c.reset}`;
+const FAIL = `${c.red}❌${c.reset}`;
+const INFO = `${c.cyan}ℹ${c.reset}`;
+
+// ─── Utilities ──────────────────────────────────────────────────────────────
+
+function die(msg) {
+	console.error(`${FAIL} ${msg}`);
+	process.exit(1);
+}
+
+function today() {
+	return new Date().toISOString().slice(0, 10);
+}
+
+function slugify(str) {
+	return str
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, "-")
+		.replace(/^-|-$/g, "");
+}
+
+/** Prompt the user for input. Returns the answer or defaultValue. */
+function ask(question, defaultValue) {
+	const rl = readline.createInterface({
+		input: process.stdin,
+		output: process.stdout,
+	});
+	const suffix = defaultValue != null ? ` ${c.dim}(${defaultValue})${c.reset}` : "";
+	return new Promise((resolve) => {
+		rl.question(`  ${question}${suffix}: `, (answer) => {
+			rl.close();
+			resolve(answer.trim() || defaultValue || "");
+		});
+	});
+}
+
+/** Prompt yes/no. Returns boolean. */
+async function confirm(question, defaultYes = true) {
+	const hint = defaultYes ? "Y/n" : "y/N";
+	const answer = await ask(`${question} [${hint}]`);
+	if (!answer) return defaultYes;
+	return answer.toLowerCase().startsWith("y");
+}
+
+/** Read a YAML file if it exists, return null otherwise. */
+function readYaml(filePath) {
+	try {
+		// Dynamic import of yaml — it's a dependency of the package
+		const raw = fs.readFileSync(filePath, "utf-8");
+		// Simple YAML value extraction (avoids requiring yaml at top level for fast startup)
+		return raw;
+	} catch {
+		return null;
+	}
+}
+
+/** Check if a command exists on PATH. */
+function commandExists(cmd) {
+	try {
+		const which = process.platform === "win32" ? "where" : "which";
+		execSync(`${which} ${cmd}`, { stdio: "pipe" });
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+/** Get command version string. */
+function getVersion(cmd, flag = "--version") {
+	try {
+		return execSync(`${cmd} ${flag}`, { stdio: "pipe" }).toString().trim();
+	} catch {
+		return null;
+	}
+}
+
+/** Write a file, creating parent directories as needed. Optionally skip if exists. */
+function writeFile(dest, content, { skipIfExists = false, label = "" } = {}) {
+	if (skipIfExists && fs.existsSync(dest)) {
+		if (label) console.log(`  ${c.dim}skip${c.reset}  ${label} (already exists)`);
+		return false;
+	}
+	fs.mkdirSync(path.dirname(dest), { recursive: true });
+	fs.writeFileSync(dest, content, "utf-8");
+	if (label) console.log(`  ${c.green}create${c.reset} ${label}`);
+	return true;
+}
+
+/** Copy a file from templates, creating parent dirs. */
+function copyTemplate(src, dest, { skipIfExists = false, label = "" } = {}) {
+	if (skipIfExists && fs.existsSync(dest)) {
+		if (label) console.log(`  ${c.dim}skip${c.reset}  ${label} (already exists)`);
+		return false;
+	}
+	const content = fs.readFileSync(src, "utf-8");
+	return writeFile(dest, content, { label });
+}
+
+/** Replace {{variables}} in template content. */
+function interpolate(content, vars) {
+	return content.replace(/\{\{(\w+)\}\}/g, (_, key) => vars[key] ?? `{{${key}}}`);
+}
+
+// ─── Stack Detection ────────────────────────────────────────────────────────
+
+function detectStack(projectRoot) {
+	const checks = [
+		{ file: "package.json", stack: "node", test: "npm test", build: "npm run build" },
+		{ file: "go.mod", stack: "go", test: "go test ./...", build: "go build ./..." },
+		{ file: "Cargo.toml", stack: "rust", test: "cargo test", build: "cargo build" },
+		{ file: "pyproject.toml", stack: "python", test: "pytest", build: "" },
+		{ file: "pom.xml", stack: "java-maven", test: "mvn test", build: "mvn package" },
+		{ file: "build.gradle", stack: "java-gradle", test: "gradle test", build: "gradle build" },
+	];
+	for (const { file, stack, test, build } of checks) {
+		if (fs.existsSync(path.join(projectRoot, file))) {
+			return { stack, test, build };
+		}
+	}
+	return { stack: "unknown", test: "", build: "" };
+}
+
+// ─── YAML Generation ────────────────────────────────────────────────────────
+
+function generateTaskRunnerYaml(vars) {
+	return `# ═══════════════════════════════════════════════════════════════════════
+# Task Runner Configuration — ${vars.project_name}
+# ═══════════════════════════════════════════════════════════════════════
+#
+# This file configures the /task command (task-runner extension).
+# Edit freely — this file is owned by you, not the package.
+
+# ── Task Areas ────────────────────────────────────────────────────────
+# Define where tasks live. Each area has a folder path, ID prefix, and
+# a CONTEXT.md file that provides domain context to agents.
+
+task_areas:
+  ${vars.default_area}:
+    path: "${vars.tasks_root}"
+    prefix: "${vars.default_prefix}"
+    context: "${vars.tasks_root}/CONTEXT.md"
+
+# ── Reference Docs ────────────────────────────────────────────────────
+# Docs that tasks can reference in their "Context to Read First" section.
+# Add your project's architecture docs, API specs, etc.
+
+reference_docs: {}
+
+# ── Standards ─────────────────────────────────────────────────────────
+# Coding standards and rules. Agents follow these during implementation.
+
+standards: {}
+
+# ── Testing ───────────────────────────────────────────────────────────
+# Commands that agents run to verify their work.
+
+testing:
+  commands:${vars.test_cmd ? `\n    unit: "${vars.test_cmd}"` : ""}${vars.build_cmd ? `\n    build: "${vars.build_cmd}"` : ""}
+`;
+}
+
+function generateOrchestratorYaml(vars) {
+	return `# ═══════════════════════════════════════════════════════════════════════
+# Parallel Task Orchestrator Configuration — ${vars.project_name}
+# ═══════════════════════════════════════════════════════════════════════
+#
+# This file configures the /orch commands (task-orchestrator extension).
+# Edit freely — this file is owned by you, not the package.
+
+orchestrator:
+  max_lanes: ${vars.max_lanes}
+  worktree_location: "subdirectory"
+  worktree_prefix: "${vars.worktree_prefix}"
+  integration_branch: "${vars.integration_branch}"
+  batch_id_format: "timestamp"
+  spawn_mode: "subprocess"
+  tmux_prefix: "orch"
+
+dependencies:
+  source: "prompt"
+  cache: true
+
+assignment:
+  strategy: "affinity-first"
+  size_weights:
+    S: 1
+    M: 2
+    L: 4
+
+pre_warm:
+  auto_detect: false
+  commands: {}
+  always: []
+
+merge:
+  model: ""
+  tools: "read,write,edit,bash,grep,find,ls"
+  verify: []
+  order: "fewest-files-first"
+
+failure:
+  on_task_failure: "skip-dependents"
+  on_merge_failure: "pause"
+  stall_timeout: 30
+  max_worker_minutes: 30
+  abort_grace_period: 60
+
+monitoring:
+  poll_interval: 5
+`;
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// COMMANDS
+// ═════════════════════════════════════════════════════════════════════════════
+
+// ─── init ───────────────────────────────────────────────────────────────────
+
+async function cmdInit(args) {
+	const projectRoot = process.cwd();
+	const force = args.includes("--force");
+	const dryRun = args.includes("--dry-run");
+	const noExamples = args.includes("--no-examples");
+	const presetIdx = args.indexOf("--preset");
+	const preset = presetIdx !== -1 ? args[presetIdx + 1] : null;
+
+	console.log(`\n${c.bold}Taskplane Init${c.reset}\n`);
+
+	// Check for existing config
+	const hasConfig =
+		fs.existsSync(path.join(projectRoot, ".pi", "task-runner.yaml")) ||
+		fs.existsSync(path.join(projectRoot, ".pi", "task-orchestrator.yaml"));
+
+	if (hasConfig && !force) {
+		console.log(`${WARN} Taskplane config already exists in this project.`);
+		const proceed = await confirm("  Overwrite existing files?", false);
+		if (!proceed) {
+			console.log("  Aborted.");
+			return;
+		}
+	}
+
+	// Gather config values
+	let vars;
+	if (preset === "minimal" || preset === "full" || preset === "runner-only") {
+		vars = getPresetVars(preset, projectRoot);
+		console.log(`  Using preset: ${c.cyan}${preset}${c.reset}\n`);
+	} else {
+		vars = await getInteractiveVars(projectRoot);
+	}
+
+	if (dryRun) {
+		console.log(`\n${c.bold}Dry run — files that would be created:${c.reset}\n`);
+		printFileList(vars, noExamples, preset);
+		return;
+	}
+
+	// Scaffold files
+	console.log(`\n${c.bold}Creating files...${c.reset}\n`);
+	const skipIfExists = !force;
+
+	// Agent prompts
+	for (const agent of ["task-worker.md", "task-reviewer.md", "task-merger.md"]) {
+		copyTemplate(
+			path.join(TEMPLATES_DIR, "agents", agent),
+			path.join(projectRoot, ".pi", "agents", agent),
+			{ skipIfExists, label: `.pi/agents/${agent}` }
+		);
+	}
+
+	// Task runner config
+	writeFile(
+		path.join(projectRoot, ".pi", "task-runner.yaml"),
+		generateTaskRunnerYaml(vars),
+		{ skipIfExists, label: ".pi/task-runner.yaml" }
+	);
+
+	// Orchestrator config (skip for runner-only preset)
+	if (preset !== "runner-only") {
+		writeFile(
+			path.join(projectRoot, ".pi", "task-orchestrator.yaml"),
+			generateOrchestratorYaml(vars),
+			{ skipIfExists, label: ".pi/task-orchestrator.yaml" }
+		);
+	}
+
+	// Version tracker (always overwrite)
+	const versionInfo = {
+		version: getPackageVersion(),
+		installedAt: new Date().toISOString(),
+		lastUpgraded: new Date().toISOString(),
+		components: { agents: getPackageVersion(), config: getPackageVersion() },
+	};
+	writeFile(
+		path.join(projectRoot, ".pi", "taskplane.json"),
+		JSON.stringify(versionInfo, null, 2) + "\n",
+		{ label: ".pi/taskplane.json" }
+	);
+
+	// CONTEXT.md
+	const contextSrc = fs.readFileSync(path.join(TEMPLATES_DIR, "tasks", "CONTEXT.md"), "utf-8");
+	writeFile(
+		path.join(projectRoot, vars.tasks_root, "CONTEXT.md"),
+		interpolate(contextSrc, vars),
+		{ skipIfExists, label: `${vars.tasks_root}/CONTEXT.md` }
+	);
+
+	// Example task
+	if (!noExamples) {
+		const exampleDir = path.join(TEMPLATES_DIR, "tasks", "EXAMPLE-001-hello-world");
+		const destDir = path.join(projectRoot, vars.tasks_root, "EXAMPLE-001-hello-world");
+		for (const file of ["PROMPT.md", "STATUS.md"]) {
+			const src = fs.readFileSync(path.join(exampleDir, file), "utf-8");
+			writeFile(path.join(destDir, file), interpolate(src, vars), {
+				skipIfExists,
+				label: `${vars.tasks_root}/EXAMPLE-001-hello-world/${file}`,
+			});
+		}
+	}
+
+	// Report
+	console.log(`\n${OK} ${c.bold}Taskplane initialized!${c.reset}\n`);
+	console.log(`${c.bold}Quick start:${c.reset}`);
+	console.log(`  ${c.cyan}pi${c.reset}                                             # start pi (taskplane auto-loads)`);
+	if (!noExamples) {
+		console.log(
+			`  ${c.cyan}/task ${vars.tasks_root}/EXAMPLE-001-hello-world/PROMPT.md${c.reset}  # run the example task`
+		);
+	}
+	if (preset !== "runner-only") {
+		console.log(
+			`  ${c.cyan}/orch all${c.reset}                                         # orchestrate all pending tasks`
+		);
+	}
+	console.log();
+}
+
+function getPresetVars(preset, projectRoot) {
+	const dirName = path.basename(projectRoot);
+	const { test: test_cmd, build: build_cmd } = detectStack(projectRoot);
+	return {
+		project_name: dirName,
+		integration_branch: "main",
+		max_lanes: 3,
+		worktree_prefix: `${slugify(dirName)}-wt`,
+		tasks_root: "taskplane-tasks",
+		default_area: "general",
+		default_prefix: "TP",
+		test_cmd,
+		build_cmd,
+		date: today(),
+	};
+}
+
+async function getInteractiveVars(projectRoot) {
+	const dirName = path.basename(projectRoot);
+	const detected = detectStack(projectRoot);
+
+	const project_name = await ask("Project name", dirName);
+	const integration_branch = await ask("Integration branch", "main");
+	const max_lanes = parseInt(await ask("Max parallel lanes", "3")) || 3;
+	const tasks_root = await ask("Tasks directory", "taskplane-tasks");
+	const default_area = await ask("Default area name", "general");
+	const default_prefix = await ask("Task ID prefix", "TP");
+	const test_cmd = await ask("Test command", detected.test || "");
+	const build_cmd = await ask("Build command", detected.build || "");
+
+	return {
+		project_name,
+		integration_branch,
+		max_lanes,
+		worktree_prefix: `${slugify(project_name)}-wt`,
+		tasks_root,
+		default_area,
+		default_prefix,
+		test_cmd,
+		build_cmd,
+		date: today(),
+	};
+}
+
+function printFileList(vars, noExamples, preset) {
+	const files = [
+		".pi/agents/task-worker.md",
+		".pi/agents/task-reviewer.md",
+		".pi/agents/task-merger.md",
+		".pi/task-runner.yaml",
+	];
+	if (preset !== "runner-only") files.push(".pi/task-orchestrator.yaml");
+	files.push(".pi/taskplane.json");
+	files.push(`${vars.tasks_root}/CONTEXT.md`);
+	if (!noExamples) {
+		files.push(`${vars.tasks_root}/EXAMPLE-001-hello-world/PROMPT.md`);
+		files.push(`${vars.tasks_root}/EXAMPLE-001-hello-world/STATUS.md`);
+	}
+	for (const f of files) console.log(`  ${c.green}create${c.reset} ${f}`);
+	console.log();
+}
+
+// ─── doctor ─────────────────────────────────────────────────────────────────
+
+function cmdDoctor() {
+	const projectRoot = process.cwd();
+	let issues = 0;
+
+	console.log(`\n${c.bold}Taskplane Doctor${c.reset}\n`);
+
+	// Check prerequisites
+	const checks = [
+		{ label: "pi installed", check: () => commandExists("pi"), detail: () => getVersion("pi") },
+		{
+			label: "Node.js >= 20.0.0",
+			check: () => {
+				const v = process.versions.node;
+				return parseInt(v.split(".")[0]) >= 20;
+			},
+			detail: () => `v${process.versions.node}`,
+		},
+		{ label: "git installed", check: () => commandExists("git"), detail: () => getVersion("git") },
+	];
+
+	for (const { label, check, detail } of checks) {
+		const ok = check();
+		const info = ok && detail ? ` ${c.dim}(${detail()})${c.reset}` : "";
+		console.log(`  ${ok ? OK : FAIL} ${label}${info}`);
+		if (!ok) issues++;
+	}
+
+	// Check tmux (optional)
+	const hasTmux = commandExists("tmux");
+	console.log(
+		`  ${hasTmux ? OK : `${WARN}`} tmux installed${hasTmux ? ` ${c.dim}(${getVersion("tmux", "-V")})${c.reset}` : ` ${c.dim}(optional — needed for spawn_mode: tmux)${c.reset}`}`
+	);
+
+	// Check package installation
+	const pkgJson = path.join(PACKAGE_ROOT, "package.json");
+	const pkgVersion = getPackageVersion();
+	const isProjectLocal = PACKAGE_ROOT.includes(".pi");
+	const installType = isProjectLocal ? "project-local" : "global";
+	console.log(`  ${OK} taskplane package installed ${c.dim}(v${pkgVersion}, ${installType})${c.reset}`);
+
+	// Check project config
+	console.log();
+	const configFiles = [
+		{ path: ".pi/task-runner.yaml", required: true },
+		{ path: ".pi/task-orchestrator.yaml", required: true },
+		{ path: ".pi/agents/task-worker.md", required: true },
+		{ path: ".pi/agents/task-reviewer.md", required: true },
+		{ path: ".pi/agents/task-merger.md", required: true },
+		{ path: ".pi/taskplane.json", required: false },
+	];
+
+	for (const { path: relPath, required } of configFiles) {
+		const exists = fs.existsSync(path.join(projectRoot, relPath));
+		if (exists) {
+			console.log(`  ${OK} ${relPath} exists`);
+		} else if (required) {
+			console.log(`  ${FAIL} ${relPath} missing`);
+			issues++;
+		} else {
+			console.log(`  ${WARN} ${relPath} missing ${c.dim}(optional)${c.reset}`);
+		}
+	}
+
+	// Check task areas from config
+	const runnerYaml = readYaml(path.join(projectRoot, ".pi", "task-runner.yaml"));
+	if (runnerYaml) {
+		// Simple regex extraction of task area paths
+		const pathMatches = [...runnerYaml.matchAll(/^\s+path:\s*"?([^"\n]+)"?/gm)];
+		const contextMatches = [...runnerYaml.matchAll(/^\s+context:\s*"?([^"\n]+)"?/gm)];
+
+		if (pathMatches.length > 0) {
+			console.log();
+			for (const match of pathMatches) {
+				const areaPath = match[1].trim();
+				const exists = fs.existsSync(path.join(projectRoot, areaPath));
+				if (exists) {
+					console.log(`  ${OK} task area path: ${areaPath}`);
+				} else {
+					console.log(`  ${FAIL} task area path: ${areaPath} ${c.dim}(directory not found)${c.reset}`);
+					console.log(`     ${c.dim}→ Run: mkdir -p ${areaPath}${c.reset}`);
+					issues++;
+				}
+			}
+			for (const match of contextMatches) {
+				const ctxPath = match[1].trim();
+				const exists = fs.existsSync(path.join(projectRoot, ctxPath));
+				if (exists) {
+					console.log(`  ${OK} CONTEXT.md: ${ctxPath}`);
+				} else {
+					console.log(`  ${WARN} CONTEXT.md: ${ctxPath} ${c.dim}(not found)${c.reset}`);
+				}
+			}
+		}
+	}
+
+	console.log();
+	if (issues === 0) {
+		console.log(`${OK} ${c.green}All checks passed!${c.reset}\n`);
+	} else {
+		console.log(`${FAIL} ${issues} issue(s) found. Run ${c.cyan}taskplane init${c.reset} to fix config issues.\n`);
+		process.exit(1);
+	}
+}
+
+// ─── version ────────────────────────────────────────────────────────────────
+
+function cmdVersion() {
+	const pkgVersion = getPackageVersion();
+	const isProjectLocal = PACKAGE_ROOT.includes(".pi");
+	const installType = isProjectLocal ? `project-local: ${PACKAGE_ROOT}` : `global: ${PACKAGE_ROOT}`;
+
+	console.log(`\ntaskplane ${c.bold}v${pkgVersion}${c.reset}`);
+	console.log(`  Package:  ${installType}`);
+
+	// Check for project config
+	const projectRoot = process.cwd();
+	const tpJson = path.join(projectRoot, ".pi", "taskplane.json");
+	if (fs.existsSync(tpJson)) {
+		try {
+			const info = JSON.parse(fs.readFileSync(tpJson, "utf-8"));
+			console.log(`  Config:   .pi/taskplane.json (v${info.version}, initialized ${info.installedAt?.slice(0, 10) || "unknown"})`);
+		} catch {
+			console.log(`  Config:   .pi/taskplane.json (unreadable)`);
+		}
+	} else {
+		console.log(`  Config:   ${c.dim}not initialized (run taskplane init)${c.reset}`);
+	}
+
+	// Pi version
+	const piVersion = getVersion("pi");
+	if (piVersion) console.log(`  Pi:       ${piVersion}`);
+
+	// Node version
+	console.log(`  Node:     v${process.versions.node}`);
+	console.log();
+}
+
+function getPackageVersion() {
+	try {
+		const pkg = JSON.parse(fs.readFileSync(path.join(PACKAGE_ROOT, "package.json"), "utf-8"));
+		return pkg.version || "unknown";
+	} catch {
+		return "unknown";
+	}
+}
+
+// ─── dashboard ──────────────────────────────────────────────────────────────
+
+function cmdDashboard(args) {
+	const projectRoot = process.cwd();
+
+	if (!fs.existsSync(DASHBOARD_SERVER)) {
+		die(`Dashboard server not found at ${DASHBOARD_SERVER}`);
+	}
+
+	// Pass through args to server.cjs, adding --root
+	const serverArgs = ["--root", projectRoot];
+
+	// Forward --port and --no-open if provided
+	for (let i = 0; i < args.length; i++) {
+		if (args[i] === "--port" && args[i + 1]) {
+			serverArgs.push("--port", args[i + 1]);
+			i++;
+		} else if (args[i] === "--no-open") {
+			serverArgs.push("--no-open");
+		}
+	}
+
+	console.log(`\n${c.bold}Taskplane Dashboard${c.reset}`);
+	console.log(`  Project: ${projectRoot}`);
+	console.log(`  Server:  ${DASHBOARD_SERVER}\n`);
+
+	const child = spawn("node", [DASHBOARD_SERVER, ...serverArgs], {
+		stdio: "inherit",
+		cwd: projectRoot,
+	});
+
+	child.on("error", (err) => {
+		die(`Failed to start dashboard: ${err.message}`);
+	});
+
+	// Forward signals
+	process.on("SIGINT", () => child.kill("SIGINT"));
+	process.on("SIGTERM", () => child.kill("SIGTERM"));
+
+	child.on("exit", (code) => {
+		process.exit(code ?? 0);
+	});
+}
+
+// ─── help ───────────────────────────────────────────────────────────────────
+
+function showHelp() {
+	const version = getPackageVersion();
+	console.log(`
+${c.bold}taskplane${c.reset} v${version} — AI agent orchestration for pi
+
+${c.bold}Usage:${c.reset}
+  taskplane <command> [options]
+
+${c.bold}Commands:${c.reset}
+  ${c.cyan}init${c.reset}        Scaffold Taskplane config in the current project
+  ${c.cyan}doctor${c.reset}      Validate installation and project configuration
+  ${c.cyan}version${c.reset}     Show version information
+  ${c.cyan}dashboard${c.reset}   Launch the web-based orchestrator dashboard
+  ${c.cyan}help${c.reset}        Show this help message
+
+${c.bold}Init options:${c.reset}
+  --preset <name>   Use a preset: minimal, full, runner-only
+  --no-examples     Skip example task scaffolding
+  --force           Overwrite existing files without prompting
+  --dry-run         Show what would be created without writing
+
+${c.bold}Dashboard options:${c.reset}
+  --port <number>   Port to listen on (default: 8099)
+  --no-open         Don't auto-open browser
+
+${c.bold}Examples:${c.reset}
+  taskplane init                    # Interactive project setup
+  taskplane init --preset full      # Quick setup with defaults
+  taskplane init --dry-run          # Preview what would be created
+  taskplane doctor                  # Check installation health
+  taskplane dashboard               # Launch web dashboard
+  taskplane dashboard --port 3000   # Dashboard on custom port
+
+${c.bold}Getting started:${c.reset}
+  1. pi install npm:taskplane       # Install the pi package
+  2. cd my-project && taskplane init    # Scaffold project config
+  3. pi                             # Start pi — /task and /orch are ready
+`);
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// MAIN
+// ═════════════════════════════════════════════════════════════════════════════
+
+const [command, ...args] = process.argv.slice(2);
+
+switch (command) {
+	case "init":
+		await cmdInit(args);
+		break;
+	case "doctor":
+		cmdDoctor();
+		break;
+	case "version":
+	case "--version":
+	case "-v":
+		cmdVersion();
+		break;
+	case "dashboard":
+		cmdDashboard(args);
+		break;
+	case "help":
+	case "--help":
+	case "-h":
+	case undefined:
+		showHelp();
+		break;
+	default:
+		console.error(`${FAIL} Unknown command: ${command}`);
+		showHelp();
+		process.exit(1);
+}

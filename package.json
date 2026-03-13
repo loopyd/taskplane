@@ -1,0 +1,56 @@
+{
+  "name": "taskplane",
+  "version": "0.1.0",
+  "description": "AI agent orchestration for pi — parallel task execution with checkpoint discipline",
+  "keywords": [
+    "pi-package",
+    "ai",
+    "agent",
+    "orchestration",
+    "task-runner",
+    "parallel"
+  ],
+  "bin": {
+    "taskplane": "./bin/taskplane.mjs"
+  },
+  "pi": {
+    "extensions": [
+      "./extensions"
+    ],
+    "skills": [
+      "./skills"
+    ]
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "files": [
+    "bin/",
+    "dashboard/",
+    "extensions/task-runner.ts",
+    "extensions/task-orchestrator.ts",
+    "extensions/taskplane/",
+    "skills/",
+    "templates/"
+  ],
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*",
+    "@mariozechner/pi-tui": "*",
+    "@mariozechner/pi-ai": "*",
+    "@sinclair/typebox": "*"
+  },
+  "dependencies": {
+    "yaml": "^2.4.0"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/HenryLach/taskplane.git"
+  },
+  "homepage": "https://github.com/HenryLach/taskplane#readme",
+  "bugs": {
+    "url": "https://github.com/HenryLach/taskplane/issues"
+  },
+  "author": "Henry Lach"
+}
