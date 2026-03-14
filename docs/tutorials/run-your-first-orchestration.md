@@ -89,6 +89,12 @@ or explicit task paths:
 /orch taskplane-tasks/EXAMPLE-001-hello-world/PROMPT.md taskplane-tasks/EXAMPLE-002-parallel-smoke/PROMPT.md
 ```
 
+You can also orchestrate a single task path for worktree isolation:
+
+```text
+/orch taskplane-tasks/EXAMPLE-001-hello-world/PROMPT.md
+```
+
 What happens:
 
 1. Task discovery and dependency analysis

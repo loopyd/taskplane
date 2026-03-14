@@ -92,6 +92,17 @@ The default scaffold includes two independent example tasks, so `/orch all` give
 /task-status
 ```
 
+Important distinction:
+
+- `/task` runs in your **current branch/worktree**.
+- `/orch` runs tasks in **isolated worktrees** and merges back.
+
+Because workers checkpoint with git commits, `/task` can capture unrelated local edits if you're changing files in parallel. For safer isolation (even with one task), prefer:
+
+```text
+/orch taskplane-tasks/EXAMPLE-001-hello-world/PROMPT.md
+```
+
 Orchestrator lanes execute tasks through task-runner under the hood, so `/task` and `/orch` share the same core task execution model.
 
 ## Commands
@@ -100,11 +111,11 @@ Orchestrator lanes execute tasks through task-runner under the hood, so `/task` 
 
 | Command | Description |
 |---------|-------------|
-| `/task <path/to/PROMPT.md>` | Execute a single task autonomously |
+| `/task <path/to/PROMPT.md>` | Execute one task in the current branch/worktree |
 | `/task-status` | Show current task progress |
 | `/task-pause` | Pause after current worker iteration finishes |
 | `/task-resume` | Resume a paused task |
-| `/orch <areas\|paths\|all>` | Start parallel batch execution |
+| `/orch <areas\|paths\|all>` | Execute tasks via isolated worktrees (recommended default) |
 | `/orch-plan <areas\|paths\|all>` | Preview execution plan without running |
 | `/orch-status` | Show batch progress |
 | `/orch-pause` | Pause batch after current tasks finish |

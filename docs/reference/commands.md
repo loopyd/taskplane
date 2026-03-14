@@ -24,6 +24,7 @@ Start autonomous execution of a single task.
 **Behavior**
 
 - Resolves path from current working directory
+- Runs in the current branch/worktree (no orchestrator worktree isolation)
 - Parses `PROMPT.md`
 - Loads existing `STATUS.md` (or generates one if missing)
 - Creates `.reviews/` if needed
@@ -35,6 +36,12 @@ Start autonomous execution of a single task.
 /task taskplane-tasks/EXAMPLE-001-hello-world/PROMPT.md
 /task taskplane-tasks/auth/AUTH-014-rbac/PROMPT.md
 ```
+
+**Isolation note**
+
+- `/task` commits in your current working tree.
+- Avoid editing unrelated files while it runs.
+- Prefer `/orch <path/to/PROMPT.md>` when you want worktree isolation for a single task.
 
 **Common responses**
 
@@ -135,6 +142,7 @@ Start parallel batch execution.
 - Computes waves and lane assignments
 - Executes tasks in isolated worktrees
 - Merges successful lane branches
+- Can be used with a single task path when you want `/task` semantics with worktree isolation
 
 **Examples**
 

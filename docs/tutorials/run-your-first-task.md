@@ -21,6 +21,22 @@ taskplane-tasks/EXAMPLE-001-hello-world/
 
 ---
 
+## Important: `/task` vs `/orch`
+
+`/task` runs in your **current branch/worktree**. This is great for focused debugging, but it means your own in-progress local edits are in the same workspace as the worker.
+
+Because worker checkpoints use git commits, unrelated local edits can be swept into checkpoints if you modify files while `/task` is running.
+
+For safer default isolation (even for one task), prefer:
+
+```text
+/orch taskplane-tasks/EXAMPLE-001-hello-world/PROMPT.md
+```
+
+Use `/task` when you intentionally want direct, in-place execution on your current branch.
+
+---
+
 ## Understand the Task Files
 
 ### `PROMPT.md`
