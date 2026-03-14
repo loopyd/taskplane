@@ -4,11 +4,12 @@
  */
 import { readFileSync, existsSync, statSync, unlinkSync, mkdirSync } from "fs";
 import { spawnSync } from "child_process";
-import { join, dirname, resolve, delimiter as pathDelimiter } from "path";
+import { join, dirname, resolve, relative, delimiter as pathDelimiter } from "path";
 
 import { DONE_GRACE_MS, EXECUTION_POLL_INTERVAL_MS, ExecutionError, SESSION_SPAWN_RETRY_MAX } from "./types.ts";
 import type { AllocatedLane, AllocatedTask, DependencyGraph, LaneExecutionResult, LaneMonitorSnapshot, LaneTaskOutcome, LaneTaskStatus, MonitorState, MtimeTracker, OrchestratorConfig, ParsedTask, TaskMonitorSnapshot, WaveExecutionResult } from "./types.ts";
 import { allocateLanes } from "./waves.ts";
+import { runGit } from "./git.ts";
 
 // ── Execution Helpers ────────────────────────────────────────────────
 
@@ -479,6 +480,12 @@ export async function pollUntilTaskComplete(
 
 	let lastPaneTail = "";
 
+	// Abort signal file path — checked each poll cycle.
+	// Any process can create this file to trigger abort (belt-and-suspenders
+	// alongside the in-memory pauseSignal, since /orch-abort may not be able
+	// to run concurrently with the /orch command handler).
+	const abortSignalFile = join(repoRoot, ".pi", "orch-abort-signal");
+
 	// Main polling loop
 	while (true) {
 		// Check pause signal
@@ -489,6 +496,20 @@ export async function pollUntilTaskComplete(
 			return {
 				status: "skipped",
 				exitReason: "Paused by user (/orch-pause)",
+				doneFileFound: false,
+			};
+		}
+
+		// Check file-based abort signal
+		if (existsSync(abortSignalFile)) {
+			execLog(laneId, task.taskId, "abort signal file detected — killing session and aborting");
+			tmuxKillSession(sessionName);
+			// Also kill child sessions (worker, reviewer)
+			tmuxKillSession(`${sessionName}-worker`);
+			tmuxKillSession(`${sessionName}-reviewer`);
+			return {
+				status: "failed",
+				exitReason: "Aborted by signal file (.pi/orch-abort-signal)",
 				doneFileFound: false,
 			};
 		}
@@ -1371,6 +1392,100 @@ export function computeTransitiveDependents(
 }
 
 
+// ── Pre-flight: Commit Untracked Task Files ─────────────────────────
+
+/**
+ * Ensure all task files for a wave are committed to git before worktree creation.
+ *
+ * Git worktrees only contain tracked (committed) files. If a user creates
+ * task folders (PROMPT.md, STATUS.md) but doesn't commit them, the worktree
+ * won't have those files and TASK_AUTOSTART will fail with "file not found".
+ *
+ * This function checks each wave task's folder for untracked or modified files,
+ * stages them, and creates a commit on the current branch. This must run BEFORE
+ * allocateLanes() so that worktrees (which are based on the integration branch)
+ * include the task files.
+ *
+ * Only task-specific folders are staged — no other working tree changes are touched.
+ *
+ * @param waveTasks  - Task IDs in this wave
+ * @param pending    - Full pending task map from discovery
+ * @param repoRoot   - Main repository root
+ * @param waveIndex  - Wave number for commit message
+ */
+export function ensureTaskFilesCommitted(
+	waveTasks: string[],
+	pending: Map<string, ParsedTask>,
+	repoRoot: string,
+	waveIndex: number,
+): void {
+	// Collect task folder paths for this wave
+	const foldersToCheck: { taskId: string; relPath: string }[] = [];
+	for (const taskId of waveTasks) {
+		const task = pending.get(taskId);
+		if (!task) continue;
+
+		const absFolder = resolve(task.taskFolder);
+		const relPath = relative(resolve(repoRoot), absFolder).replace(/\\/g, "/");
+
+		// Skip if path escapes the repo (shouldn't happen in normal use)
+		if (relPath.startsWith("..")) {
+			continue;
+		}
+		foldersToCheck.push({ taskId, relPath });
+	}
+
+	if (foldersToCheck.length === 0) return;
+
+	// Check which folders have untracked or uncommitted files
+	const foldersToStage: string[] = [];
+	for (const { taskId, relPath } of foldersToCheck) {
+		const status = runGit(["status", "--porcelain", "--", relPath], repoRoot);
+		if (status.ok && status.stdout.trim()) {
+			execLog("wave", `W${waveIndex}`, `task ${taskId} has uncommitted files, staging`, {
+				folder: relPath,
+				status: status.stdout.trim().split("\n").slice(0, 5).join("; "),
+			});
+			foldersToStage.push(relPath);
+		}
+	}
+
+	if (foldersToStage.length === 0) return;
+
+	// Stage only the task folders
+	for (const folder of foldersToStage) {
+		const addResult = runGit(["add", "--", folder], repoRoot);
+		if (!addResult.ok) {
+			execLog("wave", `W${waveIndex}`, `failed to stage task files: ${addResult.stderr}`, { folder });
+			throw new ExecutionError(
+				"EXEC_TASK_STAGE_FAILED",
+				`Failed to stage task files in "${folder}": ${addResult.stderr}`,
+				"wave",
+				folder,
+			);
+		}
+	}
+
+	// Commit
+	const taskIds = foldersToStage.map(f => f.split("/").pop() || f).join(", ");
+	const commitMsg = `chore: stage task files for orchestrator wave ${waveIndex} (${taskIds})`;
+	const commitResult = runGit(["commit", "-m", commitMsg], repoRoot);
+	if (!commitResult.ok) {
+		execLog("wave", `W${waveIndex}`, `failed to commit task files: ${commitResult.stderr}`);
+		throw new ExecutionError(
+			"EXEC_TASK_COMMIT_FAILED",
+			`Failed to commit task files for wave ${waveIndex}: ${commitResult.stderr}`,
+			"wave",
+			`W${waveIndex}`,
+		);
+	}
+
+	execLog("wave", `W${waveIndex}`, `committed ${foldersToStage.length} task folder(s) to ensure worktree visibility`, {
+		folders: foldersToStage,
+		commit: commitResult.stdout.trim().split("\n")[0],
+	});
+}
+
 // ── Wave Execution Core ──────────────────────────────────────────────
 
 /**
@@ -1431,6 +1546,34 @@ export async function executeWave(
 		policy,
 		batchId,
 	});
+
+	// ── Stage 0: Ensure task files are committed ────────────────
+	// Task folders may contain untracked files (PROMPT.md, STATUS.md) that
+	// won't appear in worktrees unless committed. Stage and commit them now,
+	// before worktree creation, so workers can find their TASK_AUTOSTART paths.
+	try {
+		ensureTaskFilesCommitted(waveTasks, pending, repoRoot, waveIndex);
+	} catch (err: unknown) {
+		const errMsg = err instanceof Error ? err.message : String(err);
+		execLog("wave", `W${waveIndex}`, `task file commit failed: ${errMsg}`);
+
+		return {
+			waveIndex,
+			startedAt,
+			endedAt: Date.now(),
+			laneResults: [],
+			policyApplied: policy,
+			stoppedEarly: true,
+			failedTaskIds: waveTasks,
+			skippedTaskIds: [],
+			succeededTaskIds: [],
+			blockedTaskIds: [...computeTransitiveDependents(new Set(waveTasks), dependencyGraph)],
+			laneCount: 0,
+			overallStatus: "failed",
+			finalMonitorState: null,
+			allocatedLanes: [],
+		};
+	}
 
 	// ── Stage 1: Allocate lanes ──────────────────────────────────
 	const allocResult = allocateLanes(waveTasks, pending, config, repoRoot, batchId);

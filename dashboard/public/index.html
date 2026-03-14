@@ -62,11 +62,17 @@
         </div>
       </div>
 
-      <!-- Terminal Viewer (hidden until a session is clicked) -->
+      <!-- Viewer Panel: Conversation + STATUS.md (hidden until activated) -->
       <div class="panel terminal-panel" id="terminal-panel" style="display:none;">
         <div class="panel-header">
           <span id="terminal-title">Terminal</span>
-          <button class="terminal-close" id="terminal-close" title="Close terminal">✕</button>
+          <div class="terminal-controls">
+            <label class="auto-scroll-label">
+              <input type="checkbox" id="auto-scroll-checkbox">
+              <span id="auto-scroll-text">Follow feed</span>
+            </label>
+            <button class="terminal-close" id="terminal-close" title="Close viewer">✕</button>
+          </div>
         </div>
         <div class="panel-body" id="terminal-body"></div>
       </div>

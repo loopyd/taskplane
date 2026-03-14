@@ -559,6 +559,8 @@ export const SESSION_SPAWN_RETRY_MAX = 2;
  * - EXEC_SPAWN_FAILED: TMUX session could not be created after retries
  * - EXEC_TASK_FAILED: task completed without .DONE (non-zero exit)
  * - EXEC_TASK_STALLED: STATUS.md unchanged for stall_timeout (handled by Step 3)
+ * - EXEC_TASK_STAGE_FAILED: git add failed for task files
+ * - EXEC_TASK_COMMIT_FAILED: git commit failed for staged task files
  * - EXEC_TMUX_NOT_AVAILABLE: tmux binary not found
  * - EXEC_WORKTREE_MISSING: lane worktree path doesn't exist
  */
@@ -566,6 +568,8 @@ export type ExecutionErrorCode =
 	| "EXEC_SPAWN_FAILED"
 	| "EXEC_TASK_FAILED"
 	| "EXEC_TASK_STALLED"
+	| "EXEC_TASK_STAGE_FAILED"
+	| "EXEC_TASK_COMMIT_FAILED"
 	| "EXEC_TMUX_NOT_AVAILABLE"
 	| "EXEC_WORKTREE_MISSING";
 

@@ -19,7 +19,7 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { DynamicBorder } from "@mariozechner/pi-coding-agent";
-import { Container, Text, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
+import { Container, Text, truncateToWidth } from "@mariozechner/pi-tui";
 import { spawn, spawnSync } from "child_process";
 import {
 	readFileSync, writeFileSync, appendFileSync, existsSync, mkdirSync, unlinkSync,
@@ -130,7 +130,7 @@ const DEFAULT_CONFIG: TaskConfig = {
 	standards_overrides: {},
 	task_areas: {},
 	worker: { model: "", tools: "read,write,edit,bash,grep,find,ls", thinking: "off" },
-	reviewer: { model: "openai/gpt-5.3-codex", tools: "read,bash,grep,find,ls", thinking: "off" },
+	reviewer: { model: "openai/gpt-5.3-codex", tools: "read,bash,grep,find,ls", thinking: "on" },
 	context: {
 		worker_context_window: 200000, warn_percent: 70, kill_percent: 85,
 		max_worker_iterations: 20, max_review_cycles: 2, no_progress_limit: 3,
@@ -214,18 +214,16 @@ function getTmuxPrefix(): string {
 /**
  * Detects whether this task runner is executing inside the parallel orchestrator.
  *
- * Requires BOTH signals to prevent false positives:
- * 1. TASK_RUNNER_SPAWN_MODE === "tmux" — confirms tmux-based spawning
- * 2. TASK_RUNNER_TMUX_PREFIX starts with "orch-" — confirms orchestrator origin
+ * TASK_RUNNER_TMUX_PREFIX is only ever set by the orchestrator (via execution.ts
+ * buildLaneEnv). Its presence — regardless of value — indicates orchestrated mode.
+ * The prefix can be any user-configured value (e.g., "orch-lane-1", "penster-lane-1").
  *
  * When true, certain worker behaviors are suppressed — most notably, workers
  * must NOT archive task folders because the orchestrator polls for .DONE files
  * at the original path.
  */
 function isOrchestratedMode(): boolean {
-	// Orchestrated when the prefix is set by the orchestrator (orch-lane-N pattern).
-	// Spawn mode can be "tmux" or "subprocess" — both are valid orchestrated modes.
-	return !!process.env.TASK_RUNNER_TMUX_PREFIX?.startsWith("orch-");
+	return !!process.env.TASK_RUNNER_TMUX_PREFIX;
 }
 
 /**
@@ -1101,7 +1099,7 @@ export default function (pi: ExtensionAPI) {
 			return {
 				render(width: number): string[] {
 					if (!state.task) {
-						return ["", theme.fg("dim", "  No task loaded. Use /task <path/to/PROMPT.md> to start.")];
+						return [];
 					}
 
 					const task = state.task;
@@ -1624,7 +1622,7 @@ export default function (pi: ExtensionAPI) {
 				prompt: promptContent,
 				model: reviewerModel,
 				tools: config.reviewer.tools || reviewerDef?.tools || "read,write,bash,grep,find,ls",
-				thinking: config.reviewer.thinking || "off",
+				thinking: config.reviewer.thinking || "on",
 			});
 			reviewPromise = spawned.promise;
 			state.reviewerProc = { kill: spawned.kill };
@@ -1633,7 +1631,7 @@ export default function (pi: ExtensionAPI) {
 			const spawned = spawnAgent({
 				model: reviewerModel,
 				tools: config.reviewer.tools || reviewerDef?.tools || "read,write,bash,grep,find,ls",
-				thinking: config.reviewer.thinking || "off",
+				thinking: config.reviewer.thinking || "on",
 				systemPrompt,
 				prompt: promptContent,
 				onToolCall: (toolName, args) => {
@@ -1863,33 +1861,6 @@ export default function (pi: ExtensionAPI) {
 		}
 
 		updateWidgets();
-
-		// Footer
-		ctx.ui.setFooter((_tui, theme, _footerData) => ({
-			dispose: () => {},
-			invalidate() {},
-			render(width: number): string[] {
-				const model = ctx.model?.id || "no-model";
-				const usage = ctx.getContextUsage();
-				const pct = usage ? usage.percent : 0;
-				const filled = Math.round(pct / 10);
-				const bar = "#".repeat(filled) + "-".repeat(10 - filled);
-
-				const taskLabel = state.task
-					? theme.fg("accent", state.task.taskId) +
-					  theme.fg("dim", ` ${state.phase}`) +
-					  (state.phase === "running" ? theme.fg("accent", ` Step ${state.currentStep}`) : "")
-					: theme.fg("dim", "no task");
-
-				const left = theme.fg("dim", ` ${model}`) +
-					theme.fg("muted", " · ") +
-					taskLabel;
-				const right = theme.fg("dim", `[${bar}] ${Math.round(pct)}% `);
-				const pad = " ".repeat(Math.max(1, width - visibleWidth(left) - visibleWidth(right)));
-
-				return [truncateToWidth(left + pad + right, width)];
-			},
-		}));
 
 		const config = loadConfig(ctx.cwd);
 		ctx.ui.setStatus("task-runner", `📋 ${config.project.name}`);

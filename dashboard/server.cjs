@@ -426,6 +426,57 @@ function serveHistoryEntry(req, res, batchId) {
   res.end(JSON.stringify(entry));
 }
 
+/** GET /api/status-md/:taskId — return raw STATUS.md content for a task. */
+function serveStatusMd(req, res, taskId) {
+  if (!/^[\w-]+$/.test(taskId)) {
+    res.writeHead(400, { "Content-Type": "text/plain" });
+    res.end("Invalid task ID");
+    return;
+  }
+
+  const state = loadBatchState();
+  if (!state) {
+    res.writeHead(404, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "No batch state" }));
+    return;
+  }
+
+  const task = (state.tasks || []).find(t => t.taskId === taskId);
+  if (!task) {
+    res.writeHead(404, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Task not found" }));
+    return;
+  }
+
+  const effectiveFolder = resolveTaskFolder(task, state);
+  if (!effectiveFolder) {
+    res.writeHead(404, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Cannot resolve task folder" }));
+    return;
+  }
+
+  // Try effective folder, then archive
+  const candidates = [effectiveFolder];
+  const archiveBase = effectiveFolder.replace(/[/\\]tasks[/\\][^/\\]+$/, "/tasks/archive/" + taskId);
+  if (archiveBase !== effectiveFolder) candidates.push(archiveBase);
+
+  for (const folder of candidates) {
+    const statusPath = path.join(folder, "STATUS.md");
+    try {
+      const content = fs.readFileSync(statusPath, "utf-8");
+      res.writeHead(200, {
+        "Content-Type": "text/plain; charset=utf-8",
+        "Access-Control-Allow-Origin": "*",
+      });
+      res.end(content);
+      return;
+    } catch { continue; }
+  }
+
+  res.writeHead(404, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ error: "STATUS.md not found" }));
+}
+
 // ─── HTTP Server ────────────────────────────────────────────────────────────
 
 function createServer() {
@@ -452,6 +503,9 @@ function createServer() {
     } else if (pathname.startsWith("/api/history/") && req.method === "GET") {
       const batchId = decodeURIComponent(pathname.slice("/api/history/".length));
       serveHistoryEntry(req, res, batchId);
+    } else if (pathname.startsWith("/api/status-md/") && req.method === "GET") {
+      const taskId = decodeURIComponent(pathname.slice("/api/status-md/".length));
+      serveStatusMd(req, res, taskId);
     } else {
       serveStatic(req, res);
     }

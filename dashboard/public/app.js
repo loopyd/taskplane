@@ -142,6 +142,11 @@ const $historyBody    = $("history-body");
 let historyList = [];  // compact batch summaries
 let viewingHistoryId = null; // batchId if viewing history, null if live
 
+// ─── Viewer State ───────────────────────────────────────────────────────────
+
+let viewerMode = null;   // "conversation" | "status-md" | null
+let viewerTarget = null; // session name (conversation) or taskId (status-md)
+
 // ─── Render: Header ─────────────────────────────────────────────────────────
 
 function renderHeader(batch) {
@@ -300,7 +305,8 @@ function renderLanesTasks(batch, tmuxSessions) {
     html += `  <div class="lane-right">`;
     html += `    <span class="tmux-dot ${alive ? "alive" : "dead"}" title="${alive ? "tmux alive" : "tmux dead"}"></span>`;
     // View button: shows conversation stream if available, else tmux pane
-    html += `    <button class="tmux-view-btn" onclick="viewConversation('${escapeHtml(lane.tmuxSessionName)}')" title="View worker conversation">👁 View</button>`;
+    const isViewingConv = viewerMode === 'conversation' && viewerTarget === lane.tmuxSessionName;
+    html += `    <button class="tmux-view-btn${isViewingConv ? ' active' : ''}" onclick="viewConversation('${escapeHtml(lane.tmuxSessionName)}')" title="View worker conversation">👁 View</button>`;
     if (alive) {
       html += `    <span class="tmux-cmd" data-tmux="${escapeHtml(lane.tmuxSessionName)}" onclick="copyTmuxCmd('${escapeHtml(lane.tmuxSessionName)}')" title="Click to copy">${escapeHtml(tmuxCmd)}</span>`;
     } else {
@@ -387,9 +393,15 @@ function renderLanesTasks(batch, tmuxSessions) {
         workerHtml = `<div class="worker-stats"><span class="worker-stat" style="color:var(--red)">✗ Worker error</span></div>`;
       }
 
+      const isViewingStatus = viewerMode === 'status-md' && viewerTarget === task.taskId;
+      const eyeHtml = task.status !== 'pending'
+        ? `<button class="viewer-eye-btn${isViewingStatus ? ' active' : ''}" onclick="viewStatusMd('${escapeHtml(task.taskId)}')" title="View STATUS.md">👁</button>`
+        : '';
+
       html += `
         <div class="task-row">
           <span class="task-icon"><span class="status-dot ${task.status}"></span></span>
+          <span class="task-actions">${eyeHtml}</span>
           <span class="task-id status-${task.status}">${escapeHtml(task.taskId)}</span>
           <span><span class="status-badge status-${task.status}"><span class="status-dot ${task.status}"></span> ${task.status}</span></span>
           <span class="task-duration">${dur}</span>
@@ -601,64 +613,235 @@ function connect() {
   };
 }
 
-// ─── Terminal Viewer ─────────────────────────────────────────────────────────
+// ─── Viewer Panel (Conversation + STATUS.md) ────────────────────────────────
 
 const $terminalPanel = document.getElementById("terminal-panel");
 const $terminalTitle = document.getElementById("terminal-title");
 const $terminalBody  = document.getElementById("terminal-body");
 const $terminalClose = document.getElementById("terminal-close");
+const $autoScrollCheckbox = document.getElementById("auto-scroll-checkbox");
+const $autoScrollText = document.getElementById("auto-scroll-text");
 
-let activeSession = null;
-let conversationTimer = null;
+// Viewer state
+let viewerTimer = null;
+let autoScrollOn = false;
+let isProgrammaticScroll = false;
+
+// Conversation append-only state
+let convRenderedLines = 0;
+
+// STATUS.md diff-and-skip state
+let lastStatusMdText = "";
+
+// ── Open conversation viewer ────────────────────────────────────────────────
 
 function viewConversation(sessionName) {
-  if (activeSession === sessionName && $terminalPanel.style.display !== "none") return;
-
-  closeConversation();
-
-  activeSession = sessionName;
-  $terminalTitle.textContent = `Worker Conversation — ${sessionName}`;
-  $terminalPanel.style.display = "";
-
-  // Initial load + start polling
-  loadConversation(sessionName);
-  conversationTimer = setInterval(() => loadConversation(sessionName), 2000);
-
-  $terminalPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
-}
-
-function loadConversation(sessionName) {
-  fetch(`/api/conversation/${encodeURIComponent(sessionName)}`)
-    .then(r => r.text())
-    .then(text => renderConversation(text))
-    .catch(() => {});
-}
-
-function renderConversation(jsonlText) {
-  if (!jsonlText.trim()) {
-    $terminalBody.innerHTML = '<div class="conv-empty">No conversation events yet…</div>';
+  // Toggle off if already viewing this session
+  if (viewerMode === 'conversation' && viewerTarget === sessionName && $terminalPanel.style.display !== 'none') {
+    closeViewer();
     return;
   }
 
-  const lines = jsonlText.trim().split("\n");
-  let html = '<div class="conv-stream">';
+  closeViewer();
 
-  for (const line of lines) {
-    try {
-      const event = JSON.parse(line);
-      html += renderConvEvent(event);
-    } catch { continue; }
+  viewerMode = 'conversation';
+  viewerTarget = sessionName;
+  autoScrollOn = true;
+  convRenderedLines = 0;
+
+  $terminalTitle.textContent = `Worker Conversation — ${sessionName}`;
+  $autoScrollText.textContent = 'Follow feed';
+  $autoScrollCheckbox.checked = true;
+  $terminalPanel.style.display = '';
+  $terminalBody.innerHTML = '<div class="conv-stream"></div>';
+
+  pollConversation();
+  viewerTimer = setInterval(pollConversation, 2000);
+
+  $terminalPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function pollConversation() {
+  fetch(`/api/conversation/${encodeURIComponent(viewerTarget)}`)
+    .then(r => r.text())
+    .then(text => {
+      if (!text.trim()) {
+        if (convRenderedLines === 0) {
+          $terminalBody.innerHTML = '<div class="conv-empty">No conversation events yet…</div>';
+        }
+        return;
+      }
+
+      const lines = text.trim().split('\n');
+
+      // File was reset (new task on same lane) — full re-render
+      if (lines.length < convRenderedLines) {
+        convRenderedLines = 0;
+        const container = $terminalBody.querySelector('.conv-stream');
+        if (container) container.innerHTML = '';
+      }
+
+      // Nothing new
+      if (lines.length === convRenderedLines) return;
+
+      // Ensure container exists
+      let container = $terminalBody.querySelector('.conv-stream');
+      if (!container) {
+        $terminalBody.innerHTML = '';
+        container = document.createElement('div');
+        container.className = 'conv-stream';
+        $terminalBody.appendChild(container);
+      }
+
+      // Append only new events
+      const newLines = lines.slice(convRenderedLines);
+      for (const line of newLines) {
+        try {
+          const event = JSON.parse(line);
+          const html = renderConvEvent(event);
+          if (html) container.insertAdjacentHTML('beforeend', html);
+        } catch { continue; }
+      }
+
+      convRenderedLines = lines.length;
+
+      // Auto-scroll to bottom
+      if (autoScrollOn) {
+        isProgrammaticScroll = true;
+        $terminalBody.scrollTop = $terminalBody.scrollHeight;
+        requestAnimationFrame(() => { isProgrammaticScroll = false; });
+      }
+    })
+    .catch(() => {});
+}
+
+// ── Open STATUS.md viewer ───────────────────────────────────────────────────
+
+function viewStatusMd(taskId) {
+  // Toggle off if already viewing this task
+  if (viewerMode === 'status-md' && viewerTarget === taskId && $terminalPanel.style.display !== 'none') {
+    closeViewer();
+    return;
+  }
+
+  closeViewer();
+
+  viewerMode = 'status-md';
+  viewerTarget = taskId;
+  autoScrollOn = false;
+  lastStatusMdText = '';
+
+  $terminalTitle.textContent = `STATUS.md — ${taskId}`;
+  $autoScrollText.textContent = 'Track progress';
+  $autoScrollCheckbox.checked = false;
+  $terminalPanel.style.display = '';
+  $terminalBody.innerHTML = '<div class="conv-empty">Loading…</div>';
+
+  pollStatusMd();
+  viewerTimer = setInterval(pollStatusMd, 2000);
+
+  $terminalPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function pollStatusMd() {
+  fetch(`/api/status-md/${encodeURIComponent(viewerTarget)}`)
+    .then(r => {
+      if (!r.ok) throw new Error('not found');
+      return r.text();
+    })
+    .then(text => {
+      // Diff-and-skip: no change, no DOM update
+      if (text === lastStatusMdText) return;
+      lastStatusMdText = text;
+
+      const { html, hasLastChecked } = renderStatusMd(text);
+      $terminalBody.innerHTML = html;
+
+      // Update tracking highlight
+      updateTrackingHighlight();
+
+      // Auto-scroll to last checked item
+      if (autoScrollOn && hasLastChecked) {
+        scrollToLastChecked();
+      }
+    })
+    .catch(() => {
+      if (!lastStatusMdText) {
+        $terminalBody.innerHTML = '<div class="conv-empty">STATUS.md not found</div>';
+      }
+    });
+}
+
+// ── STATUS.md renderer ──────────────────────────────────────────────────────
+
+function renderStatusMd(markdown) {
+  const lines = markdown.split('\n');
+  let lastCheckedIdx = -1;
+
+  // First pass: find last checked item
+  for (let i = 0; i < lines.length; i++) {
+    if (/^\s*-\s*\[x\]/i.test(lines[i])) lastCheckedIdx = i;
+  }
+
+  let html = '<div class="status-md-content">';
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // Headings
+    const hMatch = line.match(/^(#{1,6})\s+(.+)/);
+    if (hMatch) {
+      const lvl = Math.min(hMatch[1].length, 4);
+      html += `<div class="status-md-h${lvl}">${renderInlineMd(hMatch[2])}</div>`;
+      continue;
+    }
+
+    // Checked checkbox
+    if (/^\s*-\s*\[x\]/i.test(line)) {
+      const text = line.replace(/^\s*-\s*\[x\]\s*/i, '');
+      const isLast = i === lastCheckedIdx;
+      const cls = isLast ? 'status-md-check checked last-checked' : 'status-md-check checked';
+      const id = isLast ? ' id="last-checked"' : '';
+      html += `<div class="${cls}"${id}><span class="check-box">☑</span><span>${renderInlineMd(text)}</span></div>`;
+      continue;
+    }
+
+    // Unchecked checkbox
+    if (/^\s*-\s*\[\s\]/.test(line)) {
+      const text = line.replace(/^\s*-\s*\[\s\]\s*/, '');
+      html += `<div class="status-md-check unchecked"><span class="check-box">☐</span><span>${renderInlineMd(text)}</span></div>`;
+      continue;
+    }
+
+    // List item
+    const liMatch = line.match(/^\s*-\s+(.*)/);
+    if (liMatch) {
+      html += `<div class="status-md-li">• ${renderInlineMd(liMatch[1])}</div>`;
+      continue;
+    }
+
+    // Empty line
+    if (!line.trim()) {
+      html += '<div class="status-md-spacer"></div>';
+      continue;
+    }
+
+    // Plain text
+    html += `<div class="status-md-text">${renderInlineMd(line)}</div>`;
   }
 
   html += '</div>';
-
-  // Preserve scroll position if already scrolled up
-  const wasAtBottom = $terminalBody.scrollTop + $terminalBody.clientHeight >= $terminalBody.scrollHeight - 20;
-  $terminalBody.innerHTML = html;
-  if (wasAtBottom) {
-    $terminalBody.scrollTop = $terminalBody.scrollHeight;
-  }
+  return { html, hasLastChecked: lastCheckedIdx >= 0 };
 }
+
+function renderInlineMd(text) {
+  let s = escapeHtml(text);
+  s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  s = s.replace(/`(.+?)`/g, '<code class="status-md-code">$1</code>');
+  return s;
+}
+
+// ── Conversation event renderer ─────────────────────────────────────────────
 
 function renderConvEvent(event) {
   switch (event.type) {
@@ -705,20 +888,81 @@ function renderConvEvent(event) {
   }
 }
 
-function closeConversation() {
-  if (conversationTimer) {
-    clearInterval(conversationTimer);
-    conversationTimer = null;
-  }
-  activeSession = null;
-  $terminalPanel.style.display = "none";
-  $terminalBody.innerHTML = "";
+// ── Auto-scroll logic ───────────────────────────────────────────────────────
+
+function scrollToLastChecked() {
+  const el = document.getElementById('last-checked');
+  if (!el) return;
+  isProgrammaticScroll = true;
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  setTimeout(() => { isProgrammaticScroll = false; }, 600);
 }
 
-$terminalClose.addEventListener("click", closeConversation);
+function updateTrackingHighlight() {
+  const container = $terminalBody.querySelector('.status-md-content');
+  if (container) {
+    container.classList.toggle('tracking', autoScrollOn && viewerMode === 'status-md');
+  }
+}
 
-// Make viewConversation available globally for onclick handlers
+$autoScrollCheckbox.addEventListener('change', () => {
+  autoScrollOn = $autoScrollCheckbox.checked;
+  if (autoScrollOn) {
+    if (viewerMode === 'conversation') {
+      isProgrammaticScroll = true;
+      $terminalBody.scrollTop = $terminalBody.scrollHeight;
+      requestAnimationFrame(() => { isProgrammaticScroll = false; });
+    } else if (viewerMode === 'status-md') {
+      scrollToLastChecked();
+      updateTrackingHighlight();
+    }
+  } else {
+    updateTrackingHighlight();
+  }
+});
+
+$terminalBody.addEventListener('scroll', () => {
+  if (isProgrammaticScroll) return;
+
+  if (viewerMode === 'conversation') {
+    const isAtBottom = $terminalBody.scrollTop + $terminalBody.clientHeight >= $terminalBody.scrollHeight - 30;
+    if (isAtBottom && !autoScrollOn) {
+      autoScrollOn = true;
+      $autoScrollCheckbox.checked = true;
+    } else if (!isAtBottom && autoScrollOn) {
+      autoScrollOn = false;
+      $autoScrollCheckbox.checked = false;
+    }
+  } else if (viewerMode === 'status-md') {
+    if (autoScrollOn) {
+      autoScrollOn = false;
+      $autoScrollCheckbox.checked = false;
+      updateTrackingHighlight();
+    }
+  }
+});
+
+// ── Close viewer ────────────────────────────────────────────────────────────
+
+function closeViewer() {
+  if (viewerTimer) {
+    clearInterval(viewerTimer);
+    viewerTimer = null;
+  }
+  viewerMode = null;
+  viewerTarget = null;
+  autoScrollOn = false;
+  convRenderedLines = 0;
+  lastStatusMdText = '';
+  $terminalPanel.style.display = 'none';
+  $terminalBody.innerHTML = '';
+}
+
+$terminalClose.addEventListener('click', closeViewer);
+
+// Make viewer functions available globally for onclick handlers
 window.viewConversation = viewConversation;
+window.viewStatusMd = viewStatusMd;
 
 // ─── History ────────────────────────────────────────────────────────────────
 

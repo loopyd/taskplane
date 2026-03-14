@@ -1,6 +1,8 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 
 import { execSync } from "child_process";
+import { writeFileSync, unlinkSync, mkdirSync } from "fs";
+import { join } from "path";
 
 import {
 	DEFAULT_ORCHESTRATOR_CONFIG,
@@ -10,7 +12,6 @@ import {
 	createOrchWidget,
 	deleteBatchState,
 	detectOrphanSessions,
-	executeAbort,
 	executeLane,
 	executeOrchBatch,
 	formatDependencyGraph,
@@ -347,113 +348,144 @@ export default function (pi: ExtensionAPI) {
 	pi.registerCommand("orch-abort", {
 		description: "Abort batch: /orch-abort [--hard]",
 		handler: async (args, ctx) => {
-			const hard = args?.trim() === "--hard";
-			const mode: AbortMode = hard ? "hard" : "graceful";
-			const prefix = orchConfig.orchestrator.tmux_prefix;
-			const gracePeriodMs = orchConfig.orchestrator.abort_grace_period * 1000;
-
-			// Check for active in-memory batch
-			const hasActiveBatch = orchBatchState.phase !== "idle" &&
-				orchBatchState.phase !== "completed" &&
-				orchBatchState.phase !== "failed" &&
-				orchBatchState.phase !== "stopped";
-
-			// Also check for persisted state (abort can work on orphaned batches too)
-			let persistedState: PersistedBatchState | null = null;
 			try {
-				persistedState = loadBatchState(ctx.cwd);
-			} catch {
-				// Ignore — we may still have in-memory state or orphan sessions
-			}
+				const hard = args?.trim() === "--hard";
+				const mode: AbortMode = hard ? "hard" : "graceful";
+				const prefix = orchConfig.orchestrator.tmux_prefix;
+				const gracePeriodMs = orchConfig.orchestrator.abort_grace_period * 1000;
 
-			// If no in-memory batch AND no persisted state, check for orphan sessions
-			if (!hasActiveBatch && !persistedState) {
-				// Last chance: check for orphan sessions
-				const sessionNames = parseOrchSessionNames(
-					(() => {
-						try {
-							return execSync('tmux list-sessions -F "#{session_name}"', {
-								encoding: "utf-8",
-								timeout: 5000,
-							});
-						} catch {
-							return "";
-						}
-					})(),
-					prefix,
+				ctx.ui.notify(`🛑 Abort requested (${mode} mode, prefix: ${prefix})...`, "info");
+
+				// ── Step 1: Write abort signal file immediately ──────────
+				// This is the primary abort mechanism. The orchestrator's polling
+				// loop checks for this file on every cycle, so even if this command
+				// handler runs concurrently with /orch (or is queued behind it),
+				// the signal file will be detected.
+				const abortSignalFile = join(ctx.cwd, ".pi", "orch-abort-signal");
+				try {
+					mkdirSync(join(ctx.cwd, ".pi"), { recursive: true });
+					writeFileSync(abortSignalFile, `abort requested at ${new Date().toISOString()} (mode: ${mode})`, "utf-8");
+					ctx.ui.notify("  ✓ Abort signal file written (.pi/orch-abort-signal)", "info");
+				} catch (err) {
+					ctx.ui.notify(`  ⚠ Failed to write abort signal file: ${err instanceof Error ? err.message : String(err)}`, "warning");
+				}
+
+				// ── Step 2: Set pause signal immediately ─────────────────
+				// Belt-and-suspenders: if the /orch polling loop can see this
+				// shared object, it will stop on the next iteration.
+				if (orchBatchState.pauseSignal) {
+					orchBatchState.pauseSignal.paused = true;
+					ctx.ui.notify("  ✓ Pause signal set on in-memory batch state", "info");
+				}
+
+				// ── Step 3: Check what we're aborting ────────────────────
+				const hasActiveBatch = orchBatchState.phase !== "idle" &&
+					orchBatchState.phase !== "completed" &&
+					orchBatchState.phase !== "failed" &&
+					orchBatchState.phase !== "stopped";
+
+				let persistedState: PersistedBatchState | null = null;
+				try {
+					persistedState = loadBatchState(ctx.cwd);
+				} catch {
+					// Ignore — we may still have in-memory state or orphan sessions
+				}
+
+				ctx.ui.notify(
+					`  Batch state: in-memory=${hasActiveBatch ? orchBatchState.phase : "none"}, ` +
+					`persisted=${persistedState ? persistedState.batchId : "none"}`,
+					"info",
 				);
-				if (sessionNames.length === 0) {
+
+				// ── Step 4: Scan for tmux sessions ──────────────────────
+				let allSessionNames: string[] = [];
+				try {
+					const tmuxOutput = execSync('tmux list-sessions -F "#{session_name}"', {
+						encoding: "utf-8",
+						timeout: 5000,
+					}).trim();
+					const all = tmuxOutput ? tmuxOutput.split("\n").map(s => s.trim()).filter(Boolean) : [];
+					allSessionNames = all.filter(name => name.startsWith(`${prefix}-`));
+					ctx.ui.notify(`  Found ${allSessionNames.length} session(s) matching prefix "${prefix}-": ${allSessionNames.join(", ") || "(none)"}`, "info");
+				} catch {
+					ctx.ui.notify("  ⚠ Could not list tmux sessions (tmux not available?)", "warning");
+				}
+
+				// If no batch AND no sessions, nothing to abort
+				if (!hasActiveBatch && !persistedState && allSessionNames.length === 0) {
 					ctx.ui.notify(ORCH_MESSAGES.abortNoBatch(), "warning");
+					// Clean up signal file
+					try { unlinkSync(abortSignalFile); } catch {}
 					return;
 				}
-				// If orphan sessions exist, proceed with abort (will kill them)
-			}
 
-			const batchId = orchBatchState.batchId || persistedState?.batchId || "unknown";
+				const batchId = orchBatchState.batchId || persistedState?.batchId || "unknown";
 
-			// Notify user of abort start
-			if (mode === "graceful") {
-				const sessionCount = orchBatchState.currentLanes.length || persistedState?.tasks.length || 0;
-				ctx.ui.notify(ORCH_MESSAGES.abortGracefulStarting(batchId, sessionCount), "info");
-				ctx.ui.notify(
-					ORCH_MESSAGES.abortGracefulWaiting(batchId, orchConfig.orchestrator.abort_grace_period),
-					"info",
-				);
-			} else {
-				const sessionCount = orchBatchState.currentLanes.length || persistedState?.tasks.length || 0;
-				ctx.ui.notify(ORCH_MESSAGES.abortHardStarting(batchId, sessionCount), "info");
-			}
-
-			// Execute abort
-			const result = await executeAbort(
-				mode,
-				prefix,
-				ctx.cwd,
-				orchBatchState,
-				persistedState,
-				gracePeriodMs,
-			);
-
-			// Update in-memory batch state
-			orchBatchState.phase = "stopped";
-			orchBatchState.endedAt = result.durationMs + Date.now() - result.durationMs; // Use actual time
-			updateOrchWidget();
-
-			// Notify results
-			const durationSec = Math.round(result.durationMs / 1000);
-			if (mode === "graceful") {
-				const forceKilled = result.sessionsKilled - result.gracefulExits;
-				if (forceKilled > 0) {
-					ctx.ui.notify(
-						ORCH_MESSAGES.abortGracefulForceKill(forceKilled),
-						"warning",
-					);
+				// ── Step 5: Kill sessions directly (fast path) ──────────
+				// For hard mode or when sessions are found, kill them immediately
+				// rather than waiting through the full executeAbort flow.
+				if (allSessionNames.length > 0) {
+					ctx.ui.notify(`  Killing ${allSessionNames.length} tmux session(s)...`, "info");
+					let killed = 0;
+					for (const name of allSessionNames) {
+						try {
+							// Kill child sessions first (worker, reviewer)
+							execSync(`tmux kill-session -t "${name}-worker" 2>/dev/null`, { timeout: 3000 }).toString();
+						} catch {}
+						try {
+							execSync(`tmux kill-session -t "${name}-reviewer" 2>/dev/null`, { timeout: 3000 }).toString();
+						} catch {}
+						try {
+							execSync(`tmux kill-session -t "${name}" 2>/dev/null`, { timeout: 3000 }).toString();
+							killed++;
+							ctx.ui.notify(`    ✓ Killed: ${name}`, "info");
+						} catch {
+							// Session may have already exited
+							ctx.ui.notify(`    · ${name} (already exited)`, "info");
+							killed++;
+						}
+					}
+					ctx.ui.notify(`  ✓ ${killed}/${allSessionNames.length} session(s) terminated`, "info");
+				} else {
+					ctx.ui.notify("  No tmux sessions to kill", "info");
 				}
+
+				// ── Step 6: Clean up batch state ────────────────────────
+				try {
+					orchBatchState.phase = "stopped";
+					orchBatchState.endedAt = Date.now();
+					updateOrchWidget();
+					ctx.ui.notify("  ✓ In-memory batch state set to 'stopped'", "info");
+				} catch (err) {
+					ctx.ui.notify(`  ⚠ Failed to update in-memory state: ${err instanceof Error ? err.message : String(err)}`, "warning");
+				}
+
+				try {
+					deleteBatchState(ctx.cwd);
+					ctx.ui.notify("  ✓ Batch state file deleted (.pi/batch-state.json)", "info");
+				} catch (err) {
+					ctx.ui.notify(`  ⚠ Failed to delete batch state file: ${err instanceof Error ? err.message : String(err)}`, "warning");
+				}
+
+				// ── Step 7: Clean up abort signal file ───────────────────
+				try { unlinkSync(abortSignalFile); } catch {}
+
+				// ── Done ─────────────────────────────────────────────────
 				ctx.ui.notify(
-					ORCH_MESSAGES.abortGracefulComplete(batchId, result.gracefulExits, forceKilled, durationSec),
+					`✅ Abort complete for batch ${batchId}. Sessions killed, state cleaned up.\n` +
+					`   Worktrees and branches are preserved for inspection.`,
 					"info",
 				);
-			} else {
+			} catch (err) {
+				// Top-level catch: ensure the user ALWAYS sees something
 				ctx.ui.notify(
-					ORCH_MESSAGES.abortHardComplete(batchId, result.sessionsKilled, durationSec),
-					"info",
+					`❌ Abort failed with error: ${err instanceof Error ? err.message : String(err)}\n` +
+					`   Stack: ${err instanceof Error ? err.stack : "N/A"}\n\n` +
+					`   Manual cleanup: tmux kill-server (kills ALL tmux sessions)\n` +
+					`   Or: tmux kill-session -t <session-name> for each session`,
+					"error",
 				);
 			}
-
-			// Report errors if any
-			if (result.errors.length > 0) {
-				const errorDetails = result.errors.map(e => `  • [${e.code}] ${e.message}`).join("\n");
-				ctx.ui.notify(
-					`${ORCH_MESSAGES.abortPartialFailure(result.errors.length)}\n${errorDetails}`,
-					"warning",
-				);
-			}
-
-			// Final message
-			ctx.ui.notify(
-				ORCH_MESSAGES.abortComplete(mode, result.sessionsKilled),
-				"info",
-			);
 		},
 	});
 
@@ -572,6 +604,90 @@ export default function (pi: ExtensionAPI) {
 			"/orch-sessions           List TMUX sessions",
 			"info",
 		);
+
+		// Check for taskplane updates (non-blocking)
+		checkForUpdate(ctx);
 	});
+}
+
+// ── Update Check ─────────────────────────────────────────────────────
+
+/**
+ * Check npm registry for a newer version of taskplane.
+ *
+ * Runs asynchronously and never throws — update check failures are
+ * silently ignored so they don't interfere with normal operation.
+ */
+async function checkForUpdate(ctx: ExtensionContext): Promise<void> {
+	try {
+		// Get installed version from our own package.json
+		const { readFileSync: readFS } = await import("fs");
+		const { dirname, join: joinPath } = await import("path");
+		const { fileURLToPath } = await import("url");
+
+		// Resolve package.json relative to this extension file.
+		// In npm install layout: node_modules/taskplane/extensions/taskplane/extension.ts
+		// package.json is at:    node_modules/taskplane/package.json
+		let pkgJsonPath: string;
+		try {
+			const thisDir = dirname(fileURLToPath(import.meta.url));
+			pkgJsonPath = joinPath(thisDir, "..", "..", "package.json");
+		} catch {
+			// Fallback for environments where import.meta.url is unavailable
+			pkgJsonPath = joinPath(__dirname, "..", "..", "package.json");
+		}
+
+		let installedVersion: string;
+		try {
+			const pkg = JSON.parse(readFS(pkgJsonPath, "utf-8"));
+			installedVersion = pkg.version;
+		} catch {
+			return; // Can't determine installed version — skip check
+		}
+
+		// Fetch latest version from npm registry (5s timeout)
+		const controller = new AbortController();
+		const timeout = setTimeout(() => controller.abort(), 5000);
+
+		const response = await fetch("https://registry.npmjs.org/taskplane/latest", {
+			signal: controller.signal,
+			headers: { "Accept": "application/json" },
+		});
+		clearTimeout(timeout);
+
+		if (!response.ok) return;
+
+		const data = await response.json() as { version?: string };
+		const latestVersion = data.version;
+		if (!latestVersion) return;
+
+		// Compare versions (simple semver comparison)
+		if (latestVersion !== installedVersion && isNewerVersion(latestVersion, installedVersion)) {
+			ctx.ui.notify(
+				`\n` +
+				`  Update Available\n` +
+				`  New version ${latestVersion} is available (installed: ${installedVersion}).\n` +
+				`  Run: pi update\n`,
+				"info",
+			);
+		}
+	} catch {
+		// Silently ignore — network errors, offline, etc.
+	}
+}
+
+/**
+ * Compare two semver version strings. Returns true if `a` is newer than `b`.
+ */
+function isNewerVersion(a: string, b: string): boolean {
+	const pa = a.split(".").map(Number);
+	const pb = b.split(".").map(Number);
+	for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+		const na = pa[i] || 0;
+		const nb = pb[i] || 0;
+		if (na > nb) return true;
+		if (na < nb) return false;
+	}
+	return false;
 }
 

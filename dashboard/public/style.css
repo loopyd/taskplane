@@ -439,7 +439,7 @@ body {
 
 .task-row {
   display: grid;
-  grid-template-columns: 36px 100px 90px 80px 200px 1fr;
+  grid-template-columns: 36px 24px 100px 90px 80px 200px 1fr;
   align-items: center;
   gap: 8px;
   padding: 8px 14px;
@@ -700,6 +700,190 @@ body {
   color: var(--text-faint);
 }
 
+/* ─── Viewer Eye Button (task row) ─────────────────────────────────────── */
+
+.task-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.viewer-eye-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.75rem;
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  opacity: 0.6;
+  transition: opacity 0.2s, background 0.2s;
+  line-height: 1;
+}
+
+.viewer-eye-btn:hover {
+  opacity: 1;
+  background: rgba(88,166,255,0.15);
+}
+
+.viewer-eye-btn.active {
+  opacity: 1;
+  background: rgba(88,166,255,0.15);
+}
+
+.tmux-view-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* ─── Viewer Controls (auto-scroll checkbox + close) ───────────────────── */
+
+.terminal-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.auto-scroll-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  user-select: none;
+  white-space: nowrap;
+}
+
+.auto-scroll-label input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg-inset);
+  cursor: pointer;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.auto-scroll-label input[type="checkbox"]:checked {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+}
+
+.auto-scroll-label input[type="checkbox"]:checked::after {
+  content: '✓';
+  position: absolute;
+  top: -1px;
+  left: 2px;
+  font-size: 11px;
+  color: #fff;
+}
+
+/* ─── STATUS.md Rendered Content ───────────────────────────────────────── */
+
+.status-md-content {
+  padding: 12px 16px;
+  font-family: var(--font-sans);
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+
+.status-md-h1 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text);
+  margin: 16px 0 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.status-md-h1:first-child { margin-top: 0; }
+
+.status-md-h2 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
+  margin: 14px 0 6px;
+}
+
+.status-md-h3 {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin: 12px 0 4px;
+}
+
+.status-md-h4 {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin: 10px 0 4px;
+}
+
+.status-md-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  border-left: 2px solid transparent;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.status-md-check.checked {
+  color: var(--text-muted);
+}
+
+.status-md-check.checked .check-box {
+  color: var(--green);
+}
+
+.status-md-check.unchecked {
+  color: var(--text);
+}
+
+.status-md-check.unchecked .check-box {
+  color: var(--text-faint);
+}
+
+.check-box {
+  flex-shrink: 0;
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+
+/* Progress frontier highlight — only when tracking is active */
+.status-md-content.tracking .status-md-check.last-checked {
+  border-left-color: var(--accent);
+  background: rgba(88, 166, 255, 0.06);
+}
+
+.status-md-li {
+  padding: 2px 8px;
+  color: var(--text);
+}
+
+.status-md-text {
+  padding: 2px 8px;
+  color: var(--text);
+}
+
+.status-md-spacer {
+  height: 8px;
+}
+
+.status-md-code {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  padding: 1px 5px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 3px;
+  color: var(--accent);
+}
+
 /* ─── Errors Panel ─────────────────────────────────────────────────────── */
 
 .errors-panel .panel-header { color: var(--red); }
@@ -750,7 +934,7 @@ body {
 
 @media (max-width: 900px) {
   .task-row {
-    grid-template-columns: 36px 90px 80px 70px 1fr;
+    grid-template-columns: 36px 24px 90px 80px 70px 1fr;
   }
   .task-row .task-step { display: none; }
   .progress-bar-bg { width: 160px; }

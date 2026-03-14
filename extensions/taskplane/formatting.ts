@@ -560,13 +560,7 @@ export function createOrchWidget(
 
 				// ── Idle state ─────────────────────────────────
 				if (vm.phase === "idle") {
-					return [
-						"",
-						truncateToWidth(
-							theme.fg("dim", "  No active batch. Use /orch <areas|all> to start."),
-							width,
-						),
-					];
+					return [];
 				}
 
 				const lines: string[] = [""];
