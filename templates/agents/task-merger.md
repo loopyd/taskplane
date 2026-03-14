@@ -73,8 +73,8 @@ Use the source branch and merge message from the merge request.
 Run each verification command from the merge request. Typical commands:
 
 ```bash
-go build ./...                     # All services compile
-cd web && npm run type-check       # Frontend types valid
+npm test                           # Unit/integration checks
+npm run build                      # Build/compile checks
 ```
 
 **If verification passes:** Write result with `status: "SUCCESS"` (or
@@ -95,29 +95,29 @@ Write a `BUILD_FAILURE` result with the error output from the failed command.
 | Different files modified | N/A (git handles automatically) | No action needed |
 | Same file, different sections | Yes — accept both changes | Edit file to include both changes, remove conflict markers |
 | Same file, same lines | **No** — needs human review | Abort merge immediately |
-| Generated files (`go.sum`, `package-lock.json`) | Yes — regenerate | Run `go mod tidy` / `npm install` to regenerate |
-| `STATUS.md` / `.DONE` files | Yes — keep both | Accept the incoming (theirs) version for STATUS.md; keep both .DONE files |
-| `CONTEXT.md` (append-only sections) | Yes — keep both additions | Merge both additions into the relevant sections |
+| Generated files (`package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`) | Yes — regenerate | Run package manager install command to regenerate |
+| `STATUS.md` / `.DONE` files | Yes — keep both | Accept incoming STATUS.md; keep `.DONE` markers |
+| `CONTEXT.md` (append-only sections) | Yes — keep both additions | Merge both additions into relevant sections |
 
 ### Auto-Resolution Rules
 
 1. **Same file, different sections:** Open the file, identify conflict markers
    (`<<<<<<<`, `=======`, `>>>>>>>`). If the conflicting hunks are in clearly
-   different sections (different functions, different list items, different
-   paragraphs), keep both changes. Remove all conflict markers.
+   different sections, keep both changes and remove markers.
 
-2. **Generated files:** Do NOT manually edit. Instead:
-   - `go.sum` → Run `go mod tidy` in the affected module directory
-   - `package-lock.json` → Run `npm install` in the affected package directory
-   - Then `git add` the regenerated file
+2. **Generated files:** Do NOT manually edit. Regenerate lockfiles using your
+   project's package manager command (for example `npm install`,
+   `pnpm install`, or `yarn install`), then `git add` the regenerated file.
 
-3. **STATUS.md:** These are per-task tracking files. Accept theirs (`git checkout --theirs STATUS.md && git add STATUS.md`). Each task has its own STATUS.md so there is no meaningful merge — the incoming version is always more current.
+3. **STATUS.md:** These are per-task tracking files. Accept theirs:
+   ```bash
+   git checkout --theirs STATUS.md && git add STATUS.md
+   ```
 
-4. **`.DONE` marker files:** These are empty sentinel files. If both sides created one, keep it (`git add .DONE`).
+4. **`.DONE` marker files:** Keep marker files if either side created one.
 
 5. **Same lines / ambiguous conflicts:** Do NOT attempt to resolve. Run
-   `git merge --abort` and report `CONFLICT_UNRESOLVED`. The orchestrator will
-   pause the batch for human intervention.
+   `git merge --abort` and report `CONFLICT_UNRESOLVED`.
 
 ---
 
@@ -130,7 +130,7 @@ Write your result as JSON to the path specified in the merge request
 {
   "status": "SUCCESS",
   "source_branch": "task/lane-1-abc123",
-  "target_branch": "develop",
+  "target_branch": "main",
   "merge_commit": "abc1234def5678",
   "conflicts": [],
   "verification": {
@@ -147,42 +147,25 @@ Write your result as JSON to the path specified in the merge request
 |-------|------|-------------|
 | `status` | string | One of: `SUCCESS`, `CONFLICT_RESOLVED`, `CONFLICT_UNRESOLVED`, `BUILD_FAILURE` |
 | `source_branch` | string | The lane branch that was merged (from merge request) |
-| `target_branch` | string | The target branch (from merge request, typically `develop`) |
-| `merge_commit` | string | The merge commit SHA (only present if merge succeeded) |
+| `target_branch` | string | Target branch from merge request (typically integration branch, e.g. `main`) |
+| `merge_commit` | string | Merge commit SHA (present only if merge succeeded) |
 | `conflicts` | array | List of conflict entries (empty if no conflicts) |
-| `conflicts[].file` | string | Path to the conflicted file |
-| `conflicts[].type` | string | Classification: `different-sections`, `same-lines`, `generated`, `status-file` |
-| `conflicts[].resolved` | boolean | Whether the conflict was auto-resolved |
-| `conflicts[].resolution` | string | How it was resolved (e.g., `"kept both changes"`, `"regenerated"`, `"accepted theirs"`) |
+| `conflicts[].file` | string | Path to conflicted file |
+| `conflicts[].type` | string | Classification (`different-sections`, `same-lines`, `generated`, `status-file`) |
+| `conflicts[].resolved` | boolean | Whether conflict was auto-resolved |
+| `conflicts[].resolution` | string | Resolution summary |
 | `verification.ran` | boolean | Whether verification commands were executed |
-| `verification.passed` | boolean | Whether all verification commands passed |
-| `verification.output` | string | Command output (populated only on failure, truncated to 2000 chars) |
+| `verification.passed` | boolean | Whether verification commands passed |
+| `verification.output` | string | Verification output (useful on failures) |
 
 ### Status Definitions
 
 | Status | Meaning | Orchestrator Action |
 |--------|---------|---------------------|
-| `SUCCESS` | Merge completed, no conflicts, verification passed | Continue to next lane |
-| `CONFLICT_RESOLVED` | Conflicts occurred but were auto-resolved, verification passed | Log details, continue |
-| `CONFLICT_UNRESOLVED` | Conflicts that require human intervention | Pause batch, notify user |
-| `BUILD_FAILURE` | Merge succeeded but verification failed (merge was reverted) | Pause batch, notify user |
-
-### Example: Clean Merge
-
-```json
-{
-  "status": "SUCCESS",
-  "source_branch": "task/lane-1-abc123",
-  "target_branch": "develop",
-  "merge_commit": "abc1234def5678",
-  "conflicts": [],
-  "verification": {
-    "ran": true,
-    "passed": true,
-    "output": ""
-  }
-}
-```
+| `SUCCESS` | Merge completed, verification passed | Continue to next lane |
+| `CONFLICT_RESOLVED` | Conflicts auto-resolved, verification passed | Log details, continue |
+| `CONFLICT_UNRESOLVED` | Conflict requires human intervention | Pause batch, notify user |
+| `BUILD_FAILURE` | Merge succeeded but verification failed (merge reverted) | Pause batch, notify user |
 
 ### Example: Conflict Resolved
 
@@ -190,49 +173,25 @@ Write your result as JSON to the path specified in the merge request
 {
   "status": "CONFLICT_RESOLVED",
   "source_branch": "task/lane-2-abc123",
-  "target_branch": "develop",
+  "target_branch": "main",
   "merge_commit": "def4567abc8901",
   "conflicts": [
     {
-      "file": "go.sum",
+      "file": "package-lock.json",
       "type": "generated",
       "resolved": true,
-      "resolution": "regenerated via go mod tidy"
+      "resolution": "regenerated via npm install"
     },
     {
-      "file": "services/time-service/internal/interfaces/http/routes/routes.go",
+      "file": "src/routes/api.ts",
       "type": "different-sections",
       "resolved": true,
-      "resolution": "kept both changes — different route groups"
+      "resolution": "kept both route additions"
     }
   ],
   "verification": {
     "ran": true,
     "passed": true,
-    "output": ""
-  }
-}
-```
-
-### Example: Unresolved Conflict
-
-```json
-{
-  "status": "CONFLICT_UNRESOLVED",
-  "source_branch": "task/lane-3-abc123",
-  "target_branch": "develop",
-  "merge_commit": "",
-  "conflicts": [
-    {
-      "file": "services/identity-service/internal/domain/services/auth_service.go",
-      "type": "same-lines",
-      "resolved": false,
-      "resolution": ""
-    }
-  ],
-  "verification": {
-    "ran": false,
-    "passed": false,
     "output": ""
   }
 }
@@ -244,13 +203,13 @@ Write your result as JSON to the path specified in the merge request
 {
   "status": "BUILD_FAILURE",
   "source_branch": "task/lane-1-abc123",
-  "target_branch": "develop",
+  "target_branch": "main",
   "merge_commit": "",
   "conflicts": [],
   "verification": {
     "ran": true,
     "passed": false,
-    "output": "services/time-service/internal/domain/services/pto_service.go:142:35: undefined: NewAccrualEngine"
+    "output": "src/server.ts:42:17 - error TS2304: Cannot find name 'createApiRouter'"
   }
 }
 ```

@@ -21,9 +21,17 @@
 ## Mission
 
 Create a simple `hello-taskplane.md` file in the project root to verify that
-the Taskplane task runner is working correctly. This is a smoke test — if the
-worker can read this prompt, create the file, and mark the task done, the
-installation is healthy.
+Taskplane task execution is working correctly. This is a smoke test — if the
+worker can read this prompt, create the file, checkpoint progress, and mark the
+task done, the installation is healthy.
+
+## Expected File Content
+
+`hello-taskplane.md` should include:
+
+- A title line (for example: `# Hello from Taskplane`)
+- A line containing the task ID: `EXAMPLE-001`
+- A line containing today's date
 
 ## Dependencies
 
@@ -51,12 +59,12 @@ _No additional context needed._
 
 ### Step 1: Create Hello File
 
-- [ ] Create `hello-taskplane.md` in the project root with a friendly message
-- [ ] Include the current date and the task ID (EXAMPLE-001)
+- [ ] Create `hello-taskplane.md` in the project root
+- [ ] Add a title plus lines containing today's date and task ID `EXAMPLE-001`
 
 ### Step 2: Verification
 
-- [ ] Verify `hello-taskplane.md` exists and contains the expected content
+- [ ] Verify `hello-taskplane.md` exists and matches the expected content
 
 ### Step 3: Delivery
 
@@ -70,6 +78,7 @@ _No additional context needed._
 ## Completion Criteria
 
 - [ ] `hello-taskplane.md` exists in the project root
+- [ ] `hello-taskplane.md` includes a title, task ID (`EXAMPLE-001`), and current date
 - [ ] `.DONE` exists in the task folder
 
 ## Git Commit Convention

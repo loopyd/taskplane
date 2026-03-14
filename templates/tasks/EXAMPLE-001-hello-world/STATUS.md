@@ -22,14 +22,14 @@
 **Status:** ⬜ Not Started
 
 - [ ] Create `hello-taskplane.md` in project root
-- [ ] Include date and task ID
+- [ ] Add title, date, and task ID (EXAMPLE-001)
 
 ---
 
 ### Step 2: Verification
 **Status:** ⬜ Not Started
 
-- [ ] Verify file exists with expected content
+- [ ] Verify file exists and matches expected content
 
 ---
 

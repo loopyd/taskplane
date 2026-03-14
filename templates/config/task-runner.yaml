@@ -10,8 +10,8 @@
 # ── Project ───────────────────────────────────────────────────────────
 
 project:
-  name: "Example Project"
-  description: "Replace with a short description of your project"
+  name: "Your Project"
+  description: "Short description of your project"
 
 paths:
   tasks: "tasks"

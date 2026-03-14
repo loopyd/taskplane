@@ -19,10 +19,10 @@ orchestrator:
   max_lanes: 3
 
   # Where to create worktree directories.
-  # "sibling"       = ../{prefix}-{N}          (e.g. ../taskplane-wt-1)
-  # "subdirectory"  = .worktrees/{prefix}-{N}  (e.g. .worktrees/taskplane-wt-1)
+  # "sibling"       = ../{prefix}-{N}          (e.g. ../project-wt-1)
+  # "subdirectory"  = .worktrees/{prefix}-{N}  (e.g. .worktrees/project-wt-1)
   worktree_location: "subdirectory"
-  worktree_prefix: "taskplane-wt"
+  worktree_prefix: "project-wt"
 
   # Integration branch that lanes merge into.
   integration_branch: "main"
