@@ -13,10 +13,10 @@ import { mergeWave } from "./merge.ts";
 import { ORCH_MESSAGES } from "./messages.ts";
 import { deleteBatchState, loadBatchHistory, persistRuntimeState, saveBatchHistory, seedPendingOutcomesForAllocatedLanes, syncTaskOutcomesFromMonitor, upsertTaskOutcome } from "./persistence.ts";
 import { listOrchSessions } from "./sessions.ts";
-import { generateBatchId } from "./types.ts";
-import type { AllocatedLane, BatchHistorySummary, BatchTaskSummary, BatchWaveSummary, DiscoveryResult, LaneExecutionResult, LaneTaskOutcome, MergeWaveResult, OrchBatchPhase, OrchBatchRuntimeState, OrchestratorConfig, TaskRunnerConfig, TokenCounts } from "./types.ts";
+import { FATAL_DISCOVERY_CODES, generateBatchId } from "./types.ts";
+import type { AllocatedLane, BatchHistorySummary, BatchTaskSummary, BatchWaveSummary, DiscoveryResult, LaneExecutionResult, LaneTaskOutcome, MergeWaveResult, OrchBatchPhase, OrchBatchRuntimeState, OrchestratorConfig, TaskRunnerConfig, TokenCounts, WorkspaceConfig } from "./types.ts";
 import { buildDependencyGraph, computeWaves, validateGraph } from "./waves.ts";
-import { deleteBranchBestEffort, formatPreflightResults, listWorktrees, removeAllWorktrees, removeWorktree, runPreflight, safeResetWorktree, sleepSync } from "./worktree.ts";
+import { deleteBranchBestEffort, forceCleanupWorktree, formatPreflightResults, listWorktrees, removeAllWorktrees, removeWorktree, runPreflight, safeResetWorktree, sleepSync } from "./worktree.ts";
 
 // ── /orch Execution Engine ───────────────────────────────────────────
 
@@ -32,6 +32,7 @@ import { deleteBranchBestEffort, formatPreflightResults, listWorktrees, removeAl
  * @param batchState  - Mutable batch state (updated throughout execution)
  * @param onNotify    - Callback for user-facing messages
  * @param onMonitorUpdate - Optional callback for dashboard updates
+ * @param workspaceConfig - Workspace configuration for repo routing (null = repo mode)
  */
 export async function executeOrchBatch(
 	args: string,
@@ -41,6 +42,7 @@ export async function executeOrchBatch(
 	batchState: OrchBatchRuntimeState,
 	onNotify: (message: string, level: "info" | "warning" | "error") => void,
 	onMonitorUpdate?: MonitorUpdateCallback,
+	workspaceConfig?: WorkspaceConfig | null,
 ): Promise<void> {
 	const repoRoot = cwd;
 
@@ -95,23 +97,27 @@ export async function executeOrchBatch(
 		refreshDependencies: false,
 		dependencySource: orchConfig.dependencies.source,
 		useDependencyCache: orchConfig.dependencies.cache,
+		workspaceConfig: workspaceConfig ?? null,
 	});
 	onNotify(formatDiscoveryResults(discovery), discovery.errors.length > 0 ? "warning" : "info");
 
 	// Check for fatal errors
-	const fatalErrors = discovery.errors.filter(
-		(e) =>
-			e.code === "DUPLICATE_ID" ||
-			e.code === "DEP_UNRESOLVED" ||
-			e.code === "DEP_PENDING" ||
-			e.code === "DEP_AMBIGUOUS" ||
-			e.code === "PARSE_MISSING_ID",
-	);
+	const fatalCodes = new Set<string>(FATAL_DISCOVERY_CODES);
+	const fatalErrors = discovery.errors.filter((e) => fatalCodes.has(e.code));
 	if (fatalErrors.length > 0) {
 		batchState.phase = "failed";
 		batchState.endedAt = Date.now();
 		batchState.errors.push("Discovery had fatal errors — cannot proceed");
 		onNotify("❌ Cannot execute due to discovery errors above.", "error");
+		const hasRoutingErrors = fatalErrors.some(
+			(e) => e.code === "TASK_REPO_UNRESOLVED" || e.code === "TASK_REPO_UNKNOWN",
+		);
+		if (hasRoutingErrors) {
+			onNotify(
+				"💡 Check PROMPT Repo: fields, area repo_id config, and routing.default_repo in workspace config.",
+				"info",
+			);
+		}
 		return;
 	}
 
@@ -500,10 +506,14 @@ export async function executeOrchBatch(
 							removeWorktree(wt, repoRoot);
 							execLog("batch", batchState.batchId, `removed unrecoverable worktree for lane ${wt.laneNumber}`);
 						} catch (removeErr: unknown) {
-							execLog("batch", batchState.batchId, `failed to remove unrecoverable worktree for lane ${wt.laneNumber}`, {
+							execLog("batch", batchState.batchId, `removeWorktree failed for lane ${wt.laneNumber}, attempting force cleanup`, {
 								error: removeErr instanceof Error ? removeErr.message : String(removeErr),
 								path: wt.path,
 							});
+							// Last resort: force-remove the directory and prune git worktree state.
+							// This handles cases where git has partially deregistered the worktree
+							// or undeletable files (e.g., Windows reserved names like "nul") block removal.
+							forceCleanupWorktree(wt, repoRoot, batchState.batchId);
 						}
 					} else {
 						execLog("batch", batchState.batchId, `worktree reset OK for lane ${wt.laneNumber}`);
