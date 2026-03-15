@@ -2,6 +2,20 @@
 
 This guide covers how to publish a new Taskplane npm release.
 
+## GitHub Releases vs npm Publish
+
+These are related, but not the same operation:
+
+- **`npm publish`** uploads installable package artifacts to npm (`npm install taskplane`).
+- **GitHub Release** is a repository release record tied to a git tag (`vX.Y.Z`) with notes/assets.
+
+Best practice for Taskplane is to keep them aligned:
+
+- one package version in `package.json`
+- one git tag (`vX.Y.Z`)
+- one npm publish (`taskplane@X.Y.Z`)
+- one GitHub Release (`vX.Y.Z`)
+
 ## Prerequisites
 
 - npm publish access for `taskplane`
@@ -90,13 +104,36 @@ git push --tags
 
 ---
 
-## 7) Post-release verification
+## 7) Create GitHub Release
+
+After tags are pushed, create a GitHub Release for the same tag/version.
+
+Example:
+
+```bash
+gh release create v<version> \
+  --title "v<version>" \
+  --notes-file CHANGELOG.md
+```
+
+Or create it in the GitHub UI and paste release notes from `CHANGELOG.md`.
+
+---
+
+## 8) Post-release verification
 
 Verify published metadata:
 
 ```bash
 npm view taskplane version
 npm view taskplane versions --json
+```
+
+Verify GitHub release/tag:
+
+```bash
+gh release view v<version>
+git tag --list | grep "^v<version>$"
 ```
 
 Sanity install in scratch project:
@@ -116,6 +153,7 @@ npx taskplane version
 - [ ] `npm pack --dry-run` reviewed
 - [ ] Published successfully
 - [ ] Tag pushed
+- [ ] GitHub release created for the same tag/version
 - [ ] Install smoke test passed
 
 ---

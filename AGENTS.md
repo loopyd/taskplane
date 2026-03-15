@@ -144,6 +144,76 @@ When in doubt, optimize for: **determinism, recoverability, and clear operator v
 
 ---
 
+## Git/GitHub workflow policy (for agents)
+
+### Branching strategy
+
+- `main` is protected and should remain releasable.
+- Default to short-lived topic branches from latest `main`:
+  - `feat/<topic>`
+  - `fix/<topic>`
+  - `docs/<topic>`
+  - `chore/<topic>`
+  - `refactor/<topic>`
+  - `test/<topic>`
+- Keep one logical change per PR.
+
+### Default command recipe (unless user asks otherwise)
+
+1. Sync and branch:
+   - `git switch main`
+   - `git pull --ff-only`
+   - `git switch -c <type/topic>`
+2. Implement changes + run relevant validation.
+3. Commit with conventional format:
+   - `type(scope): short description`
+4. Push and open PR:
+   - `git push -u origin <branch>`
+   - `gh pr create --fill`
+5. Ensure required checks pass (`ci`) and conversations are resolved.
+6. Merge via squash and delete branch:
+   - `gh pr merge --squash --delete-branch`
+7. Sync local after merge:
+   - `git switch main && git pull --ff-only`
+
+### Protection/bypass rule
+
+- Do **not** bypass branch protection or push directly to `main` unless explicitly instructed by the user for an urgent exception.
+- If merge is blocked unexpectedly, inspect:
+  - `gh pr view <n> --json mergeStateStatus,statusCheckRollup`
+  - `gh pr checks <n>`
+  - `gh api repos/HenryLach/taskplane/branches/main/protection`
+
+---
+
+## Release strategy (for agents)
+
+- GitHub release and npm publish are related but distinct:
+  - `npm publish` ships installable package bits.
+  - GitHub release publishes human-facing release metadata for a tag.
+- Keep them aligned: **one version → one tag → one npm publish → one GitHub release**.
+
+### Default release sequence (only when explicitly requested)
+
+1. Ensure `main` is clean and synced; tests/smokes pass.
+2. Update `CHANGELOG.md`.
+3. Validate package contents:
+   - `npm pack --dry-run`
+4. Bump version and create tag:
+   - `npm version patch` (or `minor`/`major`)
+5. Publish package:
+   - `npm publish` (or `npm publish --tag beta`)
+6. Push commit + tags:
+   - `git push && git push --tags`
+7. Create GitHub release for the same version tag.
+8. Verify:
+   - `npm view taskplane version`
+   - `gh release view v<version>`
+
+- Never perform publish/release actions unless the user explicitly asks.
+
+---
+
 ## Practical dev commands
 
 - Run both extensions locally:
