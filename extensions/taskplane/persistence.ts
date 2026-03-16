@@ -9,7 +9,7 @@ import { join, dirname, basename } from "path";
 import { execLog } from "./execution.ts";
 import { BATCH_STATE_SCHEMA_VERSION, StateFileError, batchStatePath, BATCH_HISTORY_MAX_ENTRIES } from "./types.ts";
 import type { BatchHistorySummary } from "./types.ts";
-import type { AllocatedLane, DiscoveryResult, LaneTaskOutcome, LaneTaskStatus, MonitorState, OrchBatchPhase, OrchBatchRuntimeState, PersistedBatchState, PersistedLaneRecord, PersistedMergeResult, PersistedTaskRecord, TaskMonitorSnapshot } from "./types.ts";
+import type { AllocatedLane, DiscoveryResult, LaneTaskOutcome, LaneTaskStatus, MonitorState, OrchBatchPhase, OrchBatchRuntimeState, PersistedBatchState, PersistedLaneRecord, PersistedMergeResult, PersistedTaskRecord, TaskMonitorSnapshot, WorkspaceMode } from "./types.ts";
 import { sleepSync } from "./worktree.ts";
 
 // ── State Persistence Helper (TS-009 Step 2) ────────────────────────
@@ -222,13 +222,20 @@ export function persistRuntimeState(
 	try {
 		const json = serializeBatchState(batchState, wavePlan, lanes, allTaskOutcomes);
 
-		// Enrich task records with folder paths from discovery
+		// Enrich task records with folder paths and repo fields from discovery
 		if (discovery) {
 			const parsed = JSON.parse(json) as PersistedBatchState;
 			for (const taskRecord of parsed.tasks) {
 				const parsedTask = discovery.pending.get(taskRecord.taskId);
 				if (parsedTask) {
 					taskRecord.taskFolder = parsedTask.taskFolder;
+					// v2: Enrich repo fields for tasks not yet allocated (pending in future waves)
+					if (taskRecord.repoId === undefined && parsedTask.promptRepoId !== undefined) {
+						taskRecord.repoId = parsedTask.promptRepoId;
+					}
+					if (taskRecord.resolvedRepoId === undefined && parsedTask.resolvedRepoId !== undefined) {
+						taskRecord.resolvedRepoId = parsedTask.resolvedRepoId;
+					}
 				}
 			}
 			const enrichedJson = JSON.stringify(parsed, null, 2);
@@ -272,16 +279,45 @@ export const VALID_PERSISTED_MERGE_STATUSES: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * Upconvert a v1 state object to v2 in-memory.
+ *
+ * Applied automatically by `validatePersistedState()` when a v1 file is loaded.
+ * The on-disk file is NOT rewritten — upconversion is purely in-memory.
+ *
+ * v1→v2 field defaults:
+ * - `schemaVersion`: bumped from 1 → 2
+ * - `baseBranch`: defaults to "" (was already handled in v1 validation)
+ * - `mode`: defaults to "repo" (v1 was always single-repo)
+ * - `tasks[].repoId`: remains undefined (repo mode has no repo routing)
+ * - `tasks[].resolvedRepoId`: remains undefined (same reason)
+ * - `lanes[].repoId`: preserved if present (was already serialized in v1
+ *   when workspace mode was partially implemented)
+ *
+ * This function is idempotent: calling it on an already-v2 object is a no-op.
+ *
+ * @param obj - Parsed state object (mutated in-place)
+ */
+export function upconvertV1toV2(obj: Record<string, unknown>): void {
+	if ((obj.schemaVersion as number) >= BATCH_STATE_SCHEMA_VERSION) return;
+	obj.schemaVersion = BATCH_STATE_SCHEMA_VERSION;
+	if (!obj.baseBranch) obj.baseBranch = "";
+	if (!obj.mode) obj.mode = "repo";
+	// Task and lane records: v2 optional fields default to undefined (omitted)
+	// which is already their state in v1 objects. No mutation needed.
+}
+
+/**
  * Validate a parsed JSON object as a PersistedBatchState.
  *
  * Checks:
- * 1. Schema version matches BATCH_STATE_SCHEMA_VERSION
+ * 1. Schema version is 1 (auto-upconverted to v2) or 2 (current)
  * 2. All required fields are present with correct types
  * 3. Enum fields contain valid values (phase, task statuses, merge statuses)
  * 4. Arrays contain valid sub-records
+ * 5. v2 optional fields (repoId, resolvedRepoId, mode) are valid when present
  *
  * @param data - Parsed JSON (unknown type)
- * @returns Validated PersistedBatchState
+ * @returns Validated PersistedBatchState (always v2, even if input was v1)
  * @throws StateFileError with STATE_SCHEMA_INVALID on any validation failure
  */
 export function validatePersistedState(data: unknown): PersistedBatchState {
@@ -301,13 +337,15 @@ export function validatePersistedState(data: unknown): PersistedBatchState {
 			`Missing or invalid "schemaVersion" field (expected number, got ${typeof obj.schemaVersion})`,
 		);
 	}
-	if (obj.schemaVersion !== BATCH_STATE_SCHEMA_VERSION) {
+	// Accept v1 (auto-upconvert) and v2 (current). Reject anything else.
+	if (obj.schemaVersion !== 1 && obj.schemaVersion !== BATCH_STATE_SCHEMA_VERSION) {
 		throw new StateFileError(
 			"STATE_SCHEMA_INVALID",
 			`Unsupported schema version ${obj.schemaVersion} (expected ${BATCH_STATE_SCHEMA_VERSION}). ` +
 			`Delete .pi/batch-state.json and re-run the batch.`,
 		);
 	}
+	const isV1 = obj.schemaVersion === 1;
 
 	// ── Required string fields ───────────────────────────────────
 	for (const field of ["phase", "batchId"] as const) {
@@ -325,6 +363,27 @@ export function validatePersistedState(data: unknown): PersistedBatchState {
 		throw new StateFileError(
 			"STATE_SCHEMA_INVALID",
 			`Invalid "baseBranch" field (expected string, got ${typeof obj.baseBranch})`,
+		);
+	}
+
+	// ── v2: mode field ───────────────────────────────────────────
+	// mode is required in v2, absent in v1 (defaults to "repo" via upconvert).
+	if (!isV1 && obj.mode === undefined) {
+		throw new StateFileError(
+			"STATE_SCHEMA_INVALID",
+			`Missing required "mode" field in schema v2 (expected "repo" or "workspace")`,
+		);
+	}
+	if (obj.mode !== undefined && typeof obj.mode !== "string") {
+		throw new StateFileError(
+			"STATE_SCHEMA_INVALID",
+			`Invalid "mode" field (expected string, got ${typeof obj.mode})`,
+		);
+	}
+	if (obj.mode !== undefined && obj.mode !== "repo" && obj.mode !== "workspace") {
+		throw new StateFileError(
+			"STATE_SCHEMA_INVALID",
+			`Invalid "mode" value "${obj.mode}" (expected "repo" or "workspace")`,
 		);
 	}
 
@@ -434,6 +493,19 @@ export function validatePersistedState(data: unknown): PersistedBatchState {
 				`tasks[${i}].doneFileFound is missing or not a boolean`,
 			);
 		}
+		// v2 optional fields: repoId, resolvedRepoId (string | undefined)
+		if (t.repoId !== undefined && typeof t.repoId !== "string") {
+			throw new StateFileError(
+				"STATE_SCHEMA_INVALID",
+				`tasks[${i}].repoId is not a string (got ${typeof t.repoId})`,
+			);
+		}
+		if (t.resolvedRepoId !== undefined && typeof t.resolvedRepoId !== "string") {
+			throw new StateFileError(
+				"STATE_SCHEMA_INVALID",
+				`tasks[${i}].resolvedRepoId is not a string (got ${typeof t.resolvedRepoId})`,
+			);
+		}
 	}
 
 	// ── Validate lane records ────────────────────────────────────
@@ -466,6 +538,13 @@ export function validatePersistedState(data: unknown): PersistedBatchState {
 				`lanes[${i}].taskIds is missing or not an array`,
 			);
 		}
+		// v2 optional field: repoId (string | undefined)
+		if (l.repoId !== undefined && typeof l.repoId !== "string") {
+			throw new StateFileError(
+				"STATE_SCHEMA_INVALID",
+				`lanes[${i}].repoId is not a string (got ${typeof l.repoId})`,
+			);
+		}
 	}
 
 	// ── Validate merge results ───────────────────────────────────
@@ -489,6 +568,36 @@ export function validatePersistedState(data: unknown): PersistedBatchState {
 				"STATE_SCHEMA_INVALID",
 				`mergeResults[${i}].status is invalid: "${m.status}" (expected one of: ${[...VALID_PERSISTED_MERGE_STATUSES].join(", ")})`,
 			);
+		}
+		// v2 optional field: repoResults (array | undefined)
+		if (m.repoResults !== undefined) {
+			if (!Array.isArray(m.repoResults)) {
+				throw new StateFileError(
+					"STATE_SCHEMA_INVALID",
+					`mergeResults[${i}].repoResults is not an array (got ${typeof m.repoResults})`,
+				);
+			}
+			for (let j = 0; j < (m.repoResults as unknown[]).length; j++) {
+				const rr = (m.repoResults as unknown[])[j] as Record<string, unknown>;
+				if (!rr || typeof rr !== "object") {
+					throw new StateFileError(
+						"STATE_SCHEMA_INVALID",
+						`mergeResults[${i}].repoResults[${j}] is not an object`,
+					);
+				}
+				if (typeof rr.status !== "string" || !VALID_PERSISTED_MERGE_STATUSES.has(rr.status)) {
+					throw new StateFileError(
+						"STATE_SCHEMA_INVALID",
+						`mergeResults[${i}].repoResults[${j}].status is invalid: "${rr.status}"`,
+					);
+				}
+				if (!Array.isArray(rr.laneNumbers)) {
+					throw new StateFileError(
+						"STATE_SCHEMA_INVALID",
+						`mergeResults[${i}].repoResults[${j}].laneNumbers is not an array`,
+					);
+				}
+			}
 		}
 	}
 
@@ -529,10 +638,10 @@ export function validatePersistedState(data: unknown): PersistedBatchState {
 		}
 	}
 
-	// Default baseBranch for backward compatibility with older state files
-	if (!obj.baseBranch) {
-		(obj as any).baseBranch = "";
-	}
+	// ── v1→v2 upconversion ───────────────────────────────────────
+	// Apply defaults for fields that may be absent in v1 state files.
+	// The on-disk file is NOT rewritten; upconversion is in-memory only.
+	upconvertV1toV2(obj);
 
 	return obj as unknown as PersistedBatchState;
 }
@@ -582,13 +691,22 @@ export function serializeBatchState(
 		taskIdSet.add(outcome.taskId);
 	}
 
+	// Build a lookup from taskId → AllocatedTask (which holds the ParsedTask with repo fields).
+	const allocatedTaskByTaskId = new Map<string, { allocatedTask: import("./types.ts").AllocatedTask; lane: AllocatedLane }>();
+	for (const lane of lanes) {
+		for (const allocTask of lane.tasks) {
+			allocatedTaskByTaskId.set(allocTask.taskId, { allocatedTask: allocTask, lane });
+		}
+	}
+
 	const taskRecords: PersistedTaskRecord[] = [...taskIdSet]
 		.sort()
 		.map((taskId) => {
 			const lane = laneByTaskId.get(taskId);
 			const outcome = outcomeByTaskId.get(taskId);
+			const allocated = allocatedTaskByTaskId.get(taskId);
 
-			return {
+			const record: PersistedTaskRecord = {
 				taskId,
 				laneNumber: lane?.laneNumber ?? 0,
 				sessionName: outcome?.sessionName || lane?.tmuxSessionName || "",
@@ -599,34 +717,66 @@ export function serializeBatchState(
 				doneFileFound: outcome?.doneFileFound ?? false,
 				exitReason: outcome?.exitReason ?? "",
 			};
+
+			// v2: Serialize repo-aware fields from the ParsedTask
+			if (allocated?.allocatedTask.task?.promptRepoId !== undefined) {
+				record.repoId = allocated.allocatedTask.task.promptRepoId;
+			}
+			if (allocated?.allocatedTask.task?.resolvedRepoId !== undefined) {
+				record.resolvedRepoId = allocated.allocatedTask.task.resolvedRepoId;
+			}
+
+			return record;
 		});
 
 	// Build lane records
-	const laneRecords: PersistedLaneRecord[] = lanes.map((lane) => ({
-		laneNumber: lane.laneNumber,
-		laneId: lane.laneId,
-		tmuxSessionName: lane.tmuxSessionName,
-		worktreePath: lane.worktreePath,
-		branch: lane.branch,
-		taskIds: lane.tasks.map((t) => t.taskId),
-	}));
+	const laneRecords: PersistedLaneRecord[] = lanes.map((lane) => {
+		const record: PersistedLaneRecord = {
+			laneNumber: lane.laneNumber,
+			laneId: lane.laneId,
+			tmuxSessionName: lane.tmuxSessionName,
+			worktreePath: lane.worktreePath,
+			branch: lane.branch,
+			taskIds: lane.tasks.map((t) => t.taskId),
+		};
+		if (lane.repoId !== undefined) {
+			record.repoId = lane.repoId;
+		}
+		return record;
+	});
 
 	// Build merge results from actual merge outcomes (accumulated on batchState).
 	// MergeWaveResult.waveIndex is 1-based (from merge module); normalize to
 	// 0-based for PersistedMergeResult (dashboard renders as "Wave N+1").
+	// Clamp to 0 minimum: resume re-exec merges use sentinel waveIndex -1,
+	// which would produce -2 without clamping.
 	const mergeResults: PersistedMergeResult[] = (state.mergeResults || [])
-		.map((mr) => ({
-			waveIndex: mr.waveIndex - 1,
-			status: mr.status,
-			failedLane: mr.failedLane,
-			failureReason: mr.failureReason,
-		}));
+		.map((mr) => {
+			const record: PersistedMergeResult = {
+				waveIndex: Math.max(0, mr.waveIndex - 1),
+				status: mr.status,
+				failedLane: mr.failedLane,
+				failureReason: mr.failureReason,
+			};
+			// v2 (TP-009): Serialize per-repo merge outcomes when available (workspace mode).
+			if (mr.repoResults && mr.repoResults.length > 0) {
+				record.repoResults = mr.repoResults.map((rr) => ({
+					repoId: rr.repoId,
+					status: rr.status,
+					laneNumbers: rr.laneResults.map((lr) => lr.laneNumber),
+					failedLane: rr.failedLane,
+					failureReason: rr.failureReason,
+				}));
+			}
+			return record;
+		});
 
 	const persisted: PersistedBatchState = {
 		schemaVersion: BATCH_STATE_SCHEMA_VERSION,
 		phase: state.phase,
 		batchId: state.batchId,
 		baseBranch: state.baseBranch,
+		mode: state.mode ?? "repo",
 		startedAt: state.startedAt,
 		updatedAt: now,
 		endedAt: state.endedAt,

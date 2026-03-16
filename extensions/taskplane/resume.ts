@@ -7,16 +7,152 @@ import { join } from "path";
 
 import { runDiscovery } from "./discovery.ts";
 import { executeOrchBatch } from "./engine.ts";
-import { execLog, executeWave, pollUntilTaskComplete, spawnLaneSession, tmuxHasSession } from "./execution.ts";
+import { computeTransitiveDependents, execLog, executeWave, pollUntilTaskComplete, spawnLaneSession, tmuxHasSession } from "./execution.ts";
 import type { MonitorUpdateCallback } from "./execution.ts";
 import { runGit } from "./git.ts";
-import { mergeWave } from "./merge.ts";
-import { ORCH_MESSAGES } from "./messages.ts";
+import { mergeWaveByRepo } from "./merge.ts";
+import { computeMergeFailurePolicy, formatRepoMergeSummary, ORCH_MESSAGES } from "./messages.ts";
+import { resolveOperatorId } from "./naming.ts";
 import { deleteBatchState, hasTaskDoneMarker, loadBatchState, persistRuntimeState, seedPendingOutcomesForAllocatedLanes, syncTaskOutcomesFromMonitor, upsertTaskOutcome } from "./persistence.ts";
 import { StateFileError } from "./types.ts";
-import type { AllocatedLane, AllocatedTask, LaneExecutionResult, LaneTaskOutcome, LaneTaskStatus, MergeWaveResult, OrchBatchPhase, OrchBatchRuntimeState, OrchestratorConfig, ParsedTask, PersistedBatchState, ReconciledTaskState, ResumeEligibility, ResumePoint, TaskRunnerConfig, WaveExecutionResult, WorkspaceConfig } from "./types.ts";
-import { buildDependencyGraph } from "./waves.ts";
+import type { AllocatedLane, AllocatedTask, LaneExecutionResult, LaneTaskOutcome, LaneTaskStatus, MergeWaveResult, OrchBatchPhase, OrchBatchRuntimeState, OrchestratorConfig, ParsedTask, PersistedBatchState, PersistedLaneRecord, ReconciledTaskState, ResumeEligibility, ResumePoint, TaskRunnerConfig, WaveExecutionResult, WorkspaceConfig } from "./types.ts";
+import { buildDependencyGraph, resolveRepoRoot } from "./waves.ts";
 import { deleteBranchBestEffort, forceCleanupWorktree, listWorktrees, removeAllWorktrees, removeWorktree, safeResetWorktree } from "./worktree.ts";
+
+// ── Resume Repo Helpers ──────────────────────────────────────────────
+
+/**
+ * Collect unique repo roots from persisted lane records.
+ *
+ * In repo mode (no repoId on lanes), returns `[defaultRepoRoot]`.
+ * In workspace mode, returns one entry per unique repoId, resolved
+ * via `resolveRepoRoot()`. Includes the default root as a fallback
+ * for lanes with no repoId.
+ *
+ * Used by inter-wave worktree reset and terminal cleanup to operate
+ * on worktrees across all repos in the batch.
+ *
+ * @param persistedState   - Loaded batch state with lane records
+ * @param defaultRepoRoot  - Default/main repo root (cwd)
+ * @param workspaceConfig  - Workspace configuration (null in repo mode)
+ * @returns Array of unique absolute repo root paths
+ */
+export function collectRepoRoots(
+	persistedState: PersistedBatchState,
+	defaultRepoRoot: string,
+	workspaceConfig?: WorkspaceConfig | null,
+): string[] {
+	const roots = new Set<string>();
+
+	for (const lane of persistedState.lanes) {
+		const root = resolveRepoRoot(lane.repoId, defaultRepoRoot, workspaceConfig);
+		roots.add(root);
+	}
+
+	// Always include the default repo root (covers repo mode and any
+	// lanes without repoId)
+	roots.add(defaultRepoRoot);
+
+	return [...roots];
+}
+
+/**
+ * Reconstruct AllocatedLane[] from persisted lane records.
+ *
+ * Used during resume to preserve lane metadata (worktreePath, branch, repoId)
+ * across persistence checkpoints. Without this, the first resume checkpoint
+ * would serialize empty lanes, losing all lane context.
+ *
+ * When `persistedTasks` is provided, repo attribution fields (repoId,
+ * resolvedRepoId, taskFolder) are carried forward onto the reconstructed
+ * ParsedTask stubs. This ensures `serializeBatchState()` can emit repo
+ * fields for tasks not in `discovery.pending` (e.g., completed/failed tasks
+ * that have been archived).
+ *
+ * @param persistedLanes - Persisted lane records
+ * @param persistedTasks - Optional persisted task records for repo field carry-forward
+ * @returns Reconstructed AllocatedLane array with repo attribution preserved
+ */
+export function reconstructAllocatedLanes(
+	persistedLanes: PersistedLaneRecord[],
+	persistedTasks?: PersistedBatchState["tasks"],
+): AllocatedLane[] {
+	// Build task lookup for repo field carry-forward
+	const taskLookup = new Map<string, PersistedBatchState["tasks"][0]>();
+	if (persistedTasks) {
+		for (const t of persistedTasks) {
+			taskLookup.set(t.taskId, t);
+		}
+	}
+
+	return persistedLanes.map((lr) => ({
+		laneNumber: lr.laneNumber,
+		laneId: lr.laneId,
+		tmuxSessionName: lr.tmuxSessionName,
+		worktreePath: lr.worktreePath,
+		branch: lr.branch,
+		tasks: lr.taskIds.map((taskId) => {
+			const persistedTask = taskLookup.get(taskId);
+			// Build a minimal ParsedTask stub that carries repo attribution
+			// from the persisted record. This ensures serializeBatchState()
+			// can emit repoId/resolvedRepoId for tasks not in discovery.
+			const taskStub: Partial<ParsedTask> = {};
+			if (persistedTask?.repoId !== undefined) {
+				taskStub.promptRepoId = persistedTask.repoId;
+			}
+			if (persistedTask?.resolvedRepoId !== undefined) {
+				taskStub.resolvedRepoId = persistedTask.resolvedRepoId;
+			}
+			if (persistedTask?.taskFolder) {
+				taskStub.taskFolder = persistedTask.taskFolder;
+			}
+			return {
+				taskId,
+				order: 0,
+				task: (Object.keys(taskStub).length > 0 ? taskStub : null) as unknown as ParsedTask,
+				estimatedMinutes: 0,
+			};
+		}),
+		strategy: "round-robin" as const,
+		estimatedLoad: 0,
+		estimatedMinutes: 0,
+		...(lr.repoId !== undefined ? { repoId: lr.repoId } : {}),
+	}));
+}
+
+/**
+ * Collect unique repo roots from a combination of sources.
+ *
+ * Unlike `collectRepoRoots()` which only reads from persistedState.lanes,
+ * this variant merges repo roots from multiple lane sources. This is
+ * important during resumed execution where new waves may allocate lanes
+ * in repos not present in the original persisted state.
+ *
+ * @param laneSources   - Array of lane arrays to collect repo roots from
+ * @param defaultRepoRoot - Default/main repo root (cwd)
+ * @param workspaceConfig - Workspace configuration (null in repo mode)
+ * @returns Array of unique absolute repo root paths
+ */
+export function collectAllRepoRoots(
+	laneSources: Array<{ repoId?: string }[]>,
+	defaultRepoRoot: string,
+	workspaceConfig?: WorkspaceConfig | null,
+): string[] {
+	const roots = new Set<string>();
+
+	for (const lanes of laneSources) {
+		for (const lane of lanes) {
+			const root = resolveRepoRoot(lane.repoId, defaultRepoRoot, workspaceConfig);
+			roots.add(root);
+		}
+	}
+
+	// Always include the default repo root (covers repo mode and any
+	// lanes without repoId)
+	roots.add(defaultRepoRoot);
+
+	return [...roots];
+}
 
 // ── Resume Pure Functions ────────────────────────────────────────────
 
@@ -200,7 +336,23 @@ export function reconcileTaskStates(
 			};
 		}
 
-		// Precedence 5: Dead session + not terminal + no .DONE + no worktree → failed
+		// Precedence 5: Never-started task (pending + no session assigned) → remain pending
+		// These are future-wave tasks that were never allocated to a lane.
+		// They should be re-queued for execution, not failed.
+		if (task.status === "pending" && !task.sessionName) {
+			return {
+				taskId: task.taskId,
+				persistedStatus: task.status,
+				liveStatus: "pending" as LaneTaskStatus,
+				sessionAlive: false,
+				doneFileFound: false,
+				worktreeExists: false,
+				action: "pending" as const,
+			};
+		}
+
+		// Precedence 6: Dead session + not terminal + no .DONE + no worktree → failed
+		// (Task was allocated and started but crashed without completing)
 		return {
 			taskId: task.taskId,
 			persistedStatus: task.status,
@@ -245,13 +397,16 @@ export function computeResumePoint(
 	for (const task of reconciledTasks) {
 		switch (task.action) {
 			case "mark-complete":
+				completedTaskIds.push(task.taskId);
+				break;
 			case "skip":
 				if (task.liveStatus === "succeeded" || task.persistedStatus === "succeeded") {
 					completedTaskIds.push(task.taskId);
 				} else if (task.liveStatus === "failed" || task.liveStatus === "stalled" || task.persistedStatus === "failed" || task.persistedStatus === "stalled") {
 					failedTaskIds.push(task.taskId);
 				}
-				// skipped tasks from original run don't count as completed or failed
+				// persistedStatus === "skipped" → terminal but neither completed nor failed.
+				// Not re-queued. Counted separately via batchState.skippedTasks (carried from persisted state).
 				break;
 			case "reconnect":
 				reconnectTaskIds.push(task.taskId);
@@ -261,6 +416,11 @@ export function computeResumePoint(
 				break;
 			case "mark-failed":
 				failedTaskIds.push(task.taskId);
+				break;
+			case "pending":
+				// Never-started tasks remain pending for execution — not failed.
+				// These are future-wave tasks that were never allocated to a lane.
+				pendingTaskIds.push(task.taskId);
 				break;
 		}
 	}
@@ -273,18 +433,17 @@ export function computeResumePoint(
 		const allDone = waveTasks.every((taskId) => {
 			const reconciled = reconciledMap.get(taskId);
 			if (!reconciled) return false;
-			// A task is "done" for wave-skip purposes if it completed or failed terminally
-			return (
-				reconciled.action === "mark-complete" ||
-				(reconciled.action === "skip" && (
-					reconciled.liveStatus === "succeeded" ||
-					reconciled.liveStatus === "failed" ||
-					reconciled.liveStatus === "stalled" ||
-					reconciled.persistedStatus === "succeeded" ||
-					reconciled.persistedStatus === "failed" ||
-					reconciled.persistedStatus === "stalled"
-				))
-			);
+			// A task is "done" for wave-skip purposes if it's terminal:
+			// mark-complete, mark-failed, or skip with any terminal status
+			// (succeeded, failed, stalled, skipped)
+			if (reconciled.action === "mark-complete" || reconciled.action === "mark-failed") {
+				return true;
+			}
+			if (reconciled.action === "skip") {
+				const s = reconciled.liveStatus ?? reconciled.persistedStatus;
+				return s === "succeeded" || s === "failed" || s === "stalled" || s === "skipped";
+			}
+			return false;
 		});
 
 		if (!allDone) {
@@ -312,6 +471,10 @@ export function computeResumePoint(
 			}
 			if (reconciled.action === "skip" && reconciled.persistedStatus === "pending") {
 				// Skipped tasks that were pending need execution
+				actualPendingTaskIds.push(taskId);
+			}
+			if (reconciled.action === "pending") {
+				// Never-started tasks from future waves need execution
 				actualPendingTaskIds.push(taskId);
 			}
 		}
@@ -444,6 +607,7 @@ export async function resumeOrchBatch(
 	batchState.phase = "executing";
 	batchState.batchId = persistedState.batchId;
 	batchState.baseBranch = persistedState.baseBranch || "";
+	batchState.mode = persistedState.mode;
 	batchState.startedAt = persistedState.startedAt;
 	batchState.pauseSignal = { paused: false };
 	batchState.totalWaves = persistedState.totalWaves;
@@ -453,6 +617,33 @@ export async function resumeOrchBatch(
 	batchState.skippedTasks = persistedState.skippedTasks;
 	batchState.blockedTasks = persistedState.blockedTasks;
 	batchState.blockedTaskIds = new Set(persistedState.blockedTaskIds);
+	// Track persisted blocked IDs separately to avoid double-counting in wave loop.
+	// Engine.ts counts blocked tasks per-wave when a wave is entered. If the prior
+	// run paused before reaching a wave, tasks blocked for that wave are in
+	// `blockedTaskIds` but NOT yet counted in `blockedTasks`. On resume, the
+	// per-wave counting loop excludes `persistedBlockedTaskIds`, so those tasks
+	// would never be counted. Fix: count persisted blocked tasks in future waves
+	// (waves >= resumeWaveIndex) that were not yet counted.
+	const persistedBlockedTaskIds = new Set(persistedState.blockedTaskIds);
+
+	// Count persisted-blocked tasks in unvisited waves (wave >= resumeWaveIndex).
+	// These were added to blockedTaskIds in the prior run but their wave was never
+	// entered, so they were never counted in blockedTasks.
+	if (persistedBlockedTaskIds.size > 0) {
+		let uncountedBlocked = 0;
+		for (let wi = resumePoint.resumeWaveIndex; wi < persistedState.wavePlan.length; wi++) {
+			for (const taskId of persistedState.wavePlan[wi]) {
+				if (persistedBlockedTaskIds.has(taskId)) {
+					uncountedBlocked++;
+				}
+			}
+		}
+		if (uncountedBlocked > 0) {
+			batchState.blockedTasks += uncountedBlocked;
+			execLog("resume", persistedState.batchId, `blocked counter fix: ${uncountedBlocked} persisted-blocked task(s) in unvisited waves added to blockedTasks`);
+		}
+	}
+
 	batchState.errors = [...persistedState.errors];
 	batchState.endedAt = null;
 	batchState.currentWaveIndex = resumePoint.resumeWaveIndex;
@@ -507,10 +698,15 @@ export async function resumeOrchBatch(
 				strategy: "round-robin",
 				estimatedLoad: 0,
 				estimatedMinutes: 0,
+				...(laneRecord.repoId !== undefined ? { repoId: laneRecord.repoId } : {}),
 			};
+
+			// Resolve per-lane repo root for workspace mode (v1/repo mode: falls back to repoRoot)
+			const laneRepoRoot = resolveRepoRoot(laneRecord.repoId, repoRoot, workspaceConfig);
 
 			execLog("resume", task.taskId, "reconnecting to alive session", {
 				session: laneRecord.tmuxSessionName,
+				repoId: laneRecord.repoId ?? "(default)",
 			});
 
 			// Poll until task completes
@@ -519,7 +715,7 @@ export async function resumeOrchBatch(
 					lane,
 					allocatedTask,
 					orchConfig,
-					repoRoot,
+					laneRepoRoot,
 					batchState.pauseSignal,
 				);
 
@@ -586,20 +782,25 @@ export async function resumeOrchBatch(
 				strategy: "round-robin",
 				estimatedLoad: 0,
 				estimatedMinutes: 0,
+				...(laneRecord.repoId !== undefined ? { repoId: laneRecord.repoId } : {}),
 			};
+
+			// Resolve per-lane repo root for workspace mode (v1/repo mode: falls back to repoRoot)
+			const reExecRepoRoot = resolveRepoRoot(laneRecord.repoId, repoRoot, workspaceConfig);
 
 			execLog("resume", task.taskId, "re-executing interrupted task in existing worktree", {
 				session: laneRecord.tmuxSessionName,
 				worktree: laneRecord.worktreePath,
+				repoId: laneRecord.repoId ?? "(default)",
 			});
 
 			try {
-				spawnLaneSession(lane, allocatedTask, orchConfig, repoRoot);
+				spawnLaneSession(lane, allocatedTask, orchConfig, reExecRepoRoot);
 				const pollResult = await pollUntilTaskComplete(
 					lane,
 					allocatedTask,
 					orchConfig,
-					repoRoot,
+					reExecRepoRoot,
 					batchState.pauseSignal,
 				);
 
@@ -645,7 +846,7 @@ export async function resumeOrchBatch(
 				"info",
 			);
 
-			// Build synthetic WaveExecutionResult for mergeWave()
+			// Build synthetic WaveExecutionResult for mergeWaveByRepo()
 			const syntheticLaneResults: LaneExecutionResult[] = reExecAllocatedLanes.map(lane => ({
 				laneNumber: lane.laneNumber,
 				laneId: lane.laneId,
@@ -663,8 +864,16 @@ export async function resumeOrchBatch(
 				endTime: Date.now(),
 			}));
 
+			// Use waveIndex -1 as a sentinel for "pre-wave-loop re-exec merge".
+			// mergeWaveByRepo expects 1-indexed waveIndex; persistence normalizes
+			// to 0-based via `mr.waveIndex - 1`. By passing -1 here:
+			//   - mergeWaveByRepo logs it as "W-1" (harmless)
+			//   - persistence normalizes to `Math.max(0, -1 - 1)` = 0 (valid)
+			//   - semantically distinguishes re-exec merges from wave 1 merges
+			const RE_EXEC_WAVE_INDEX = -1;
+
 			const syntheticWaveResult: WaveExecutionResult = {
-				waveIndex: 0,
+				waveIndex: RE_EXEC_WAVE_INDEX,
 				startedAt: Date.now(),
 				endedAt: Date.now(),
 				laneResults: syntheticLaneResults,
@@ -680,14 +889,15 @@ export async function resumeOrchBatch(
 				allocatedLanes: reExecAllocatedLanes,
 			};
 
-			const reExecMergeResult = mergeWave(
+			const reExecMergeResult = mergeWaveByRepo(
 				reExecAllocatedLanes,
 				syntheticWaveResult,
-				0,
+				RE_EXEC_WAVE_INDEX,
 				orchConfig,
 				repoRoot,
 				batchState.batchId,
 				batchState.baseBranch,
+				workspaceConfig,
 			);
 
 			if (reExecMergeResult.status === "succeeded") {
@@ -696,11 +906,11 @@ export async function resumeOrchBatch(
 					"info",
 				);
 
-				// Clean up merged branches
-				const targetBranch = batchState.baseBranch;
+				// Clean up merged branches (resolve per-lane repo root for workspace mode)
 				for (const lr of reExecMergeResult.laneResults) {
 					if (lr.result?.status === "SUCCESS" || lr.result?.status === "CONFLICT_RESOLVED") {
-						deleteBranchBestEffort(lr.sourceBranch, repoRoot);
+						const laneRepoRoot = resolveRepoRoot(lr.repoId, repoRoot, workspaceConfig);
+						deleteBranchBestEffort(lr.sourceBranch, laneRepoRoot);
 					}
 				}
 			} else {
@@ -718,7 +928,21 @@ export async function resumeOrchBatch(
 	// Track state for persistence
 	const wavePlan = persistedState.wavePlan;
 	const allTaskOutcomes: LaneTaskOutcome[] = [];
-	let latestAllocatedLanes: AllocatedLane[] = [];
+
+	// Initialize latestAllocatedLanes from persisted lane records so that
+	// early persistence calls (before the first resumed wave) retain lane
+	// records with repo attribution (laneNumber, laneId, branch, repoId).
+	// Without this, the `resume-reconciliation` checkpoint would serialize
+	// empty lanes[], losing all lane context until a new wave allocates.
+	let latestAllocatedLanes: AllocatedLane[] = reconstructAllocatedLanes(persistedState.lanes, persistedState.tasks);
+
+	// Track all repo roots encountered during execution (persisted + newly allocated).
+	// Used by inter-wave reset and terminal cleanup to cover repos introduced
+	// after resume starts (not present in persisted lanes).
+	// Initialized from collectRepoRoots() helper for parity with other callers.
+	const encounteredRepoRoots = new Set(
+		collectRepoRoots(persistedState, repoRoot, workspaceConfig),
+	);
 
 	// Build outcomes from reconciled tasks
 	for (const task of reconciledTasks) {
@@ -746,6 +970,23 @@ export async function resumeOrchBatch(
 			sessionName: persistedTask?.sessionName ?? "",
 			doneFileFound: status === "succeeded" ? true : task.doneFileFound,
 		});
+	}
+
+	// ── 9b. Seed blocked dependents from reconciled failures ─────
+	// Under skip-dependents policy, failures discovered during reconciliation
+	// (mark-failed) or resolved during reconnect/re-execute must propagate
+	// to their transitive dependents BEFORE the wave loop begins.
+	if (orchConfig.failure.on_task_failure === "skip-dependents" && failedTaskSet.size > 0) {
+		const reconciledBlocked = computeTransitiveDependents(failedTaskSet, depGraph);
+		for (const taskId of reconciledBlocked) {
+			batchState.blockedTaskIds.add(taskId);
+		}
+		if (reconciledBlocked.size > 0) {
+			execLog("resume", batchState.batchId, `skip-dependents: ${reconciledBlocked.size} task(s) blocked from reconciled failures`, {
+				blocked: [...reconciledBlocked].sort().join(","),
+				sources: [...failedTaskSet].sort().join(","),
+			});
+		}
 	}
 
 	persistRuntimeState("resume-reconciliation", batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discovery ?? null, repoRoot);
@@ -778,8 +1019,12 @@ export async function resumeOrchBatch(
 		// Also filter tasks where discovery doesn't have them as pending
 		waveTasks = waveTasks.filter(taskId => discovery.pending.has(taskId));
 
+		// Count only newly blocked tasks (not already persisted) to avoid double-counting.
+		// persistedState.blockedTaskIds were already counted in persistedState.blockedTasks
+		// which initialized batchState.blockedTasks.
 		const blockedInWave = persistedState.wavePlan[waveIdx].filter(
-			taskId => batchState.blockedTaskIds.has(taskId),
+			taskId => batchState.blockedTaskIds.has(taskId) &&
+				!persistedBlockedTaskIds.has(taskId),
 		);
 		if (blockedInWave.length > 0) {
 			batchState.blockedTasks += blockedInWave.length;
@@ -818,10 +1063,15 @@ export async function resumeOrchBatch(
 			(lanes) => {
 				latestAllocatedLanes = lanes;
 				batchState.currentLanes = lanes;
+				// Track repos from newly allocated lanes for cleanup coverage
+				for (const lane of lanes) {
+					encounteredRepoRoots.add(resolveRepoRoot(lane.repoId, repoRoot, workspaceConfig));
+				}
 				if (seedPendingOutcomesForAllocatedLanes(lanes, allTaskOutcomes)) {
 					persistRuntimeState("wave-lanes-allocated", batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discovery, repoRoot);
 				}
 			},
+			workspaceConfig,
 		);
 
 		batchState.waveResults.push(waveResult);
@@ -916,7 +1166,7 @@ export async function resumeOrchBatch(
 				persistRuntimeState("merge-start", batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discovery, repoRoot);
 				onNotify(ORCH_MESSAGES.orchMergeStart(waveIdx + 1, mergeableLaneCount), "info");
 
-				mergeResult = mergeWave(
+				mergeResult = mergeWaveByRepo(
 					waveResult.allocatedLanes,
 					waveResult,
 					waveIdx + 1,
@@ -924,6 +1174,7 @@ export async function resumeOrchBatch(
 					repoRoot,
 					batchState.batchId,
 					batchState.baseBranch,
+					workspaceConfig,
 				);
 				batchState.mergeResults.push(mergeResult);
 
@@ -961,6 +1212,14 @@ export async function resumeOrchBatch(
 						ORCH_MESSAGES.orchMergeFailed(waveIdx + 1, mergeResult.failedLane ?? 0, mergeResult.failureReason || "unknown"),
 						"error",
 					);
+
+					// Emit repo-divergence summary when partial is caused by cross-repo outcome differences
+					if (mergeResult.status === "partial") {
+						const repoSummary = formatRepoMergeSummary(mergeResult);
+						if (repoSummary) {
+							onNotify(repoSummary, "warning");
+						}
+					}
 				}
 
 				batchState.phase = "executing";
@@ -988,48 +1247,28 @@ export async function resumeOrchBatch(
 			onNotify(ORCH_MESSAGES.orchMergeSkipped(waveIdx + 1), "info");
 		}
 
-		// Handle merge failure
+		// Handle merge failure — shared helper guarantees parity with engine.ts (TP-005 Step 2)
 		if (mergeResult && (mergeResult.status === "failed" || mergeResult.status === "partial")) {
-			const mergeFailurePolicy = orchConfig.failure.on_merge_failure;
+			const policyResult = computeMergeFailurePolicy(mergeResult, waveIdx, orchConfig);
 
-			if (mergeFailurePolicy === "pause") {
-				batchState.phase = "paused";
-				batchState.errors.push(
-					`Merge failed at wave ${waveIdx + 1}: ${mergeResult.failureReason || "unknown"}. ` +
-					`Batch paused. Resolve conflicts and use /orch-resume to continue.`,
-				);
-				persistRuntimeState("merge-failure-pause", batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discovery, repoRoot);
-				onNotify(
-					`⏸️  Batch paused due to merge failure at wave ${waveIdx + 1}. ` +
-					`Resolve conflicts and resume.`,
-					"error",
-				);
-				preserveWorktreesForResume = true;
-				break;
-			} else {
-				batchState.phase = "stopped";
-				batchState.errors.push(
-					`Merge failed at wave ${waveIdx + 1}: ${mergeResult.failureReason || "unknown"}. ` +
-					`Batch aborted by on_merge_failure policy.`,
-				);
-				persistRuntimeState("merge-failure-abort", batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discovery, repoRoot);
-				onNotify(
-					`⛔ Batch aborted due to merge failure at wave ${waveIdx + 1}.`,
-					"error",
-				);
-				preserveWorktreesForResume = true;
-				break;
-			}
+			execLog("batch", batchState.batchId, `merge failure — applying ${policyResult.policy} policy`, policyResult.logDetails);
+
+			batchState.phase = policyResult.targetPhase;
+			batchState.errors.push(policyResult.errorMessage);
+			persistRuntimeState(policyResult.persistTrigger, batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discovery, repoRoot);
+			onNotify(policyResult.notifyMessage, policyResult.notifyLevel);
+			preserveWorktreesForResume = true;
+			break;
 		}
 
 		// Post-merge: reset worktrees for next wave
 		if (mergeResult && mergeResult.status === "succeeded") {
-			const targetBranch = batchState.baseBranch;
 			for (const lr of mergeResult.laneResults) {
 				if (lr.result?.status === "SUCCESS" || lr.result?.status === "CONFLICT_RESOLVED") {
-					const ancestorCheck = runGit(["merge-base", "--is-ancestor", lr.sourceBranch, targetBranch], repoRoot);
+					const laneRepoRoot = resolveRepoRoot(lr.repoId, repoRoot, workspaceConfig);
+					const ancestorCheck = runGit(["merge-base", "--is-ancestor", lr.sourceBranch, lr.targetBranch], laneRepoRoot);
 					if (ancestorCheck.ok) {
-						deleteBranchBestEffort(lr.sourceBranch, repoRoot);
+						deleteBranchBestEffort(lr.sourceBranch, laneRepoRoot);
 					}
 				}
 			}
@@ -1037,16 +1276,23 @@ export async function resumeOrchBatch(
 
 		if (waveIdx < persistedState.wavePlan.length - 1 && !batchState.pauseSignal.paused) {
 			const wtPrefix = orchConfig.orchestrator.worktree_prefix;
-			const existingWorktrees = listWorktrees(wtPrefix, repoRoot);
-			if (existingWorktrees.length > 0) {
-				const targetBranch = batchState.baseBranch;
-				for (const wt of existingWorktrees) {
-					const resetResult = safeResetWorktree(wt, targetBranch, repoRoot);
-					if (!resetResult.success) {
-						try {
-							removeWorktree(wt, repoRoot);
-						} catch {
-							forceCleanupWorktree(wt, repoRoot, batchState.batchId);
+			const resetOpId = resolveOperatorId(orchConfig);
+
+			// Use encounteredRepoRoots which includes both persisted lanes
+			// AND newly allocated lanes from resumed waves, ensuring repos
+			// introduced after resume starts are covered.
+			for (const perRepoRoot of encounteredRepoRoots) {
+				const existingWorktrees = listWorktrees(wtPrefix, perRepoRoot, resetOpId);
+				if (existingWorktrees.length > 0) {
+					const targetBranch = batchState.baseBranch;
+					for (const wt of existingWorktrees) {
+						const resetResult = safeResetWorktree(wt, targetBranch, perRepoRoot);
+						if (!resetResult.success) {
+							try {
+								removeWorktree(wt, perRepoRoot);
+							} catch {
+								forceCleanupWorktree(wt, perRepoRoot, batchState.batchId);
+							}
 						}
 					}
 				}
@@ -1057,8 +1303,15 @@ export async function resumeOrchBatch(
 	// ── 11. Cleanup and terminal state ───────────────────────────
 	if (!preserveWorktreesForResume) {
 		const wtPrefix = orchConfig.orchestrator.worktree_prefix;
+		const cleanupOpId = resolveOperatorId(orchConfig);
 		const targetBranch = batchState.baseBranch;
-		removeAllWorktrees(wtPrefix, repoRoot, targetBranch);
+
+		// Use encounteredRepoRoots which includes both persisted lanes
+		// AND newly allocated lanes from resumed waves, ensuring repos
+		// introduced after resume starts are cleaned up.
+		for (const perRepoRoot of encounteredRepoRoots) {
+			removeAllWorktrees(wtPrefix, perRepoRoot, cleanupOpId, targetBranch);
+		}
 	}
 
 	batchState.endedAt = Date.now();

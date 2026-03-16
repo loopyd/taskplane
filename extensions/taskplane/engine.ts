@@ -9,13 +9,14 @@ import { formatDiscoveryResults, runDiscovery } from "./discovery.ts";
 import { execLog, executeWave, tmuxKillSession } from "./execution.ts";
 import type { MonitorUpdateCallback } from "./execution.ts";
 import { getCurrentBranch, runGit } from "./git.ts";
-import { mergeWave } from "./merge.ts";
-import { ORCH_MESSAGES } from "./messages.ts";
+import { mergeWaveByRepo } from "./merge.ts";
+import { computeMergeFailurePolicy, formatRepoMergeSummary, ORCH_MESSAGES } from "./messages.ts";
+import { resolveOperatorId } from "./naming.ts";
 import { deleteBatchState, loadBatchHistory, persistRuntimeState, saveBatchHistory, seedPendingOutcomesForAllocatedLanes, syncTaskOutcomesFromMonitor, upsertTaskOutcome } from "./persistence.ts";
 import { listOrchSessions } from "./sessions.ts";
 import { FATAL_DISCOVERY_CODES, generateBatchId } from "./types.ts";
 import type { AllocatedLane, BatchHistorySummary, BatchTaskSummary, BatchWaveSummary, DiscoveryResult, LaneExecutionResult, LaneTaskOutcome, MergeWaveResult, OrchBatchPhase, OrchBatchRuntimeState, OrchestratorConfig, TaskRunnerConfig, TokenCounts, WorkspaceConfig } from "./types.ts";
-import { buildDependencyGraph, computeWaves, validateGraph } from "./waves.ts";
+import { buildDependencyGraph, computeWaves, resolveRepoRoot, validateGraph } from "./waves.ts";
 import { deleteBranchBestEffort, forceCleanupWorktree, formatPreflightResults, listWorktrees, removeAllWorktrees, removeWorktree, runPreflight, safeResetWorktree, sleepSync } from "./worktree.ts";
 
 // ── /orch Execution Engine ───────────────────────────────────────────
@@ -52,6 +53,7 @@ export async function executeOrchBatch(
 	batchState.startedAt = Date.now();
 	batchState.pauseSignal = { paused: false };
 	batchState.mergeResults = [];
+	batchState.mode = workspaceConfig ? "workspace" : "repo";
 
 	// Capture the current branch as the base for worktrees and merge target
 	const detectedBranch = getCurrentBranch(repoRoot);
@@ -115,6 +117,17 @@ export async function executeOrchBatch(
 		if (hasRoutingErrors) {
 			onNotify(
 				"💡 Check PROMPT Repo: fields, area repo_id config, and routing.default_repo in workspace config.",
+				"info",
+			);
+		}
+		const hasStrictErrors = fatalErrors.some(
+			(e) => e.code === "TASK_ROUTING_STRICT",
+		);
+		if (hasStrictErrors) {
+			onNotify(
+				"💡 Strict routing is enabled (routing.strict: true). Every task must declare an explicit execution target.\n" +
+				"   Add a `## Execution Target` section with `Repo: <id>` to each task's PROMPT.md.\n" +
+				"   To disable strict routing, set `routing.strict: false` in workspace config.",
 				"info",
 			);
 		}
@@ -241,6 +254,7 @@ export async function executeOrchBatch(
 					persistRuntimeState("wave-lanes-allocated", batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discoveryRef, repoRoot);
 				}
 			},
+			workspaceConfig,
 		);
 
 		batchState.waveResults.push(waveResult);
@@ -332,7 +346,7 @@ export async function executeOrchBatch(
 				persistRuntimeState("merge-start", batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discoveryRef, repoRoot);
 				onNotify(ORCH_MESSAGES.orchMergeStart(waveIdx + 1, mergeableLaneCount), "info");
 
-				mergeResult = mergeWave(
+				mergeResult = mergeWaveByRepo(
 					waveResult.allocatedLanes,
 					waveResult,
 					waveIdx + 1,
@@ -340,6 +354,7 @@ export async function executeOrchBatch(
 					repoRoot,
 					batchState.batchId,
 					batchState.baseBranch,
+					workspaceConfig,
 				);
 				allMergeResults.push(mergeResult);
 				batchState.mergeResults.push(mergeResult);
@@ -392,6 +407,14 @@ export async function executeOrchBatch(
 						ORCH_MESSAGES.orchMergeFailed(waveIdx + 1, mergeResult.failedLane ?? 0, mergeResult.failureReason || "unknown"),
 						"error",
 					);
+
+					// Emit repo-divergence summary when partial is caused by cross-repo outcome differences
+					if (mergeResult.status === "partial") {
+						const repoSummary = formatRepoMergeSummary(mergeResult);
+						if (repoSummary) {
+							onNotify(repoSummary, "warning");
+						}
+					}
 				}
 
 				// Restore phase to executing (may be overridden below by failure handling)
@@ -424,58 +447,20 @@ export async function executeOrchBatch(
 		}
 
 		// ── Handle merge failure ─────────────────────────────────
-		// Apply config.failure.on_merge_failure policy
+		// Apply config.failure.on_merge_failure policy via shared helper
+		// for guaranteed parity with resume.ts (TP-005 Step 2).
 		if (mergeResult && (mergeResult.status === "failed" || mergeResult.status === "partial")) {
-			const mergeFailurePolicy = orchConfig.failure.on_merge_failure;
-			let failedLaneIds = mergeResult.laneResults
-				.filter(r => r.result?.status === "CONFLICT_UNRESOLVED" || r.result?.status === "BUILD_FAILURE" || r.error)
-				.map(r => `lane-${r.laneNumber}`)
-				.join(", ");
-			if (!failedLaneIds && mergeResult.failedLane !== null) {
-				failedLaneIds = `lane-${mergeResult.failedLane}`;
-			}
+			const policyResult = computeMergeFailurePolicy(mergeResult, waveIdx, orchConfig);
 
-			execLog("batch", batchState.batchId, `merge failure — applying ${mergeFailurePolicy} policy`, {
-				failedLane: mergeResult.failedLane ?? 0,
-				failedLaneIds,
-				reason: mergeResult.failureReason?.slice(0, 200) || "unknown",
-			});
+			execLog("batch", batchState.batchId, `merge failure — applying ${policyResult.policy} policy`, policyResult.logDetails);
 
-			if (mergeFailurePolicy === "pause") {
-				batchState.phase = "paused";
-				batchState.errors.push(
-					`Merge failed at wave ${waveIdx + 1}: ${mergeResult.failureReason || "unknown"}. ` +
-					`Batch paused. Resolve conflicts and use /orch-resume to continue.`,
-				);
-				// ── TS-009: Persist BEFORE cleanup decision (pause) ──
-				persistRuntimeState("merge-failure-pause", batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discoveryRef, repoRoot);
-				onNotify(
-					`⏸️  Batch paused due to merge failure at wave ${waveIdx + 1} (${failedLaneIds}). ` +
-					`Reason: ${mergeResult.failureReason?.slice(0, 200) || "unknown"}. ` +
-					`Resolve conflicts and resume (TS-009).`,
-					"error",
-				);
-				// DO NOT cleanup/reset worktrees — preserve state for debugging/resume
-				preserveWorktreesForResume = true;
-				break;
-			} else {
-				// abort policy
-				batchState.phase = "stopped";
-				batchState.errors.push(
-					`Merge failed at wave ${waveIdx + 1}: ${mergeResult.failureReason || "unknown"}. ` +
-					`Batch aborted by on_merge_failure policy.`,
-				);
-				// ── TS-009: Persist BEFORE cleanup decision (abort) ──
-				persistRuntimeState("merge-failure-abort", batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discoveryRef, repoRoot);
-				onNotify(
-					`⛔ Batch aborted due to merge failure at wave ${waveIdx + 1} (${failedLaneIds}). ` +
-					`Reason: ${mergeResult.failureReason?.slice(0, 200) || "unknown"}.`,
-					"error",
-				);
-				// DO NOT cleanup/reset worktrees — preserve state for debugging
-				preserveWorktreesForResume = true;
-				break;
-			}
+			batchState.phase = policyResult.targetPhase;
+			batchState.errors.push(policyResult.errorMessage);
+			persistRuntimeState(policyResult.persistTrigger, batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discoveryRef, repoRoot);
+			onNotify(policyResult.notifyMessage, policyResult.notifyLevel);
+			// DO NOT cleanup/reset worktrees — preserve state for debugging/resume
+			preserveWorktreesForResume = true;
+			break;
 		}
 
 		// NOTE: Merged branch cleanup is deferred to Phase 3, AFTER worktree
@@ -485,7 +470,8 @@ export async function executeOrchBatch(
 		// Only reset if merge succeeded AND there are more waves
 		if (waveIdx < rawWaves.length - 1 && !batchState.pauseSignal.paused) {
 			const prefix = orchConfig.orchestrator.worktree_prefix;
-			const existingWorktrees = listWorktrees(prefix, repoRoot);
+			const resetOpId = resolveOperatorId(orchConfig);
+			const existingWorktrees = listWorktrees(prefix, repoRoot, resetOpId);
 
 			if (existingWorktrees.length > 0) {
 				onNotify(
@@ -678,8 +664,9 @@ export async function executeOrchBatch(
 
 		// Clean up worktrees — pass base branch to protect unmerged work
 		const targetBranch = batchState.baseBranch;
+		const cleanupOpId = resolveOperatorId(orchConfig);
 		execLog("batch", batchState.batchId, "cleaning up worktrees");
-		const removeResult = removeAllWorktrees(prefix, repoRoot, targetBranch);
+		const removeResult = removeAllWorktrees(prefix, repoRoot, cleanupOpId, targetBranch);
 
 		// Log preserved branches
 		for (const p of removeResult.preserved) {
@@ -704,23 +691,32 @@ export async function executeOrchBatch(
 		// ── Post-worktree-removal: Clean up merged branches ──────
 		// This MUST run after worktree removal because git branch -D
 		// fails if any worktree still has the branch checked out.
+		// In workspace mode, each lane's branch lives in its owning repo,
+		// so we resolve the correct repo root per lane using repoId.
 		for (const mergeResult of allMergeResults) {
 			if (mergeResult.status === "succeeded" || mergeResult.status === "partial") {
 				for (const lr of mergeResult.laneResults) {
 					if (lr.result?.status === "SUCCESS" || lr.result?.status === "CONFLICT_RESOLVED") {
+						const laneRepoRoot = resolveRepoRoot(lr.repoId, repoRoot, workspaceConfig);
 						const ancestorCheck = runGit(
-							["merge-base", "--is-ancestor", lr.sourceBranch, targetBranch],
-							repoRoot,
+							["merge-base", "--is-ancestor", lr.sourceBranch, lr.targetBranch],
+							laneRepoRoot,
 						);
 						if (ancestorCheck.ok) {
-							const deleted = deleteBranchBestEffort(lr.sourceBranch, repoRoot);
+							const deleted = deleteBranchBestEffort(lr.sourceBranch, laneRepoRoot);
 							if (deleted) {
-								execLog("batch", batchState.batchId, `deleted merged branch ${lr.sourceBranch}`);
+								execLog("batch", batchState.batchId, `deleted merged branch ${lr.sourceBranch}`, {
+									repoId: lr.repoId ?? "(default)",
+								});
 							} else {
-								execLog("batch", batchState.batchId, `warning: failed to delete merged branch ${lr.sourceBranch} — retained for manual cleanup`);
+								execLog("batch", batchState.batchId, `warning: failed to delete merged branch ${lr.sourceBranch} — retained for manual cleanup`, {
+									repoId: lr.repoId ?? "(default)",
+								});
 							}
 						} else {
-							execLog("batch", batchState.batchId, `warning: branch ${lr.sourceBranch} not fully merged into ${targetBranch} — retained`);
+							execLog("batch", batchState.batchId, `warning: branch ${lr.sourceBranch} not fully merged into ${lr.targetBranch} — retained`, {
+								repoId: lr.repoId ?? "(default)",
+							});
 						}
 					}
 				}
