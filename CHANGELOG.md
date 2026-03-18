@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-03-18
+
+### Fixed
+- **Lane sessions couldn't find task-runner extension** — lane tmux sessions hardcoded `{repoRoot}/extensions/task-runner.ts` which only exists in the taskplane dev repo. Now searches npm global install paths. This was a critical bug preventing workspace/polyrepo mode from working for any project other than taskplane itself.
+- **Batch completion message missing integration instructions** — now shows orch branch name and `/orch-integrate` command options.
+- **Batch state deleted on clean completion** — state is now preserved when an orch branch exists so `/orch-integrate` can find it.
+
 ## [0.5.0] - 2026-03-18
 
 ### Added
