@@ -7,16 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.4.3] - 2026-03-18
+## [0.5.0] - 2026-03-18
 
 ### Added
+- **Orchestrator-managed branch model** (issue #24) — `/orch` now creates an ephemeral `orch/{opId}-{batchId}` branch and does all work there. User's HEAD is never touched during batch execution. VS Code stays on whatever branch the user is working on.
+- **`/orch-integrate` command** — integrates completed batch work into your working branch. Three modes: fast-forward (default), `--merge` (real merge), `--pr` (push and open GitHub PR). Includes branch safety check (warns if current branch differs from batch origin).
+- **Batch-scoped worktree containers** — worktree paths changed from `{prefix}-{opId}-{N}` to `{basePath}/{opId}-{batchId}/lane-{N}`. Prevents directory collisions between concurrent batches. Merge worktree is inside the container.
+- **Auto-integration config** — `integration` setting (`"manual"` default, `"auto"` opt-in). Manual = user runs `/orch-integrate`. Auto = fast-forward on completion.
 - **Settings reference doc** — `docs/reference/configuration/taskplane-settings.md` documents every setting with types, defaults, options, and descriptions.
-- **Orchestrator-managed branch schema** (TP-020) — `orchBranch` field in runtime and persisted batch state, `integration` config (`"manual"` | `"auto"`, default `"manual"`), Integration toggle in `/taskplane-settings` TUI. Foundation for issue #24.
-- **Batch-scoped worktree containers** (TP-021, partial) — `generateWorktreePath()` refactored to `{basePath}/{opId}-{batchId}/lane-{N}`, new `generateMergeWorktreePath()`, updated listing and cleanup for nested structure. Prevents directory collisions between concurrent batches.
+- 86 new tests (828 total across 22 test files), including new `orch-integrate.test.ts`.
+
+### Changed
+- Wave merges use `git update-ref` instead of `git merge --ff-only` in the main repo — no longer touches the working tree.
+- Stash/pop logic removed from merge flow (no longer needed since orch branch is never checked out in main repo).
+- Post-merge worktree reset targets orch branch HEAD instead of user's branch.
+- Batch completion message shows orch branch name and `/orch-integrate` instructions.
 
 ### Fixed
 - **Settings TUI input fields freeze terminal** (issue #57) — replaced inline submenu with single-value cycling pattern that exits TUI, then prompts via `ctx.ui.input()`. Works on all platforms.
 - Renamed `/settings` to `/taskplane-settings` to avoid collision with pi's built-in `/settings` command.
+- Protected branch blindness — `/orch` on a protected branch no longer wastes hours before failing at merge time.
 
 ### Removed
 - Orchestrator `spawn_mode` setting removed from `/taskplane-settings` TUI — `/orch` always requires tmux, making the setting misleading. The worker-level Spawn Mode (controls `/task` behavior) remains.
