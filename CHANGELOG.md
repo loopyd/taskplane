@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-03-20
+
+### New
+- **RPC wrapper & structured diagnostics (TP-025)** — `bin/rpc-wrapper.mjs` wraps `pi --mode rpc` to capture telemetry from worker/reviewer sessions. `TaskExitDiagnostic` interface with 9-way exit classification (`completed`, `api_error`, `context_overflow`, `process_crash`, etc.). Sidecar JSONL files for real-time telemetry with secret redaction.
+- **Task-runner RPC integration (TP-026)** — `spawnAgentTmux()` uses the RPC wrapper for `/task` tmux sessions. Sidecar tailing during poll loop provides live token counts and cost. Structured exit diagnostics replace free-text `exitReason`. `/orch` subprocess path unchanged.
+- **Dashboard real-time telemetry (TP-027)** — Dashboard displays per-lane token counts, cost, context utilization %, last tool call, retry status, and batch total cost. Graceful degradation for pre-RPC sessions.
+- **Partial progress preservation (TP-028)** — Failed tasks with lane branch commits get saved branches (`saved/{opId}-{taskId}-{batchId}`). Commit count and branch name recorded in task outcome. Works in single-repo and workspace mode.
+- **Cleanup resilience & post-merge gate (TP-029)** — Fixes issue #93: lane worktrees and branches cleaned up in ALL workspace repos per wave (not just last-wave repos). Force cleanup fallback (`rm -rf` + `git worktree prune`). Post-merge cleanup gate blocks next wave if cleanup fails. Polyrepo acceptance criteria validated after `/orch-integrate`.
+- **State schema v3 & migration (TP-030)** — `batch-state.json` schema v3 with `resilience` (retry counters, repair history, failure classification) and `diagnostics` (per-task exit summaries, batch cost) sections. Auto-migration from v1/v2 with conservative defaults. Corrupt state enters `paused` (never auto-deleted). Unknown fields preserved on roundtrip.
+- **Force-resume & diagnostic reports (TP-031)** — `/orch-resume --force` for `failed`/`stopped` phases with pre-resume diagnostics. Merge failure defaults to `paused` (not `failed`). Structured diagnostic reports (JSONL event log + human-readable summary) emitted on batch completion/failure.
+- **Verification baseline & fingerprinting (TP-032)** — Pre-merge verification baselines per repo. Normalized test output fingerprinting. `newFailures = postMerge - baseline` — pre-existing failures no longer block valid merges. Flaky test handling (re-run once). Strict/permissive modes. Opt-in via `verification.enabled`.
+- **Transactional merge & retry matrix (TP-033)** — Merge transaction envelope (capture pre/post refs, rollback on failure, safe-stop if rollback fails). Retry policy matrix with persisted counters scoped by `(repoId, wave, lane)`. Cooldown delays, max attempts, wave gate on cleanup failure.
+- **Quality gate structured review (TP-034)** — Opt-in post-completion quality gate. Cross-model structured review with JSON verdict (PASS/NEEDS_FIXES). Severity-classified findings. `.DONE` only created after PASS when enabled. Remediation cycle (max 2 reviews). Configurable via `quality_gate.enabled`.
+- **STATUS.md reconciliation & artifact staging scope (TP-035)** — Automatic STATUS.md checkbox correction from quality gate review findings. Artifact staging restricted to task-owned paths only. System-owned template checkboxes removed.
+- **Supervisor primer** — `extensions/taskplane/supervisor-primer.md` ships with npm package. Operational runbook for the future supervisor agent covering architecture, recovery patterns, git operations, and batch state management.
+
+### Fixed
+- Reviewer APPROVE threshold raised — REVISE now means "will fail without fixes", not "I found something". Minor findings go to Suggestions (no checkboxes), not Issues Found.
+- Worker prompt updated — Issues Found items create mandatory checkboxes, Suggestions logged in Notes only.
+
+### Docs
+- `docs/specifications/` — moved from `.pi/local/docs/` to git-tracked location for worktree accessibility
+- `docs/explanation/waves-lanes-and-worktrees.md` — comprehensive rewrite covering orch branch model, file-scope affinity, batch-scoped worktrees, per-repo merge, integration flow
+- `docs/explanation/architecture.md` — updated for JSON config, orch branch flow
+- "Repo mode" renamed to "single-repo mode" across all docs
+- Watchdog & recovery tiers specification (v2) — interactive supervisor architecture
+- AGENTS.md — added JSON config precedence rule (invariant #6)
+
 ## [0.5.3] - 2026-03-18
 
 ### Fixed
