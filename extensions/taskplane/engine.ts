@@ -2,7 +2,7 @@
  * Main batch execution engine
  * @module orch/engine
  */
-import { readFileSync, readdirSync, unlinkSync } from "fs";
+import { existsSync, readdirSync, readFileSync, unlinkSync } from "fs";
 import { join, resolve } from "path";
 
 import { formatDiscoveryResults, runDiscovery } from "./discovery.ts";
@@ -10,14 +10,16 @@ import { execLog, executeWave, tmuxKillSession } from "./execution.ts";
 import type { MonitorUpdateCallback } from "./execution.ts";
 import { getCurrentBranch, runGit } from "./git.ts";
 import { attemptAutoIntegration, mergeWaveByRepo } from "./merge.ts";
-import { computeMergeFailurePolicy, formatRepoMergeSummary, ORCH_MESSAGES } from "./messages.ts";
+import { applyMergeRetryLoop, computeCleanupGatePolicy, computeMergeFailurePolicy, formatRepoMergeSummary, ORCH_MESSAGES } from "./messages.ts";
+import type { CleanupGateRepoFailure } from "./messages.ts";
+import { assembleDiagnosticInput, emitDiagnosticReports } from "./diagnostic-reports.ts";
 import { resolveOperatorId } from "./naming.ts";
-import { deleteBatchState, loadBatchHistory, persistRuntimeState, saveBatchHistory, seedPendingOutcomesForAllocatedLanes, syncTaskOutcomesFromMonitor, upsertTaskOutcome } from "./persistence.ts";
+import { applyPartialProgressToOutcomes, deleteBatchState, loadBatchHistory, persistRuntimeState, saveBatchHistory, seedPendingOutcomesForAllocatedLanes, syncTaskOutcomesFromMonitor, upsertTaskOutcome } from "./persistence.ts";
 import { listOrchSessions } from "./sessions.ts";
-import { FATAL_DISCOVERY_CODES, generateBatchId } from "./types.ts";
+import { defaultResilienceState, FATAL_DISCOVERY_CODES, generateBatchId } from "./types.ts";
 import type { AllocatedLane, BatchHistorySummary, BatchTaskSummary, BatchWaveSummary, DiscoveryResult, LaneExecutionResult, LaneTaskOutcome, MergeWaveResult, OrchBatchPhase, OrchBatchRuntimeState, OrchestratorConfig, TaskRunnerConfig, TokenCounts, WorkspaceConfig } from "./types.ts";
-import { buildDependencyGraph, computeWaves, resolveRepoRoot, validateGraph } from "./waves.ts";
-import { deleteBranchBestEffort, forceCleanupWorktree, formatPreflightResults, listWorktrees, removeAllWorktrees, removeWorktree, runPreflight, safeResetWorktree, sleepSync } from "./worktree.ts";
+import { buildDependencyGraph, computeWaves, resolveBaseBranch, resolveRepoRoot, validateGraph } from "./waves.ts";
+import { deleteBranchBestEffort, forceCleanupWorktree, formatPreflightResults, listWorktrees, preserveFailedLaneProgress, removeAllWorktrees, removeWorktree, runPreflight, safeResetWorktree, sleepSync } from "./worktree.ts";
 
 // ── /orch Execution Engine ───────────────────────────────────────────
 
@@ -87,6 +89,12 @@ export async function executeOrchBatch(
 	let wavePlan: string[][] = [];
 	// Reference to discovery result for enriching taskFolder paths.
 	let discoveryRef: DiscoveryResult | null = null;
+	// TP-029: Track all repo roots encountered during execution.
+	// Maps repoRoot → repoId (undefined for primary/repo-mode).
+	// Used by inter-wave reset and terminal cleanup to iterate ALL repos
+	// that had lanes, not just the primary repoRoot. Parity with resume.ts.
+	const encounteredRepoRoots = new Map<string, string | undefined>();
+	encounteredRepoRoots.set(repoRoot, undefined); // always include primary
 
 	execLog("batch", batchState.batchId, "starting batch planning");
 
@@ -303,6 +311,11 @@ export async function executeOrchBatch(
 			(lanes) => {
 				latestAllocatedLanes = lanes;
 				batchState.currentLanes = lanes;
+				// TP-029: Track repos from newly allocated lanes for cleanup coverage
+				for (const lane of lanes) {
+					const laneRepoRoot = resolveRepoRoot(lane.repoId, repoRoot, workspaceConfig);
+					encounteredRepoRoots.set(laneRepoRoot, lane.repoId);
+				}
 				if (seedPendingOutcomesForAllocatedLanes(lanes, allTaskOutcomes)) {
 					persistRuntimeState("wave-lanes-allocated", batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discoveryRef, stateRoot);
 				}
@@ -410,6 +423,7 @@ export async function executeOrchBatch(
 					workspaceConfig,
 					stateRoot,
 					agentRoot,
+					runnerConfig.testing_commands,
 				);
 				allMergeResults.push(mergeResult);
 				batchState.mergeResults.push(mergeResult);
@@ -420,14 +434,16 @@ export async function executeOrchBatch(
 				// Emit per-lane merge notifications
 				for (const lr of mergeResult.laneResults) {
 					const durationSec = Math.round(lr.durationMs / 1000);
-					if (lr.result?.status === "SUCCESS") {
+					// TP-032 R006-3: Check lr.error first — verification_new_failure lanes
+					// have error set even though lr.result.status may be SUCCESS/CONFLICT_RESOLVED.
+					if (lr.error) {
+						onNotify(ORCH_MESSAGES.orchMergeLaneFailed(lr.laneNumber, lr.error), "error");
+					} else if (lr.result?.status === "SUCCESS") {
 						onNotify(ORCH_MESSAGES.orchMergeLaneSuccess(lr.laneNumber, lr.result.merge_commit, durationSec), "info");
 					} else if (lr.result?.status === "CONFLICT_RESOLVED") {
 						onNotify(ORCH_MESSAGES.orchMergeLaneConflictResolved(lr.laneNumber, lr.result.conflicts.length, durationSec), "info");
 					} else if (lr.result?.status === "CONFLICT_UNRESOLVED" || lr.result?.status === "BUILD_FAILURE") {
-						onNotify(ORCH_MESSAGES.orchMergeLaneFailed(lr.laneNumber, lr.error || lr.result.status), "error");
-					} else if (lr.error) {
-						onNotify(ORCH_MESSAGES.orchMergeLaneFailed(lr.laneNumber, lr.error), "error");
+						onNotify(ORCH_MESSAGES.orchMergeLaneFailed(lr.laneNumber, lr.result.status), "error");
 					}
 				}
 
@@ -450,8 +466,9 @@ export async function executeOrchBatch(
 				}
 
 				// Emit overall merge result notification
+				// TP-032 R006-3: Exclude verification_new_failure lanes from success count
 				const mergedCount = mergeResult.laneResults.filter(
-					r => r.result?.status === "SUCCESS" || r.result?.status === "CONFLICT_RESOLVED",
+					r => !r.error && (r.result?.status === "SUCCESS" || r.result?.status === "CONFLICT_RESOLVED"),
 				).length;
 				const mergeTotalSec = Math.round(mergeResult.totalDurationMs / 1000);
 
@@ -501,50 +518,244 @@ export async function executeOrchBatch(
 			onNotify(ORCH_MESSAGES.orchMergeSkipped(waveIdx + 1), "info");
 		}
 
-		// ── Handle merge failure ─────────────────────────────────
-		// Apply config.failure.on_merge_failure policy via shared helper
-		// for guaranteed parity with resume.ts (TP-005 Step 2).
-		if (mergeResult && (mergeResult.status === "failed" || mergeResult.status === "partial")) {
-			const policyResult = computeMergeFailurePolicy(mergeResult, waveIdx, orchConfig);
+		// ── TP-033: Safe-stop on rollback failure ─────────────────
+		// When a verification rollback failed, force paused regardless of
+		// on_merge_failure policy. The merge worktree and temp branch are
+		// preserved for manual recovery using commands in the transaction record.
+		if (mergeResult?.rollbackFailed) {
+			// TP-033 R004-2: Include persistence error warning when transaction
+			// record files may be missing, so operator knows to inspect manually
+			const hasPersistErrors = mergeResult.persistenceErrors && mergeResult.persistenceErrors.length > 0;
+			const persistWarning = hasPersistErrors
+				? ` WARNING: ${mergeResult.persistenceErrors!.length} transaction record(s) failed to persist — recovery file(s) may be missing.`
+				: "";
 
-			execLog("batch", batchState.batchId, `merge failure — applying ${policyResult.policy} policy`, policyResult.logDetails);
+			execLog("batch", batchState.batchId, "SAFE-STOP: verification rollback failed — forcing paused regardless of policy", {
+				waveIndex: waveIdx,
+				configPolicy: orchConfig.failure.on_merge_failure,
+				...(hasPersistErrors ? { persistenceErrors: mergeResult.persistenceErrors } : {}),
+			});
 
-			batchState.phase = policyResult.targetPhase;
-			batchState.errors.push(policyResult.errorMessage);
-			persistRuntimeState(policyResult.persistTrigger, batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discoveryRef, stateRoot);
-			onNotify(policyResult.notifyMessage, policyResult.notifyLevel);
-			// DO NOT cleanup/reset worktrees — preserve state for debugging/resume
+			batchState.phase = "paused";
+			batchState.errors.push(
+				`Safe-stop at wave ${waveIdx + 1}: verification rollback failed. ` +
+				`Merge worktree and temp branch preserved for recovery. ` +
+				`Check transaction records in .pi/verification/ for recovery commands.` +
+				persistWarning
+			);
+			persistRuntimeState("merge-rollback-safe-stop", batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discoveryRef, stateRoot);
+			onNotify(
+				`🛑 Safe-stop: verification rollback failed at wave ${waveIdx + 1}. ` +
+				`Batch force-paused. Merge worktree preserved for manual recovery. ` +
+				`See .pi/verification/ transaction records for recovery commands.` +
+				persistWarning,
+				"error",
+			);
 			preserveWorktreesForResume = true;
 			break;
+		}
+
+		// ── Handle merge failure ─────────────────────────────────
+		// TP-033 Step 2 (R006): Retry policy matrix via shared applyMergeRetryLoop.
+		// Classifies the failure, loops retries per the matrix (supports maxAttempts>1),
+		// and on exhaustion forces paused regardless of on_merge_failure config.
+		if (mergeResult && (mergeResult.status === "failed" || mergeResult.status === "partial")) {
+			// Initialize resilience state if not yet present (fresh batch)
+			if (!batchState.resilience) {
+				batchState.resilience = defaultResilienceState();
+			}
+
+			const retryOutcome = applyMergeRetryLoop(
+				mergeResult,
+				waveIdx,
+				batchState.resilience.retryCountByScope,
+				{
+					performMerge: () => {
+						batchState.phase = "merging";
+						return mergeWaveByRepo(
+							waveResult.allocatedLanes,
+							waveResult,
+							waveIdx + 1,
+							orchConfig,
+							repoRoot,
+							batchState.batchId,
+							batchState.orchBranch,
+							workspaceConfig,
+							stateRoot,
+							agentRoot,
+							runnerConfig.testing_commands,
+						);
+					},
+					persist: (trigger) => persistRuntimeState(trigger, batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discoveryRef, stateRoot),
+					log: (message, details) => execLog("batch", batchState.batchId, message, details),
+					notify: (message, level) => onNotify(message, level),
+					updateMergeResult: (result) => {
+						mergeResult = result;
+						allMergeResults[allMergeResults.length - 1] = result;
+						batchState.mergeResults[batchState.mergeResults.length - 1] = result;
+					},
+					sleep: sleepSync,
+				},
+			);
+
+			if (retryOutcome.kind === "retry_succeeded") {
+				mergeResult = retryOutcome.mergeResult;
+				batchState.phase = "executing";
+				persistRuntimeState("merge-retry-succeeded", batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discoveryRef, stateRoot);
+				// Fall through to normal post-merge flow (worktree cleanup, etc.)
+			} else if (retryOutcome.kind === "safe_stop") {
+				mergeResult = retryOutcome.mergeResult;
+				batchState.phase = "paused";
+				batchState.errors.push(retryOutcome.errorMessage);
+				persistRuntimeState("merge-rollback-safe-stop", batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discoveryRef, stateRoot);
+				onNotify(retryOutcome.notifyMessage, "error");
+				preserveWorktreesForResume = true;
+				break;
+			} else if (retryOutcome.kind === "exhausted") {
+				// TP-033 R006-2: Force paused regardless of on_merge_failure config.
+				// Retry exhaustion takes precedence over config policy.
+				mergeResult = retryOutcome.mergeResult;
+				const exhaustionMsg = retryOutcome.errorMessage +
+					` [${retryOutcome.classification ?? "unknown"} ${retryOutcome.lastDecision.currentAttempt}/${retryOutcome.lastDecision.maxAttempts}, scope=${retryOutcome.scopeKey}]`;
+
+				execLog("batch", batchState.batchId, `merge retry exhausted — forcing paused`, {
+					classification: retryOutcome.classification,
+					scopeKey: retryOutcome.scopeKey,
+					attempts: retryOutcome.lastDecision.currentAttempt,
+					maxAttempts: retryOutcome.lastDecision.maxAttempts,
+				});
+
+				batchState.phase = "paused";
+				batchState.errors.push(exhaustionMsg);
+				persistRuntimeState("merge-retry-exhausted", batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discoveryRef, stateRoot);
+				onNotify(retryOutcome.notifyMessage, "error");
+				preserveWorktreesForResume = true;
+				break;
+			} else {
+				// kind === "no_retry": fall through to standard on_merge_failure policy
+				mergeResult = retryOutcome.mergeResult;
+				const policyResult = computeMergeFailurePolicy(mergeResult, waveIdx, orchConfig);
+				const classNote = retryOutcome.classification
+					? ` [not retriable: ${retryOutcome.classification}, scope=${retryOutcome.scopeKey}]`
+					: "";
+
+				execLog("batch", batchState.batchId, `merge failure — applying ${policyResult.policy} policy${classNote}`, policyResult.logDetails);
+
+				batchState.phase = policyResult.targetPhase;
+				batchState.errors.push(policyResult.errorMessage + classNote);
+				persistRuntimeState(policyResult.persistTrigger, batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discoveryRef, stateRoot);
+				onNotify(policyResult.notifyMessage + classNote, policyResult.notifyLevel);
+				// DO NOT cleanup/reset worktrees — preserve state for debugging/resume
+				preserveWorktreesForResume = true;
+				break;
+			}
 		}
 
 		// NOTE: Merged branch cleanup is deferred to Phase 3, AFTER worktree
 		// removal. git branch -D fails if a worktree has the branch checked out.
 
-		// ── Post-merge: Reset worktrees for next wave ────────────
-		// Only reset if merge succeeded AND there are more waves
+		// ── TP-028: Preserve partial progress before inter-wave reset ──
+		// Failed tasks may have commits on their lane branch that would be lost
+		// when the worktree is reset for the next wave. Save these as named
+		// branches before any branch-destructive reset/removal occurs.
+		// Hoisted outside the if-block so unsafeBranches is accessible to the
+		// reset loop below — both blocks share the same guard condition.
+		let ppUnsafeBranches = new Set<string>();
 		if (waveIdx < rawWaves.length - 1 && !batchState.pauseSignal.paused) {
-			const prefix = orchConfig.orchestrator.worktree_prefix;
+			const ppOpId = resolveOperatorId(orchConfig);
+			const ppResult = preserveFailedLaneProgress(
+				latestAllocatedLanes,
+				allTaskOutcomes,
+				ppOpId,
+				batchState.batchId,
+				(repoId) => {
+					const perRepoRoot = resolveRepoRoot(repoId, repoRoot, workspaceConfig);
+					let targetBranch = batchState.orchBranch;
+					if (repoId && perRepoRoot !== repoRoot) {
+						try {
+							targetBranch = resolveBaseBranch(repoId, perRepoRoot, batchState.orchBranch, workspaceConfig);
+						} catch { /* fall back to orchBranch */ }
+					}
+					return { repoRoot: perRepoRoot, targetBranch };
+				},
+			);
+			ppUnsafeBranches = ppResult.unsafeBranches;
+			if (ppResult.results.some(r => r.saved)) {
+				execLog("batch", batchState.batchId,
+					`preserved partial progress for ${ppResult.results.filter(r => r.saved).length} failed task(s) before inter-wave reset`);
+			}
+			// Log per-task warnings for failed preservation attempts
+			for (const r of ppResult.results) {
+				if (!r.saved && (r.commitCount > 0 || r.error)) {
+					execLog("batch", batchState.batchId,
+						`WARNING: Failed to preserve partial progress for task ${r.taskId} ` +
+						`(${r.commitCount} commit(s) at risk on lane branch)`,
+						{ taskId: r.taskId, commitCount: r.commitCount, error: r.error ?? "unknown" });
+				}
+			}
+			if (ppUnsafeBranches.size > 0) {
+				execLog("batch", batchState.batchId,
+					`WARNING: ${ppUnsafeBranches.size} lane branch(es) could not be preserved — skipping reset for those lanes to prevent commit loss`,
+					{ unsafeBranches: [...ppUnsafeBranches] });
+			}
+			// TP-028: Stamp task outcomes with partial progress data for persistence
+			applyPartialProgressToOutcomes(ppResult, allTaskOutcomes);
+		}
+
+		// ── Post-merge: Reset worktrees for next wave ────────────
+		// Only reset if merge succeeded AND there are more waves.
+		// TP-029: Iterate ALL encountered repo roots (not just primary repoRoot)
+		// so that repos active in wave N but not in the final wave still get reset.
+		// Follows the resume.ts encounteredRepoRoots pattern for parity.
+		if (waveIdx < rawWaves.length - 1 && !batchState.pauseSignal.paused) {
+			const resetPrefix = orchConfig.orchestrator.worktree_prefix;
 			const resetOpId = resolveOperatorId(orchConfig);
-			const existingWorktrees = listWorktrees(prefix, repoRoot, resetOpId, batchState.batchId);
+			let totalResetWorktrees = 0;
+			// TP-029 R006: Track worktrees that failed reset AND removal
+			// so the cleanup gate only fires on true stale state, not
+			// successfully-reset reusable worktrees.
+			const failedRemovalWorktrees = new Map<string, { repoId: string | undefined; paths: string[] }>();
 
-			if (existingWorktrees.length > 0) {
-				onNotify(
-					ORCH_MESSAGES.orchWorktreeReset(waveIdx + 1, existingWorktrees.length),
-					"info",
-				);
+			for (const [perRepoRoot, perRepoId] of encounteredRepoRoots) {
+				const existingWorktrees = listWorktrees(resetPrefix, perRepoRoot, resetOpId, batchState.batchId);
+				if (existingWorktrees.length === 0) continue;
+				totalResetWorktrees += existingWorktrees.length;
 
-				const targetBranch = batchState.orchBranch;
+				// Per-repo target branch: primary repo uses orchBranch,
+				// secondary repos resolve their own branch (parity with resume.ts).
+				let targetBranch: string;
+				if (perRepoRoot === repoRoot) {
+					targetBranch = batchState.orchBranch;
+				} else {
+					try {
+						targetBranch = resolveBaseBranch(perRepoId, perRepoRoot, batchState.orchBranch, workspaceConfig);
+					} catch {
+						// If resolution fails, fall back to orchBranch (reset will
+						// fail gracefully and trigger worktree removal)
+						targetBranch = batchState.orchBranch;
+					}
+				}
+
 				for (const wt of existingWorktrees) {
-					const resetResult = safeResetWorktree(wt, targetBranch, repoRoot);
+					// TP-028: Skip reset for worktrees whose lane branch has
+					// unsaved partial progress (preservation failed with commits)
+					if (ppUnsafeBranches.has(wt.branch)) {
+						execLog("batch", batchState.batchId,
+							`skipping worktree reset for lane ${wt.laneNumber} — branch "${wt.branch}" has unsaved partial progress`,
+							{ path: wt.path, branch: wt.branch });
+						continue;
+					}
+
+					const resetResult = safeResetWorktree(wt, targetBranch, perRepoRoot);
 					if (!resetResult.success) {
 						execLog("batch", batchState.batchId, `worktree reset failed for lane ${wt.laneNumber}`, {
 							error: resetResult.error || "unknown",
 							path: wt.path,
+							repoId: perRepoId ?? "(default)",
 						});
 						// If reset fails, remove this worktree so the next wave can recreate it cleanly.
 						try {
-							removeWorktree(wt, repoRoot);
+							removeWorktree(wt, perRepoRoot);
 							execLog("batch", batchState.batchId, `removed unrecoverable worktree for lane ${wt.laneNumber}`);
 						} catch (removeErr: unknown) {
 							execLog("batch", batchState.batchId, `removeWorktree failed for lane ${wt.laneNumber}, attempting force cleanup`, {
@@ -552,14 +763,61 @@ export async function executeOrchBatch(
 								path: wt.path,
 							});
 							// Last resort: force-remove the directory and prune git worktree state.
-							// This handles cases where git has partially deregistered the worktree
-							// or undeletable files (e.g., Windows reserved names like "nul") block removal.
-							forceCleanupWorktree(wt, repoRoot, batchState.batchId);
+							forceCleanupWorktree(wt, perRepoRoot, batchState.batchId);
+							// Track this worktree for the cleanup gate — it may still be registered
+							if (!failedRemovalWorktrees.has(perRepoRoot)) {
+								failedRemovalWorktrees.set(perRepoRoot, { repoId: perRepoId, paths: [] });
+							}
+							failedRemovalWorktrees.get(perRepoRoot)!.paths.push(wt.path);
 						}
 					} else {
 						execLog("batch", batchState.batchId, `worktree reset OK for lane ${wt.laneNumber}`);
 					}
 				}
+			}
+
+			if (totalResetWorktrees > 0) {
+				onNotify(
+					ORCH_MESSAGES.orchWorktreeReset(waveIdx + 1, totalResetWorktrees),
+					"info",
+				);
+			}
+
+			// ── TP-029: Post-merge cleanup gate ──────────────────────
+			// Only gate on worktrees that the reset loop tried and failed
+			// to remove. Successfully-reset reusable worktrees are expected
+			// to remain registered — they will be reused in the next wave.
+			// For each failed-removal worktree, verify it is still registered
+			// before classifying it as truly stale.
+			const cleanupGateFailures: CleanupGateRepoFailure[] = [];
+			if (failedRemovalWorktrees.size > 0) {
+				for (const [perRepoRoot, { repoId: perRepoId, paths: failedPaths }] of failedRemovalWorktrees) {
+					const remaining = listWorktrees(resetPrefix, perRepoRoot, resetOpId, batchState.batchId);
+					const remainingPaths = new Set(remaining.map(wt => wt.path));
+					// Only report worktrees that were targeted for removal but are still registered
+					const stale = failedPaths.filter(p => remainingPaths.has(p));
+					if (stale.length > 0) {
+						cleanupGateFailures.push({
+							repoRoot: perRepoRoot,
+							repoId: perRepoId,
+							staleWorktrees: stale,
+						});
+					}
+				}
+			}
+
+			if (cleanupGateFailures.length > 0) {
+				const gatePolicyResult = computeCleanupGatePolicy(waveIdx, cleanupGateFailures);
+
+				execLog("batch", batchState.batchId, `cleanup gate failed — pausing batch`, gatePolicyResult.logDetails);
+
+				batchState.phase = gatePolicyResult.targetPhase;
+				batchState.errors.push(gatePolicyResult.errorMessage);
+				persistRuntimeState(gatePolicyResult.persistTrigger, batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discoveryRef, stateRoot);
+				onNotify(gatePolicyResult.notifyMessage, gatePolicyResult.notifyLevel);
+				// Preserve remaining worktrees for manual cleanup — do NOT remove them
+				preserveWorktreesForResume = true;
+				break;
 			}
 		}
 	}
@@ -681,6 +939,17 @@ export async function executeOrchBatch(
 		execLog("batch", batchState.batchId, `failed to save batch history: ${err}`);
 	}
 
+	// ── Pre-cleanup: Determine if worktrees should be preserved ──
+	// TP-031 (R006): This check MUST run before cleanup so that worktrees
+	// survive when failedTasks > 0. Without this, cleanup deletes worktrees
+	// before the batch is marked "paused", breaking resumability.
+	if (!preserveWorktreesForResume &&
+		((batchState.phase as OrchBatchPhase) === "executing" || (batchState.phase as OrchBatchPhase) === "merging") &&
+		batchState.failedTasks > 0) {
+		preserveWorktreesForResume = true;
+		execLog("batch", batchState.batchId, "pre-cleanup: failedTasks > 0 detected, preserving worktrees for resume");
+	}
+
 	// ── Phase 3: Cleanup ─────────────────────────────────────────
 	const prefix = orchConfig.orchestrator.worktree_prefix;
 
@@ -717,33 +986,98 @@ export async function executeOrchBatch(
 			}
 		} catch { /* .pi dir may not exist */ }
 
-		// Clean up worktrees — use orchBranch to protect unmerged work.
-		// Lane branches were merged into orchBranch (not baseBranch), so
-		// unmerged-branch detection must compare against orchBranch.
-		const targetBranch = batchState.orchBranch;
+		// ── TP-028: Preserve partial progress before terminal cleanup ──
+		// Save failed task commits as named branches before worktree removal
+		// destroys the lane branches. Uses the last wave's allocated lanes
+		// to map failed tasks to their lane branches.
+		{
+			const ppOpId = resolveOperatorId(orchConfig);
+			const ppResult = preserveFailedLaneProgress(
+				latestAllocatedLanes,
+				allTaskOutcomes,
+				ppOpId,
+				batchState.batchId,
+				(repoId) => {
+					const perRepoRoot = resolveRepoRoot(repoId, repoRoot, workspaceConfig);
+					let targetBranch = batchState.orchBranch;
+					if (repoId && perRepoRoot !== repoRoot) {
+						try {
+							targetBranch = resolveBaseBranch(repoId, perRepoRoot, batchState.orchBranch, workspaceConfig);
+						} catch { /* fall back to orchBranch */ }
+					}
+					return { repoRoot: perRepoRoot, targetBranch };
+				},
+			);
+			if (ppResult.results.some(r => r.saved)) {
+				execLog("batch", batchState.batchId,
+					`preserved partial progress for ${ppResult.results.filter(r => r.saved).length} failed task(s) before terminal cleanup`);
+			}
+			// Log warnings for failed preservation attempts — at terminal cleanup
+			// we cannot skip deletion (batch is ending), but operators need to know
+			// that commits may become unreachable via reflog only.
+			for (const r of ppResult.results) {
+				if (!r.saved && (r.commitCount > 0 || r.error)) {
+					execLog("batch", batchState.batchId,
+						`WARNING: Failed to preserve partial progress for task ${r.taskId} ` +
+						`(${r.commitCount} commit(s) may become unreachable after cleanup)`,
+						{ taskId: r.taskId, commitCount: r.commitCount, error: r.error ?? "unknown" });
+				}
+			}
+			// TP-028: Stamp task outcomes with partial progress data for persistence
+			applyPartialProgressToOutcomes(ppResult, allTaskOutcomes);
+		}
+
+		// TP-029: Clean up worktrees across ALL encountered repos (not just primary).
+		// Per-repo target branch resolution: primary repo uses orchBranch,
+		// secondary repos resolve their own branch via resolveBaseBranch.
+		// Parity with resume.ts:1475-1507.
 		const cleanupOpId = resolveOperatorId(orchConfig);
 		execLog("batch", batchState.batchId, "cleaning up worktrees");
-		const removeResult = removeAllWorktrees(prefix, repoRoot, cleanupOpId, targetBranch, batchState.batchId, orchConfig);
 
-		// Log preserved branches
-		for (const p of removeResult.preserved) {
-			execLog("batch", batchState.batchId, `preserving unmerged branch as saved ref`, {
-				branch: p.branch,
-				savedBranch: p.savedBranch,
-				lane: p.laneNumber,
-				target: targetBranch,
-				commitCount: p.unmergedCount ?? 0,
-			});
+		for (const [perRepoRoot, perRepoId] of encounteredRepoRoots) {
+			let targetBranch: string | undefined;
+			if (perRepoRoot === repoRoot) {
+				// Primary repo: lane branches were merged into orchBranch
+				targetBranch = batchState.orchBranch;
+			} else {
+				// Secondary repo (workspace mode): resolve the repo's own branch
+				try {
+					targetBranch = resolveBaseBranch(perRepoId, perRepoRoot, batchState.orchBranch, workspaceConfig);
+				} catch {
+					// Fall back to undefined — skips branch protection
+					// (safe because successfully merged branches were already cleaned)
+					targetBranch = undefined;
+				}
+			}
+			const removeResult = removeAllWorktrees(prefix, perRepoRoot, cleanupOpId, targetBranch, batchState.batchId, orchConfig);
+
+			// Log preserved branches
+			for (const p of removeResult.preserved) {
+				execLog("batch", batchState.batchId, `preserving unmerged branch as saved ref`, {
+					branch: p.branch,
+					savedBranch: p.savedBranch,
+					lane: p.laneNumber,
+					target: targetBranch,
+					commitCount: p.unmergedCount ?? 0,
+					repoId: perRepoId ?? "(default)",
+				});
+			}
+
+			if (removeResult.failed.length > 0) {
+				const failedPaths = removeResult.failed.map(f => f.worktree.path).join(", ");
+				execLog("batch", batchState.batchId, `worktree cleanup: ${removeResult.removed.length} removed, ${removeResult.failed.length} failed, ${removeResult.preserved.length} preserved`, {
+					failedPaths,
+					repoId: perRepoId ?? "(default)",
+				});
+			} else if (removeResult.totalAttempted > 0) {
+				execLog("batch", batchState.batchId, `worktree cleanup: ${removeResult.removed.length} removed, ${removeResult.preserved.length} preserved`, {
+					repoId: perRepoId ?? "(default)",
+				});
+			}
 		}
 
-		if (removeResult.failed.length > 0) {
-			const failedPaths = removeResult.failed.map(f => f.worktree.path).join(", ");
-			execLog("batch", batchState.batchId, `worktree cleanup: ${removeResult.removed.length} removed, ${removeResult.failed.length} failed, ${removeResult.preserved.length} preserved`, {
-				failedPaths,
-			});
-		} else if (removeResult.totalAttempted > 0) {
-			execLog("batch", batchState.batchId, `worktree cleanup: ${removeResult.removed.length} removed, ${removeResult.preserved.length} preserved`);
-		}
+		// NOTE: Empty .worktrees base-dir cleanup (subdirectory mode) is handled
+		// inside removeAllWorktrees() when config is passed — no duplicate pass needed here.
 
 		// ── Post-worktree-removal: Clean up merged branches ──────
 		// This MUST run after worktree removal because git branch -D
@@ -753,7 +1087,9 @@ export async function executeOrchBatch(
 		for (const mergeResult of allMergeResults) {
 			if (mergeResult.status === "succeeded" || mergeResult.status === "partial") {
 				for (const lr of mergeResult.laneResults) {
-					if (lr.result?.status === "SUCCESS" || lr.result?.status === "CONFLICT_RESOLVED") {
+					// TP-032 R006-3: Exclude verification_new_failure lanes from branch cleanup
+					// (their merge commits were rolled back, so the branch is NOT merged)
+					if (!lr.error && (lr.result?.status === "SUCCESS" || lr.result?.status === "CONFLICT_RESOLVED")) {
 						const laneRepoRoot = resolveRepoRoot(lr.repoId, repoRoot, workspaceConfig);
 						const ancestorCheck = runGit(
 							["merge-base", "--is-ancestor", lr.sourceBranch, lr.targetBranch],
@@ -791,7 +1127,12 @@ export async function executeOrchBatch(
 	if ((batchState.phase as OrchBatchPhase) === "executing" || (batchState.phase as OrchBatchPhase) === "merging") {
 		// Normal completion (not stopped, paused, or aborted)
 		if (batchState.failedTasks > 0) {
-			batchState.phase = "failed";
+			// TP-031: Default to "paused" so the batch is resumable without --force.
+			// "failed" is reserved for unrecoverable invariant violations after retry
+			// exhaustion (not yet implemented — will be added when retry logic lands).
+			// NOTE: preserveWorktreesForResume was already set pre-cleanup to ensure
+			// worktrees survive; this just sets the phase for state persistence.
+			batchState.phase = "paused";
 		} else {
 			batchState.phase = "completed";
 		}
@@ -828,6 +1169,10 @@ export async function executeOrchBatch(
 
 	// ── TS-009: Persist terminal state ──
 	persistRuntimeState("batch-terminal", batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discoveryRef, stateRoot);
+
+	// ── TP-031: Emit diagnostic reports (JSONL + markdown) ──
+	// Non-fatal: errors are logged but never crash batch finalization.
+	emitDiagnosticReports(assembleDiagnosticInput(orchConfig, batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, stateRoot));
 
 	if (batchState.phase === "paused" || batchState.phase === "stopped") {
 		execLog("batch", batchState.batchId, "batch ended in non-terminal execution state; completion banner suppressed", {

@@ -159,6 +159,29 @@ export interface SelfDocTarget {
 	[key: string]: string;
 }
 
+/**
+ * Severity threshold for quality gate pass decisions.
+ *
+ * - `no_critical`: PASS if no critical findings (important/suggestion allowed)
+ * - `no_important`: PASS if no critical and fewer than 3 important findings
+ * - `all_clear`: PASS only if zero findings of any severity
+ */
+export type PassThreshold = "no_critical" | "no_important" | "all_clear";
+
+/** Quality gate configuration — opt-in post-completion review */
+export interface QualityGateConfig {
+	/** Enable quality gate review before .DONE creation (default: false) */
+	enabled: boolean;
+	/** Model used for quality gate review agent (empty = inherit session model) */
+	reviewModel: string;
+	/** Max total review cycles before marking task failed (default: 2) */
+	maxReviewCycles: number;
+	/** Max fix agent cycles per quality gate run (default: 1) */
+	maxFixCycles: number;
+	/** Severity threshold for PASS decision (default: "no_critical") */
+	passThreshold: PassThreshold;
+}
+
 
 // ── Task Runner Combined Section ─────────────────────────────────────
 
@@ -195,6 +218,8 @@ export interface TaskRunnerSection {
 	selfDocTargets: Record<string, string>;
 	/** Paths requiring explicit user approval before modification */
 	protectedDocs: string[];
+	/** Quality gate configuration — opt-in post-completion review */
+	qualityGate: QualityGateConfig;
 }
 
 
@@ -280,6 +305,55 @@ export interface MonitoringConfig {
 	pollInterval: number;
 }
 
+/**
+ * Verification baseline fingerprinting settings.
+ *
+ * Controls orchestrator-side baseline capture and post-merge comparison.
+ * When enabled, test commands from `taskRunner.testing.commands` are run
+ * before and after each lane merge to detect genuinely new failures.
+ *
+ * This is separate from `merge.verify` (agent-side verification) which
+ * handles revert-on-failure logic within the merge agent.
+ */
+export interface VerificationConfig {
+	/**
+	 * Enable verification baseline fingerprinting.
+	 *
+	 * When false (default), no baseline capture or comparison is performed,
+	 * regardless of whether `taskRunner.testing.commands` are configured.
+	 *
+	 * When true, requires `taskRunner.testing.commands` to have at least
+	 * one command configured. If enabled but no commands are configured:
+	 * - strict mode: treats as baseline-unavailable (triggers merge failure)
+	 * - permissive mode: logs a warning and continues without verification
+	 */
+	enabled: boolean;
+	/**
+	 * Verification mode controlling behavior when baseline is unavailable.
+	 *
+	 * - "strict": Baseline capture failure or missing commands triggers a
+	 *   merge failure. The `failure.onMergeFailure` policy then determines
+	 *   whether the batch pauses or aborts.
+	 * - "permissive": Baseline capture failure or missing commands logs a
+	 *   warning and continues without orchestrator-side verification.
+	 *   Merge-agent verification (`merge.verify`) still applies independently.
+	 *
+	 * Default: "permissive"
+	 */
+	mode: "strict" | "permissive";
+	/**
+	 * Number of flaky re-runs when new failures are detected.
+	 *
+	 * When new failures are found after a lane merge, only the commands that
+	 * produced failures are re-run this many times. If failures disappear on
+	 * any re-run, the lane is classified as "flaky_suspected" (warning only).
+	 *
+	 * Set to 0 to disable flaky re-runs (any new failure immediately blocks).
+	 * Default: 1
+	 */
+	flakyReruns: number;
+}
+
 
 // ── Orchestrator Combined Section ────────────────────────────────────
 
@@ -301,6 +375,8 @@ export interface OrchestratorSection {
 	failure: FailureConfig;
 	/** Monitoring */
 	monitoring: MonitoringConfig;
+	/** Verification baseline fingerprinting (TP-032) */
+	verification: VerificationConfig;
 }
 
 
@@ -417,6 +493,13 @@ export const DEFAULT_TASK_RUNNER_SECTION: TaskRunnerSection = {
 	neverLoad: [],
 	selfDocTargets: {},
 	protectedDocs: [],
+	qualityGate: {
+		enabled: false,
+		reviewModel: "",
+		maxReviewCycles: 2,
+		maxFixCycles: 1,
+		passThreshold: "no_critical",
+	},
 };
 
 /** Default orchestrator section values */
@@ -460,6 +543,11 @@ export const DEFAULT_ORCHESTRATOR_SECTION: OrchestratorSection = {
 	},
 	monitoring: {
 		pollInterval: 5,
+	},
+	verification: {
+		enabled: false,
+		mode: "permissive",
+		flakyReruns: 1,
 	},
 };
 

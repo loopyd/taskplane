@@ -3,6 +3,7 @@
  * @module orch/types
  */
 import { join } from "path";
+import type { ExitClassification, TaskExitDiagnostic } from "./diagnostics.js";
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -50,6 +51,12 @@ export interface OrchestratorConfig {
 	};
 	monitoring: {
 		poll_interval: number;
+	};
+	/** Verification baseline fingerprinting settings (TP-032). */
+	verification: {
+		enabled: boolean;
+		mode: "strict" | "permissive";
+		flaky_reruns: number;
 	};
 }
 
@@ -125,6 +132,8 @@ export interface TaskArea {
 export interface TaskRunnerConfig {
 	task_areas: Record<string, TaskArea>;
 	reference_docs: Record<string, string>;
+	/** Named testing/verification commands (e.g., { test: "npx vitest run" }). Used for baseline fingerprinting (TP-032). */
+	testing_commands?: Record<string, string>;
 }
 
 /** Result of a preflight check */
@@ -184,6 +193,11 @@ export const DEFAULT_ORCHESTRATOR_CONFIG: OrchestratorConfig = {
 	},
 	monitoring: {
 		poll_interval: 5,
+	},
+	verification: {
+		enabled: false,
+		mode: "permissive",
+		flaky_reruns: 1,
 	},
 };
 
@@ -549,6 +563,31 @@ export interface LaneTaskOutcome {
 	sessionName: string;
 	/** Whether .DONE file was found */
 	doneFileFound: boolean;
+	/**
+	 * Number of commits preserved as partial progress for a failed task.
+	 * 0 when no partial progress was saved (succeeded tasks, no commits, etc.).
+	 * Optional for backward compatibility — defaults to 0 when absent.
+	 */
+	partialProgressCommits?: number;
+	/**
+	 * Saved branch name holding partial progress for a failed task.
+	 * Undefined when no partial progress was saved.
+	 * Optional for backward compatibility.
+	 */
+	partialProgressBranch?: string;
+	/**
+	 * Structured exit diagnostic for this task (v3, TP-030).
+	 *
+	 * Canonical structured exit data — preferred over the legacy `exitReason`
+	 * string when present. Produced by `classifyExit()` after session ends,
+	 * then enriched with progress/context metadata.
+	 *
+	 * Optional: absent for tasks that haven't exited yet, and for
+	 * backward compatibility with pre-v3 code paths.
+	 * Consumers should check `exitDiagnostic` first, falling back to
+	 * `exitReason` for display.
+	 */
+	exitDiagnostic?: TaskExitDiagnostic;
 }
 
 /**
@@ -868,6 +907,21 @@ export interface OrchBatchRuntimeState {
 	dependencyGraph: DependencyGraph | null;
 	/** Accumulated merge results across all waves */
 	mergeResults: MergeWaveResult[];
+	/**
+	 * v3 resilience state carried forward across resume cycles.
+	 * Populated from persisted state on resume; defaults used for new batches.
+	 */
+	resilience?: ResilienceState;
+	/**
+	 * v3 diagnostics state carried forward across resume cycles.
+	 * Populated from persisted state on resume; defaults used for new batches.
+	 */
+	diagnostics?: BatchDiagnostics;
+	/**
+	 * Unknown top-level fields from loaded persisted state.
+	 * Carried forward so they survive serialization roundtrips.
+	 */
+	_extraFields?: Record<string, unknown>;
 }
 
 /**
@@ -979,6 +1033,27 @@ export interface MergeResult {
 	verification: MergeVerification;
 }
 
+/**
+ * Orchestrator-side verification baseline comparison result for a single lane.
+ * Populated when verification baseline fingerprinting is enabled (testing.commands configured).
+ */
+export interface VerificationBaselineResult {
+	/** Whether baseline comparison was performed */
+	performed: boolean;
+	/** Number of new failures (not in baseline) */
+	newFailureCount: number;
+	/** Number of pre-existing failures (also in baseline) */
+	preExistingCount: number;
+	/** Number of failures that disappeared (fixed by the merge) */
+	fixedCount: number;
+	/** Classification: "pass" (no new failures), "verification_new_failure", "flaky_suspected" */
+	classification: "pass" | "verification_new_failure" | "flaky_suspected";
+	/** Human-readable summary of new failures (truncated) */
+	newFailureSummary: string;
+	/** Whether a flaky re-run was performed */
+	flakyRerunPerformed: boolean;
+}
+
 /** Per-lane merge outcome, enriched by the orchestrator. */
 export interface MergeLaneResult {
 	laneNumber: number;
@@ -990,6 +1065,12 @@ export interface MergeLaneResult {
 	durationMs: number;
 	/** Repo ID this lane targeted (workspace mode only). Undefined in repo mode. */
 	repoId?: string;
+	/**
+	 * Orchestrator-side verification baseline result (TP-032).
+	 * Populated when baseline fingerprinting is enabled and a successful merge occurred.
+	 * Undefined when fingerprinting is not enabled or merge failed before verification.
+	 */
+	verificationBaseline?: VerificationBaselineResult;
 }
 
 /** Overall wave merge outcome. */
@@ -1002,6 +1083,24 @@ export interface MergeWaveResult {
 	totalDurationMs: number;
 	/** Per-repo merge outcomes (populated in workspace mode; empty in repo mode). */
 	repoResults?: RepoMergeOutcome[];
+	/**
+	 * TP-033: True when a verification rollback failed and safe-stop was triggered.
+	 * Engine MUST force `paused` phase regardless of `on_merge_failure` config,
+	 * and preserve all merge worktrees/branches for manual recovery.
+	 */
+	rollbackFailed?: boolean;
+	/**
+	 * TP-033: Transaction records for each lane merge attempt in this wave.
+	 * Populated when transactional envelope is active.
+	 */
+	transactionRecords?: TransactionRecord[];
+	/**
+	 * TP-033 R004-2: Errors encountered while persisting transaction records.
+	 * When non-empty, recovery commands in transaction records may reference
+	 * files that don't exist on disk. Operator should check `.pi/verification/`
+	 * manually.
+	 */
+	persistenceErrors?: string[];
 }
 
 /** Per-repo merge outcome within a wave merge. */
@@ -1016,6 +1115,62 @@ export interface RepoMergeOutcome {
 	failedLane: number | null;
 	/** Failure reason within this repo (null if all succeeded). */
 	failureReason: string | null;
+}
+
+// ── Merge Transaction Types (TP-033) ─────────────────────────────────
+
+/**
+ * Status of a transactional merge attempt for a single lane.
+ *
+ * - `committed`: Merge succeeded, verification passed, refs advanced.
+ * - `rolled_back`: Verification failed, merge commit rolled back to baseHEAD.
+ * - `rollback_failed`: Rollback attempted but failed — safe-stop triggered.
+ * - `merge_failed`: Merge itself failed (conflict, crash, etc.) before verification.
+ *
+ * @since TP-033
+ */
+export type TransactionStatus = "committed" | "rolled_back" | "rollback_failed" | "merge_failed";
+
+/**
+ * Transactional record for a single lane merge attempt.
+ *
+ * Persisted as JSON at:
+ * `.pi/verification/{opId}/txn-b{batchId}-repo-{repoId}-wave-{n}-lane-{k}.json`
+ *
+ * Captures the complete ref state before and after merge, rollback outcome,
+ * and recovery commands for safe-stop scenarios.
+ *
+ * @since TP-033
+ */
+export interface TransactionRecord {
+	/** Operator ID for this batch run */
+	opId: string;
+	/** Batch identifier */
+	batchId: string;
+	/** Wave index (0-based) */
+	waveIndex: number;
+	/** Lane number within the wave */
+	laneNumber: number;
+	/** Repo ID (undefined/null in repo mode, string in workspace mode) */
+	repoId: string | null;
+	/** HEAD of temp branch before this lane's merge commit (rollback target) */
+	baseHEAD: string;
+	/** HEAD of the lane's source branch (commit being merged in) */
+	laneHEAD: string;
+	/** HEAD of temp branch after merge commit (null if merge failed before commit) */
+	mergedHEAD: string | null;
+	/** Transaction outcome */
+	status: TransactionStatus;
+	/** Whether a rollback was attempted */
+	rollbackAttempted: boolean;
+	/** Rollback outcome detail (null if rollback not attempted) */
+	rollbackResult: string | null;
+	/** Recovery commands emitted on rollback failure (empty array otherwise) */
+	recoveryCommands: string[];
+	/** ISO timestamp when transaction started */
+	startedAt: string;
+	/** ISO timestamp when transaction completed */
+	completedAt: string;
 }
 
 // ── Merge Error Types ────────────────────────────────────────────────
@@ -1090,6 +1245,197 @@ export const MERGE_RESULT_READ_RETRY_DELAY_MS = 1_000;
 export const MERGE_SPAWN_RETRY_MAX = 2;
 
 
+// ── Merge Retry Policy Matrix (TP-033 Step 2) ───────────────────────
+
+/**
+ * Merge-related failure classifications for the retry policy matrix.
+ *
+ * These are the merge-phase failure classes from the resilience roadmap §4c.
+ * Task-execution classes (api_error, context_overflow, etc.) are out of scope
+ * for TP-033 and handled separately in Phase 1/3.
+ *
+ * @since TP-033
+ */
+export type MergeFailureClassification =
+	| "verification_new_failure"
+	| "merge_conflict_unresolved"
+	| "cleanup_post_merge_failed"
+	| "git_worktree_dirty"
+	| "git_lock_file";
+
+/**
+ * Retry policy for a single merge failure classification.
+ *
+ * Defines whether a failure class is retriable, the maximum retry attempts,
+ * cooldown between retries (in milliseconds), and what happens on exhaustion.
+ *
+ * @since TP-033
+ */
+export interface MergeRetryPolicy {
+	/** Whether this failure class can be retried automatically */
+	retriable: boolean;
+	/** Maximum number of retry attempts (0 for non-retriable) */
+	maxAttempts: number;
+	/** Cooldown delay between retries in milliseconds (0 for immediate) */
+	cooldownMs: number;
+	/** Action when retries are exhausted or class is non-retriable */
+	exhaustionAction: "pause" | "pause_wave_gate" | "pause_escalation";
+}
+
+/**
+ * Centralized retry policy matrix for merge-related failure classes.
+ *
+ * This is the **single source of truth** for retry behavior. Both engine.ts
+ * and resume.ts consume this table through `computeMergeRetryDecision()` to
+ * guarantee parity.
+ *
+ * Values from resilience roadmap §4c:
+ *
+ * | Classification              | Retry? | Max | Cooldown | Exhaustion          |
+ * |-----------------------------|--------|-----|----------|---------------------|
+ * | verification_new_failure    | ✅     | 1   | 0ms      | pause + diagnostic  |
+ * | merge_conflict_unresolved   | ❌     | 0   | —        | pause + escalation  |
+ * | cleanup_post_merge_failed   | ✅     | 1   | 2000ms   | pause (wave gate)   |
+ * | git_worktree_dirty          | ✅     | 1   | 2000ms   | pause               |
+ * | git_lock_file               | ✅     | 2   | 3000ms   | pause               |
+ *
+ * @since TP-033
+ */
+export const MERGE_RETRY_POLICY_MATRIX: Readonly<Record<MergeFailureClassification, MergeRetryPolicy>> = {
+	verification_new_failure: {
+		retriable: true,
+		maxAttempts: 1,
+		cooldownMs: 0,
+		exhaustionAction: "pause",
+	},
+	merge_conflict_unresolved: {
+		retriable: false,
+		maxAttempts: 0,
+		cooldownMs: 0,
+		exhaustionAction: "pause_escalation",
+	},
+	cleanup_post_merge_failed: {
+		retriable: true,
+		maxAttempts: 1,
+		cooldownMs: 2_000,
+		exhaustionAction: "pause_wave_gate",
+	},
+	git_worktree_dirty: {
+		retriable: true,
+		maxAttempts: 1,
+		cooldownMs: 2_000,
+		exhaustionAction: "pause",
+	},
+	git_lock_file: {
+		retriable: true,
+		maxAttempts: 2,
+		cooldownMs: 3_000,
+		exhaustionAction: "pause",
+	},
+};
+
+/**
+ * All merge failure classifications as a readonly array, for iteration/validation.
+ * @since TP-033
+ */
+export const MERGE_FAILURE_CLASSIFICATIONS: readonly MergeFailureClassification[] = [
+	"verification_new_failure",
+	"merge_conflict_unresolved",
+	"cleanup_post_merge_failed",
+	"git_worktree_dirty",
+	"git_lock_file",
+] as const;
+
+/**
+ * Decision output from the merge retry policy evaluator.
+ *
+ * Pure data structure — callers use this to decide whether to retry,
+ * wait, or escalate to paused.
+ *
+ * @since TP-033
+ */
+export interface MergeRetryDecision {
+	/** Whether the merge should be retried */
+	shouldRetry: boolean;
+	/** Cooldown to wait before retry (0 if no retry or immediate) */
+	cooldownMs: number;
+	/** Human-readable reason for the decision */
+	reason: string;
+	/** Current retry count for this scope (after increment if retrying) */
+	currentAttempt: number;
+	/** Maximum attempts allowed for this classification */
+	maxAttempts: number;
+	/** Classification that was evaluated */
+	classification: MergeFailureClassification;
+	/** Exhaustion action if not retrying */
+	exhaustionAction: MergeRetryPolicy["exhaustionAction"];
+}
+
+/**
+ * Outcome of the merge retry loop.
+ *
+ * Returned by `applyMergeRetryLoop()` to tell the caller what happened
+ * during the retry cycle so it can take the appropriate action (continue,
+ * break, force-pause, etc.).
+ *
+ * @since TP-033 R006
+ */
+export type MergeRetryLoopOutcome =
+	| {
+		/** Retry succeeded — caller should continue normal post-merge flow */
+		kind: "retry_succeeded";
+		mergeResult: MergeWaveResult;
+	}
+	| {
+		/** Safe-stop triggered during retry — caller should break the wave loop */
+		kind: "safe_stop";
+		mergeResult: MergeWaveResult;
+		errorMessage: string;
+		notifyMessage: string;
+	}
+	| {
+		/**
+		 * Retry exhausted or failure is non-retriable — caller should
+		 * force `paused` regardless of on_merge_failure config.
+		 */
+		kind: "exhausted";
+		mergeResult: MergeWaveResult;
+		classification: MergeFailureClassification | null;
+		scopeKey: string;
+		lastDecision: MergeRetryDecision;
+		errorMessage: string;
+		notifyMessage: string;
+	}
+	| {
+		/** No retry attempted (unclassifiable or non-retriable with 0 attempts).
+		 *  Caller should fall through to standard on_merge_failure policy. */
+		kind: "no_retry";
+		mergeResult: MergeWaveResult;
+		classification: MergeFailureClassification | null;
+		scopeKey: string;
+	};
+
+/**
+ * Callbacks provided to `applyMergeRetryLoop()` for side effects
+ * that differ between engine.ts and resume.ts.
+ *
+ * @since TP-033 R006
+ */
+export interface MergeRetryCallbacks {
+	/** Re-invoke mergeWaveByRepo and return the new result */
+	performMerge: () => MergeWaveResult;
+	/** Persist batch state with a trigger label */
+	persist: (trigger: string) => void;
+	/** Log a message */
+	log: (message: string, details?: Record<string, unknown>) => void;
+	/** Emit a notification */
+	notify: (message: string, level: "info" | "warning" | "error") => void;
+	/** Update the merge result in tracking arrays */
+	updateMergeResult: (result: MergeWaveResult) => void;
+	/** Sleep for cooldown (allows test injection) */
+	sleep: (ms: number) => void;
+}
+
 // ── View-Model Types ─────────────────────────────────────────────────
 
 /**
@@ -1146,6 +1492,131 @@ export interface OrchDashboardViewModel {
 
 // ── State Persistence Types (TS-009) ─────────────────────────────────
 
+// ── v3 Resilience & Diagnostics Sections (TP-030) ────────────────────
+
+/**
+ * Record of a single automated repair action taken by the orchestrator.
+ *
+ * Repair actions are deterministic strategies applied when known failure
+ * classes are detected (e.g., stale worktree cleanup, lock file removal).
+ * Each entry is immutable once written — history is append-only.
+ *
+ * @since v3 (TP-030)
+ */
+export interface PersistedRepairRecord {
+	/** Unique repair ID (e.g., "r-20260319-001") */
+	id: string;
+	/** Strategy name that was applied (e.g., "stale-worktree-cleanup", "lock-file-removal") */
+	strategy: string;
+	/** Outcome of the repair */
+	status: "succeeded" | "failed" | "skipped";
+	/** Repo ID targeted by the repair (undefined in repo mode) */
+	repoId?: string;
+	/** Epoch ms when the repair started */
+	startedAt: number;
+	/** Epoch ms when the repair ended */
+	endedAt: number;
+}
+
+/**
+ * Resilience state section for batch-state.json.
+ *
+ * Tracks retry/repair metadata so the orchestrator can make informed
+ * decisions about retries, force-resume, and failure escalation.
+ *
+ * All fields are required in a canonical v3 state. Migration from v1/v2
+ * fills conservative defaults (no retries, no repairs, no forced resume).
+ *
+ * @since v3 (TP-030)
+ */
+export interface ResilienceState {
+	/** Whether the last resume was a --force resume */
+	resumeForced: boolean;
+	/**
+	 * Retry counts keyed by scope string.
+	 * Scope format: `{taskId}:w{waveIndex}:l{laneNumber}` (e.g., "TP-001:w0:l1").
+	 * Value is the number of retries attempted for that scope.
+	 */
+	retryCountByScope: Record<string, number>;
+	/**
+	 * Exit classification of the most recent failure (null if no failures).
+	 * Uses the same `ExitClassification` union from diagnostics.ts.
+	 */
+	lastFailureClass: ExitClassification | null;
+	/** Chronological history of automated repair actions. Append-only. */
+	repairHistory: PersistedRepairRecord[];
+}
+
+/**
+ * Persisted summary of a single task's exit diagnostic.
+ *
+ * This is a compact representation stored in `diagnostics.taskExits`.
+ * For the full diagnostic (tokens, progress, etc.), see the
+ * `exitDiagnostic` field on `PersistedTaskRecord`.
+ *
+ * Uses `ExitClassification` from diagnostics.ts as the canonical
+ * classification type — no duplication.
+ *
+ * @since v3 (TP-030)
+ */
+export interface PersistedTaskExitSummary {
+	/** Deterministic exit classification */
+	classification: ExitClassification;
+	/** Estimated cost in USD for this task's execution */
+	cost: number;
+	/** Wall-clock duration of the task in seconds */
+	durationSec: number;
+	/** Number of retry attempts (0 if never retried) */
+	retries?: number;
+}
+
+/**
+ * Batch-level diagnostics section for batch-state.json.
+ *
+ * Aggregates per-task exit summaries and batch-wide cost for
+ * dashboard display and post-mortem analysis.
+ *
+ * All fields are required in a canonical v3 state. Migration from v1/v2
+ * fills conservative defaults (empty taskExits, zero batchCost).
+ *
+ * @since v3 (TP-030)
+ */
+export interface BatchDiagnostics {
+	/**
+	 * Per-task exit summaries keyed by task ID.
+	 * Populated as tasks complete during execution.
+	 */
+	taskExits: Record<string, PersistedTaskExitSummary>;
+	/** Accumulated batch cost in USD across all tasks */
+	batchCost: number;
+}
+
+/**
+ * Create a default ResilienceState with conservative initial values.
+ * Used when migrating v1/v2 states to v3, and for new batch creation.
+ */
+export function defaultResilienceState(): ResilienceState {
+	return {
+		resumeForced: false,
+		retryCountByScope: {},
+		lastFailureClass: null,
+		repairHistory: [],
+	};
+}
+
+/**
+ * Create a default BatchDiagnostics with empty/zero initial values.
+ * Used when migrating v1/v2 states to v3, and for new batch creation.
+ */
+export function defaultBatchDiagnostics(): BatchDiagnostics {
+	return {
+		taskExits: {},
+		batchCost: 0,
+	};
+}
+
+// ── Schema Version & Constants ───────────────────────────────────────
+
 /**
  * Current schema version for batch-state.json.
  * Increment when the persisted schema changes in incompatible ways.
@@ -1156,14 +1627,21 @@ export interface OrchDashboardViewModel {
  *   v2 — Repo-aware records (TP-006). Adds `repoId` and `resolvedRepoId`
  *         to task records. Formalizes `repoId` on lane records. Adds
  *         `mode` field to top-level state.
+ *   v3 — Resilience & diagnostics (TP-030). Adds optional `resilience`
+ *         section (retry counters, force-resume, failure classification,
+ *         repair history) and optional `diagnostics` section (per-task
+ *         exit summaries, batch cost). Task records gain optional
+ *         `exitDiagnostic` alongside legacy `exitReason`.
+ *         Both new sections are optional for v1/v2 migration paths.
  *
  * Compatibility policy:
- *   - loadBatchState() accepts v1 files and auto-upconverts to v2 in memory
- *     (via upconvertV1toV2()). The on-disk file is NOT rewritten.
- *   - saveBatchState() always writes v2.
- *   - Schema versions > 2 are rejected with STATE_SCHEMA_INVALID.
+ *   - loadBatchState() accepts v1, v2, and v3 files. v1 and v2 are
+ *     auto-upconverted to v3 in memory (chained: v1→v2→v3).
+ *     The on-disk file is NOT rewritten during load.
+ *   - saveBatchState() always writes v3.
+ *   - Schema versions > 3 are rejected with STATE_SCHEMA_INVALID.
  */
-export const BATCH_STATE_SCHEMA_VERSION = 2;
+export const BATCH_STATE_SCHEMA_VERSION = 3;
 
 /**
  * Canonical file path for persisted batch state.
@@ -1258,6 +1736,30 @@ export interface PersistedTaskRecord {
 	 * repo target after prompt → area → workspace-default fallback.
 	 */
 	resolvedRepoId?: string;
+	/**
+	 * Number of commits preserved as partial progress for a failed task (TP-028).
+	 * Undefined when no partial progress was saved (succeeded tasks, no commits, etc.).
+	 * Optional for backward compatibility with pre-TP-028 state files.
+	 */
+	partialProgressCommits?: number;
+	/**
+	 * Saved branch name holding partial progress for a failed task (TP-028).
+	 * Undefined when no partial progress was saved.
+	 * Optional for backward compatibility with pre-TP-028 state files.
+	 */
+	partialProgressBranch?: string;
+	/**
+	 * Structured exit diagnostic for this task (v3, TP-030).
+	 *
+	 * Canonical structured exit data — preferred over the legacy `exitReason`
+	 * string when present. Contains deterministic classification, cost, timing,
+	 * and progress metadata.
+	 *
+	 * Optional for backward compatibility with v1/v2 state files and tasks
+	 * that haven't exited yet. Consumers should check `exitDiagnostic` first,
+	 * falling back to `exitReason` for display.
+	 */
+	exitDiagnostic?: TaskExitDiagnostic;
 }
 
 /**
@@ -1363,9 +1865,18 @@ export interface PersistedRepoMergeOutcome {
  * - Lane records formalize `repoId` contract per mode
  * - v1 files are auto-upconverted: `mode` defaults to "repo", task/lane
  *   `repoId` fields default to `undefined` (omitted from JSON)
+ *
+ * v3 additions (TP-030):
+ * - `resilience` section (required): retry counters, force-resume intent,
+ *   failure classification, and repair history for automated recovery.
+ * - `diagnostics` section (required): per-task exit summaries and batch cost.
+ * - Task records gain optional `exitDiagnostic` (canonical structured exit
+ *   data alongside legacy `exitReason` string).
+ * - Both sections are required in v3. Migration from v1/v2 fills
+ *   conservative defaults (see `defaultResilienceState()` / `defaultBatchDiagnostics()`).
  */
 export interface PersistedBatchState {
-	/** Schema version — must equal BATCH_STATE_SCHEMA_VERSION (currently 2) */
+	/** Schema version — must equal BATCH_STATE_SCHEMA_VERSION (currently 3) */
 	schemaVersion: number;
 	/** Current batch execution phase */
 	phase: OrchBatchPhase;
@@ -1412,6 +1923,23 @@ export interface PersistedBatchState {
 	lastError: { code: string; message: string } | null;
 	/** Accumulated error messages */
 	errors: string[];
+	/**
+	 * Resilience state for retry/recovery tracking (v3, TP-030).
+	 * Required in v3. Migration from v1/v2 fills conservative defaults.
+	 */
+	resilience: ResilienceState;
+	/**
+	 * Batch-level diagnostics for cost tracking and exit summaries (v3, TP-030).
+	 * Required in v3. Migration from v1/v2 fills conservative defaults.
+	 */
+	diagnostics: BatchDiagnostics;
+	/**
+	 * Unknown top-level fields captured during deserialization.
+	 * Preserved on roundtrip to avoid data loss from future schema extensions
+	 * or external tools writing additional fields.
+	 * Not serialized directly — merged back by `serializeBatchState()`.
+	 */
+	_extraFields?: Record<string, unknown>;
 }
 
 
