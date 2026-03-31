@@ -159,6 +159,21 @@ Workspace-mode smoke tests and segment-roadmap prerequisites pass on Runtime V2.
 - Full suite: 3366 pass, 0 failures
 - CLI smoke passes
 
+## Phase F.3 — Resume and monitor de-TMUX (TP-112) ✅ Implemented
+
+### Delivered
+
+- Resume session liveness: V2 uses process registry (`readRegistrySnapshot` + `isProcessAlive`) instead of `tmuxHasSession`
+- Resume reconnect: V2 uses `executeLaneV2` instead of `pollUntilTaskComplete` (TMUX session polling)
+- Resume re-execute: V2 uses `executeLaneV2` instead of `spawnLaneSession` + `pollUntilTaskComplete`
+- Monitor liveness: `resolveTaskMonitorState` accepts `runtimeBackend`; V2 lanes treated as always-alive (module calls, not TMUX sessions)
+- `monitorLanes` and `executeWave` thread backend through to monitor
+- Legacy TMUX paths preserved for `backend === "legacy"` only
+
+### Exit gate
+
+- Full suite: 3383 pass, 0 failures
+
 ## Phase G — Default switch and cleanup
 
 ### Deliverables

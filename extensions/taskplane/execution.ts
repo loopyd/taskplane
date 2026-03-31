@@ -1693,8 +1693,21 @@ export async function resolveTaskMonitorState(
 	tracker: MtimeTracker,
 	stallTimeoutMs: number,
 	now: number,
+	runtimeBackend?: RuntimeBackend,
 ): Promise<TaskMonitorSnapshot> {
-	const sessionAlive = await tmuxHasSessionAsync(sessionName);
+	// TP-112: Backend-aware liveness check.
+	// V2: check process registry. Legacy: check TMUX session.
+	let sessionAlive: boolean;
+	if (runtimeBackend === "v2") {
+		// V2 lanes are module calls that run as direct children.
+		// For monitoring, we consider V2 lanes always "alive" while executing
+		// (the lane-runner controls its own lifecycle; monitoring is observational).
+		// If the lane has completed, the executor will have already returned
+		// and won't call the monitor anymore.
+		sessionAlive = true;
+	} else {
+		sessionAlive = await tmuxHasSessionAsync(sessionName);
+	}
 	const doneFileFound = await fileExistsAsync(donePath);
 
 	// Build base snapshot from parsed status
@@ -1894,6 +1907,7 @@ export async function monitorLanes(
 	waveNumber: number = 1,
 	onUpdate?: MonitorUpdateCallback,
 	isWorkspaceMode?: boolean,
+	runtimeBackend?: RuntimeBackend,
 ): Promise<MonitorState> {
 	const pollIntervalMs = (config.monitoring.poll_interval || 5) * 1000;
 	const stallTimeoutMs = (config.failure.stall_timeout || 30) * 60_000;
@@ -1994,6 +2008,7 @@ export async function monitorLanes(
 						tracker,
 						stallTimeoutMs,
 						now,
+						runtimeBackend,
 					);
 
 					currentTaskSnapshot = snapshot;
@@ -2425,6 +2440,7 @@ export async function executeWave(
 		waveIndex,
 		onMonitorUpdate,
 		isWsMode,
+		backend,
 	);
 
 	// ── Stage 4: Wait for all lanes + apply policy ───────────────
