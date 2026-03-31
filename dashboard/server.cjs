@@ -416,18 +416,31 @@ function loadRuntimeAgentEvents(batchId, agentId, maxEvents) {
 
 /**
  * Load mailbox message activity for the current batch.
- * Scans inbox/ack/outbox directories for all agents.
+ *
+ * TP-093 hardening: event-authoritative model.
+ * Primary source: .pi/mailbox/{batchId}/events.jsonl (audit event stream).
+ * Fallback: directory scans (inbox/ack/outbox/outbox/processed) for
+ * compatibility when events.jsonl is absent.
+ *
+ * Includes:
+ * - Consumed replies (outbox/processed/) so they don't disappear after ack
+ * - Per-recipient broadcast delivery state from ack markers
+ * - Rate-limited events in the timeline
  */
 function loadMailboxData(batchId) {
-  if (!batchId) return { messages: [], agentIds: [] };
-  const mailboxRoot = path.join(REPO_ROOT, ".pi", "mailbox", batchId);
-  if (!fs.existsSync(mailboxRoot)) return { messages: [], agentIds: [] };
+  if (!batchId) return { messages: [], agentIds: [], auditEvents: [] };
+  const mbRoot = path.join(REPO_ROOT, ".pi", "mailbox", batchId);
+  if (!fs.existsSync(mbRoot)) return { messages: [], agentIds: [], auditEvents: [] };
 
+  // ── Primary: events.jsonl audit trail ──
+  const auditEvents = loadMailboxAuditEvents(mbRoot);
+
+  // ── Fallback: directory scan ──
   const messages = [];
   const agentIds = [];
 
   try {
-    const dirs = fs.readdirSync(mailboxRoot, { withFileTypes: true })
+    const dirs = fs.readdirSync(mbRoot, { withFileTypes: true })
       .filter(d => d.isDirectory())
       .map(d => d.name);
 
@@ -435,16 +448,20 @@ function loadMailboxData(batchId) {
       if (agentDir === "_broadcast") continue;
       agentIds.push(agentDir);
 
-      // Read inbox (pending)
-      for (const subdir of ["inbox", "ack", "outbox"]) {
-        const dir = path.join(mailboxRoot, agentDir, subdir);
+      // Scan inbox (pending), ack (delivered), outbox (active replies), outbox/processed (consumed replies)
+      for (const subdir of ["inbox", "ack", "outbox", "outbox/processed"]) {
+        const dir = path.join(mbRoot, agentDir, subdir);
         if (!fs.existsSync(dir)) continue;
         try {
           const files = fs.readdirSync(dir).filter(f => f.endsWith(".msg.json"));
           for (const file of files) {
             try {
               const msg = JSON.parse(fs.readFileSync(path.join(dir, file), "utf-8"));
-              const status = subdir === "inbox" ? "pending" : subdir === "ack" ? "delivered" : "reply";
+              let status;
+              if (subdir === "inbox") status = "pending";
+              else if (subdir === "ack") status = "delivered";
+              else if (subdir === "outbox") status = "reply";
+              else status = "reply-acked"; // outbox/processed
               messages.push({ ...msg, _status: status, _agentDir: agentDir });
             } catch { continue; }
           }
@@ -452,9 +469,9 @@ function loadMailboxData(batchId) {
       }
     }
 
-    // Also check _broadcast
-    const broadcastInbox = path.join(mailboxRoot, "_broadcast", "inbox");
-    const broadcastAck = path.join(mailboxRoot, "_broadcast", "ack");
+    // _broadcast: per-recipient delivery state
+    const broadcastInbox = path.join(mbRoot, "_broadcast", "inbox");
+    const broadcastAck = path.join(mbRoot, "_broadcast", "ack");
     for (const [dir, status] of [[broadcastInbox, "pending"], [broadcastAck, "delivered"]]) {
       if (!fs.existsSync(dir)) continue;
       try {
@@ -462,7 +479,7 @@ function loadMailboxData(batchId) {
         for (const file of files) {
           try {
             const msg = JSON.parse(fs.readFileSync(path.join(dir, file), "utf-8"));
-            messages.push({ ...msg, _status: status, _agentDir: "_broadcast" });
+            messages.push({ ...msg, _status: status, _agentDir: "_broadcast", _isBroadcast: true });
           } catch { continue; }
         }
       } catch { continue; }
@@ -470,7 +487,28 @@ function loadMailboxData(batchId) {
   } catch { /* mailbox dir issues */ }
 
   messages.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
-  return { messages, agentIds };
+  return { messages, agentIds, auditEvents };
+}
+
+/**
+ * Load mailbox audit events from events.jsonl.
+ * Returns events sorted by timestamp. Includes: message_sent, message_delivered,
+ * message_replied, message_escalated, message_rate_limited.
+ */
+function loadMailboxAuditEvents(mbRoot) {
+  const eventsPath = path.join(mbRoot, "events.jsonl");
+  if (!fs.existsSync(eventsPath)) return [];
+  try {
+    const raw = fs.readFileSync(eventsPath, "utf-8");
+    const events = [];
+    for (const line of raw.split("\n")) {
+      if (!line.trim()) continue;
+      try { events.push(JSON.parse(line)); } catch { continue; }
+    }
+    return events;
+  } catch {
+    return [];
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -1352,10 +1390,32 @@ function createServer() {
       const prefix = pathname.slice("/api/conversation/".length);
       serveConversation(req, res, prefix);
     } else if (pathname.startsWith("/api/agent-events/") && req.method === "GET") {
-      // TP-107: Serve Runtime V2 agent events
+      // TP-107: Serve Runtime V2 agent events (hardened)
       const agentId = decodeURIComponent(pathname.slice("/api/agent-events/".length));
+      // Strict validation: same pattern as /api/conversation/:prefix
+      if (!/^[\w-]+$/.test(agentId)) {
+        res.writeHead(400, { "Content-Type": "text/plain" });
+        res.end("Invalid agent ID");
+        return;
+      }
       const batchState = loadBatchState();
-      const events = loadRuntimeAgentEvents(batchState?.batchId, agentId, 300);
+      // Path containment: verify resolved path stays inside runtime dir
+      if (batchState?.batchId) {
+        const runtimeBase = path.join(REPO_ROOT, ".pi", "runtime", batchState.batchId, "agents");
+        const resolvedAgent = path.resolve(runtimeBase, agentId);
+        if (!resolvedAgent.startsWith(path.resolve(runtimeBase))) {
+          res.writeHead(403, { "Content-Type": "text/plain" });
+          res.end("Forbidden");
+          return;
+        }
+      }
+      // Optional: ?sinceTs= to return only events after a timestamp
+      const reqUrl = new URL(req.url, "http://localhost");
+      const sinceTs = parseInt(reqUrl.searchParams.get("sinceTs") || "0", 10);
+      let events = loadRuntimeAgentEvents(batchState?.batchId, agentId, 300);
+      if (sinceTs > 0) {
+        events = events.filter(e => (e.ts || 0) > sinceTs);
+      }
       res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
       res.end(JSON.stringify(events));
     } else if (pathname === "/api/state" && req.method === "GET") {

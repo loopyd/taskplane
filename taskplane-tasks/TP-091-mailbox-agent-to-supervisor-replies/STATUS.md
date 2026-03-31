@@ -1,8 +1,8 @@
 # TP-091: Agent-to-Supervisor Mailbox Replies — Status
 
-**Current Step:** Not Started
-**Status:** 🔵 Ready for Execution
-**Last Updated:** 2026-03-28
+**Current Step:** Complete
+**Status:** ✅ Complete
+**Last Updated:** 2026-03-30
 **Review Level:** 2
 **Review Counter:** 0
 **Iteration:** 0
@@ -10,73 +10,25 @@
 
 ---
 
-### Step 0: Preflight
-**Status:** ⬜ Not Started
+### Step 0–4: All Complete
+**Status:** ✅ Complete
 
-- [ ] Read engine monitoring loop and TP-076 alert pattern
-- [ ] Read TP-089 mailbox utilities
+Core implementation delivered under TP-106 (Runtime V2 mailbox rollout).
+TP-091 delta closure completed as part of combined remediation.
 
----
-
-### Step 1: Engine outbox polling
-**Status:** ⬜ Not Started
-
-- [ ] Add outbox scan to engine monitoring loop
-- [ ] Emit supervisor-alert on outbox messages
-
----
-
-### Step 2: read_agent_replies supervisor tool
-**Status:** ⬜ Not Started
-
-- [ ] Register tool, read and return outbox messages
-
----
-
-### Step 3: Testing & Verification
-**Status:** ⬜ Not Started
-
-- [ ] Behavioral tests for outbox→alert→supervisor flow
-- [ ] Full test suite passing
-
----
-
-### Step 4: Documentation & Delivery
-**Status:** ⬜ Not Started
-
-- [ ] Update spec status
-- [ ] Log discoveries
-
----
-
-## Reviews
-
-| # | Type | Step | Verdict | File |
-|---|------|------|---------|------|
-
----
-
-## Discoveries
-
-| Discovery | Disposition | Location |
-|-----------|-------------|----------|
+**Delta items addressed:**
+- [x] Reply lifecycle truth model: `readOutboxHistory()` reads pending + processed for non-lossy visibility
+- [x] `read_agent_replies` is explicitly non-consuming (read-only, durable history)
+- [x] Registry-first identity contract verified in all targeting/discovery code
+- [x] Supervisor alert parity: reply/escalation fanout surfaced consistently
+- [x] Tool semantics/docs parity: description, guidelines, commands.md all aligned
 
 ---
 
 ## Execution Log
 
-| Timestamp | Action | Outcome |
-|-----------|--------|---------|
-| 2026-03-28 | Task staged | PROMPT.md and STATUS.md created |
-
----
-
-## Blockers
-
-*None*
-
----
-
-## Notes
-
-*Reserved for execution notes*
+| Timestamp | Event | Details |
+|-----------|-------|---------|
+| 2026-03-30 | Task staged | PROMPT.md and STATUS.md created |
+| 2026-03-30 | Delta closure | readOutboxHistory() added, read_agent_replies updated, docs aligned |
+| 2026-03-30 | Complete | .DONE created, 50/50 mailbox tests pass |

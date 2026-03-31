@@ -55,6 +55,47 @@ function formatCost(usd) {
   return `$${usd.toFixed(2)}`;
 }
 
+/**
+ * TP-107: Check if a lane has a live agent via the Runtime V2 registry.
+ * Returns true/false if registry data is available, null if no V2 data.
+ */
+function isLaneAliveV2(laneNumber) {
+  if (!currentData || !currentData.runtimeRegistry || !currentData.runtimeRegistry.agents) return null;
+  const agents = Object.values(currentData.runtimeRegistry.agents);
+  const laneAgents = agents.filter(a => a.laneNumber === laneNumber);
+  if (laneAgents.length === 0) return null;
+  return laneAgents.some(a => a.status === 'running' || a.status === 'spawning');
+}
+
+/**
+ * TP-107: Merge Runtime V2 lane snapshot data onto legacy lane state.
+ * V2 fields take precedence when present; legacy fields are preserved as fallback.
+ */
+function mergeV2LaneSnapshot(legacyLs, v2snap) {
+  const base = legacyLs ? { ...legacyLs } : {};
+  // Overlay V2 fields from nested worker snapshot onto flat legacy shape.
+  // RuntimeLaneSnapshot has worker: { status, elapsedMs, toolCalls, contextPct, ... }
+  const w = v2snap.worker;
+  if (w) {
+    if (w.status) base.workerStatus = w.status;
+    if (w.elapsedMs != null) base.workerElapsed = w.elapsedMs;
+    if (w.contextPct != null) base.workerContextPct = w.contextPct;
+    if (w.toolCalls != null) base.workerToolCount = w.toolCalls;
+    if (w.lastTool) base.workerLastTool = w.lastTool;
+    if (w.costUsd != null) base.workerCostUsd = w.costUsd;
+    if (w.inputTokens != null) base.workerInputTokens = w.inputTokens;
+    if (w.outputTokens != null) base.workerOutputTokens = w.outputTokens;
+    if (w.cacheReadTokens != null) base.workerCacheReadTokens = w.cacheReadTokens;
+    if (w.cacheWriteTokens != null) base.workerCacheWriteTokens = w.cacheWriteTokens;
+  }
+  if (v2snap.taskId) base.taskId = v2snap.taskId;
+  // Enrich progress display from V2 snapshot
+  if (v2snap.progress) {
+    base._v2Progress = v2snap.progress;
+  }
+  return base;
+}
+
 /** Build a compact token summary string from lane state sidecar data.
  *  Display: ↑total_input ↓output (cost)
  *  Anthropic splits input into: uncached `input` + `cacheRead`.
@@ -428,6 +469,8 @@ function renderLanesTasks(batch, tmuxSessions) {
   const tmuxSet = new Set(tmuxSessions || []);
   const laneStates = currentData?.laneStates || {};
   const telemetry = currentData?.telemetry || {};
+  // TP-107: V2 lane snapshots take precedence over legacy lane states when present
+  const v2Snapshots = currentData?.runtimeLaneSnapshots || {};
   const showRepos = knownRepos.length >= 2;
   let html = "";
 
@@ -440,7 +483,9 @@ function renderLanesTasks(batch, tmuxSessions) {
       if (!laneMatchesRepo) continue;
     }
 
-    const alive = tmuxSet.has(lane.tmuxSessionName);
+    // TP-107: check V2 registry for liveness first, fall back to tmux
+    const v2Alive = isLaneAliveV2(lane.laneNumber);
+    const alive = v2Alive !== null ? v2Alive : tmuxSet.has(lane.tmuxSessionName);
     const tmuxCmd = `tmux attach -t ${lane.tmuxSessionName}`;
 
     // Lane header
@@ -475,7 +520,10 @@ function renderLanesTasks(batch, tmuxSessions) {
     }
 
     // Get lane state and telemetry for worker stats
-    const ls = laneStates[lane.tmuxSessionName] || null;
+    // TP-107: V2 lane snapshots take precedence when present
+    const v2snap = v2Snapshots[lane.laneNumber] || null;
+    const legacyLs = laneStates[lane.tmuxSessionName] || null;
+    const ls = v2snap ? mergeV2LaneSnapshot(legacyLs, v2snap) : legacyLs;
     const tel = telemetry[lane.tmuxSessionName] || null;
 
     for (const task of laneTasks) {
@@ -875,36 +923,115 @@ function renderMessagesPanel(mailbox) {
   const $body = document.getElementById('messages-body');
   if (!$panel || !$body) return;
 
-  if (!mailbox || !mailbox.messages || mailbox.messages.length === 0) {
+  // TP-093: event-authoritative model — prefer audit events, fallback to directory scan
+  const auditEvents = mailbox?.auditEvents || [];
+  const dirMessages = mailbox?.messages || [];
+  const hasData = auditEvents.length > 0 || dirMessages.length > 0;
+
+  if (!mailbox || !hasData) {
     $panel.style.display = 'none';
     return;
   }
 
   $panel.style.display = '';
-  const messages = mailbox.messages;
   let html = '<div class="messages-list">';
 
-  for (const msg of messages) {
-    const ts = msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString() : '';
-    const direction = msg.to === 'supervisor' ? '\u2190 supervisor' : `\u2192 ${escapeHtml(msg.to || msg._agentDir || '')}`;
-    const statusBadge = msg._status === 'pending' ? '<span class="msg-badge msg-pending">pending</span>'
-      : msg._status === 'delivered' ? '<span class="msg-badge msg-delivered">delivered</span>'
-      : msg._status === 'reply' ? '<span class="msg-badge msg-reply">reply</span>'
-      : '';
-    const typeBadge = `<span class="msg-badge msg-type">${escapeHtml(msg.type || '')}</span>`;
-    const preview = (msg.content || '').slice(0, 120);
-
-    html += `<div class="message-row">`;
-    html += `<span class="msg-time">${escapeHtml(ts)}</span>`;
-    html += `<span class="msg-direction">${direction}</span>`;
-    html += typeBadge;
-    html += statusBadge;
-    html += `<span class="msg-preview">${escapeHtml(preview)}</span>`;
-    html += `</div>`;
+  if (auditEvents.length > 0) {
+    // Primary: render from audit event stream (authoritative, durable)
+    for (const evt of auditEvents) {
+      html += renderMailboxAuditEvent(evt);
+    }
+  } else {
+    // Fallback: render from directory scan (legacy compatibility)
+    for (const msg of dirMessages) {
+      html += renderMailboxDirMessage(msg);
+    }
   }
 
   html += '</div>';
   $body.innerHTML = html;
+}
+
+/** Render a single mailbox audit event (events.jsonl row). */
+function renderMailboxAuditEvent(evt) {
+  const ts = evt.ts ? new Date(evt.ts).toLocaleTimeString() : '';
+  const type = evt.type || '';
+
+  let direction = '';
+  let statusBadge = '';
+  let typeBadge = '';
+  let preview = '';
+
+  if (type === 'message_sent') {
+    const isBroadcast = evt.broadcast;
+    direction = isBroadcast ? '\u2192 all (broadcast)' : `\u2192 ${escapeHtml(evt.to || '')}`;
+    statusBadge = '<span class="msg-badge msg-delivered">sent</span>';
+    typeBadge = `<span class="msg-badge msg-type">${escapeHtml(evt.messageType || '')}</span>`;
+    preview = evt.contentPreview || '';
+  } else if (type === 'message_delivered') {
+    direction = `\u2192 ${escapeHtml(evt.to || '')}`;
+    statusBadge = evt.broadcast
+      ? '<span class="msg-badge msg-delivered">broadcast delivered</span>'
+      : '<span class="msg-badge msg-delivered">delivered</span>';
+    typeBadge = evt.messageType ? `<span class="msg-badge msg-type">${escapeHtml(evt.messageType)}</span>` : '';
+    preview = evt.contentPreview || '';
+  } else if (type === 'message_replied' || type === 'message_escalated') {
+    direction = `\u2190 ${escapeHtml(evt.from || '')}`;
+    statusBadge = type === 'message_escalated'
+      ? '<span class="msg-badge msg-reply">escalation</span>'
+      : '<span class="msg-badge msg-reply">reply</span>';
+    typeBadge = evt.messageType ? `<span class="msg-badge msg-type">${escapeHtml(evt.messageType)}</span>` : '';
+    preview = evt.contentPreview || '';
+  } else if (type === 'message_rate_limited') {
+    direction = `\u2192 ${escapeHtml(evt.to || '')}`;
+    statusBadge = '<span class="msg-badge msg-rate-limited">rate limited</span>';
+    const waitSec = evt.retryAfterMs ? Math.ceil(evt.retryAfterMs / 1000) : '?';
+    preview = `${evt.reason || 'Rate limited'} (retry in ${waitSec}s)`;
+  } else {
+    // Unknown event type — render generically
+    direction = evt.from ? `${escapeHtml(evt.from)}` : '';
+    preview = JSON.stringify(evt).slice(0, 120);
+  }
+
+  return `<div class="message-row">`
+    + `<span class="msg-time">${escapeHtml(ts)}</span>`
+    + `<span class="msg-direction">${direction}</span>`
+    + typeBadge
+    + statusBadge
+    + `<span class="msg-preview">${escapeHtml(preview)}</span>`
+    + `</div>`;
+}
+
+/** Render a single directory-scanned message (legacy fallback). */
+function renderMailboxDirMessage(msg) {
+  const ts = msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString() : '';
+  // TP-093: for broadcast per-agent ack markers, show recipient identity instead of "_broadcast"
+  let direction;
+  if (msg.to === 'supervisor') {
+    direction = '\u2190 supervisor';
+  } else if (msg._isBroadcast && msg._agentDir && msg._agentDir !== '_broadcast') {
+    direction = `\u2192 ${escapeHtml(msg._agentDir)} (broadcast)`;
+  } else {
+    direction = `\u2192 ${escapeHtml(msg.to || msg._agentDir || '')}`;
+  }
+  let statusBadge;
+  if (msg._status === 'pending') statusBadge = '<span class="msg-badge msg-pending">pending</span>';
+  else if (msg._status === 'delivered') statusBadge = '<span class="msg-badge msg-delivered">delivered</span>';
+  else if (msg._status === 'reply') statusBadge = '<span class="msg-badge msg-reply">reply</span>';
+  else if (msg._status === 'reply-acked') statusBadge = '<span class="msg-badge msg-delivered">reply (acked)</span>';
+  else statusBadge = '';
+  const typeBadge = `<span class="msg-badge msg-type">${escapeHtml(msg.type || '')}</span>`;
+  const preview = (msg.content || '').slice(0, 120);
+  const broadcastTag = msg._isBroadcast ? ' <span class="msg-badge msg-type">broadcast</span>' : '';
+
+  return `<div class="message-row">`
+    + `<span class="msg-time">${escapeHtml(ts)}</span>`
+    + `<span class="msg-direction">${direction}</span>`
+    + typeBadge
+    + statusBadge
+    + broadcastTag
+    + `<span class="msg-preview">${escapeHtml(preview)}</span>`
+    + `</div>`;
 }
 
 
@@ -1299,7 +1426,31 @@ let convRenderedLines = 0;
 // STATUS.md diff-and-skip state
 let lastStatusMdText = "";
 
-// ── Open conversation viewer ────────────────────────────────────────────────
+// ── Open conversation viewer (TP-107: V2 events preferred, legacy fallback) ──
+
+/**
+ * Resolve a lane's tmux session name to a Runtime V2 agent ID via the registry.
+ * Returns null if no V2 registry data is available.
+ */
+function resolveV2AgentId(sessionName) {
+  if (!currentData || !currentData.runtimeRegistry || !currentData.runtimeRegistry.agents) return null;
+  const agents = currentData.runtimeRegistry.agents;
+  // Direct match on agentId
+  if (agents[sessionName]) return sessionName;
+  // Match by tmux session prefix + "-worker" suffix (common V2 naming)
+  const workerKey = sessionName + '-worker';
+  if (agents[workerKey]) return workerKey;
+  // Search by laneNumber match from lane snapshots
+  for (const [id, agent] of Object.entries(agents)) {
+    if (agent.role === 'worker' && agent.laneNumber != null) {
+      const m = sessionName.match(/lane-(\d+)/);
+      if (m && parseInt(m[1]) === agent.laneNumber) return id;
+    }
+  }
+  return null;
+}
+
+let viewerV2AgentId = null; // Runtime V2 agent ID for current conversation view
 
 function viewConversation(sessionName) {
   // Toggle off if already viewing this session
@@ -1315,7 +1466,12 @@ function viewConversation(sessionName) {
   autoScrollOn = true;
   convRenderedLines = 0;
 
-  $terminalTitle.textContent = `Worker Conversation — ${sessionName}`;
+  // TP-107: Resolve V2 agent ID for events endpoint
+  const v2AgentId = resolveV2AgentId(sessionName);
+  viewerV2AgentId = v2AgentId;
+
+  const label = v2AgentId || sessionName;
+  $terminalTitle.textContent = `Worker Conversation — ${label}`;
   $autoScrollText.textContent = 'Follow feed';
   $autoScrollCheckbox.checked = true;
   $terminalPanel.style.display = '';
@@ -1328,9 +1484,21 @@ function viewConversation(sessionName) {
 }
 
 function pollConversation() {
-  fetch(`/api/conversation/${encodeURIComponent(viewerTarget)}`)
-    .then(r => r.text())
-    .then(text => {
+  // TP-107: prefer V2 agent events when available, fallback to legacy conversation
+  const endpoint = viewerV2AgentId
+    ? `/api/agent-events/${encodeURIComponent(viewerV2AgentId)}`
+    : `/api/conversation/${encodeURIComponent(viewerTarget)}`;
+  const isV2 = !!viewerV2AgentId;
+
+  fetch(endpoint)
+    .then(r => isV2 ? r.json() : r.text())
+    .then(data => {
+      if (isV2) {
+        renderV2AgentEvents(data);
+        return;
+      }
+      // Legacy: data is JSONL text
+      const text = data;
       if (!text.trim()) {
         if (convRenderedLines === 0) {
           $terminalBody.innerHTML = '<div class="conv-empty">No conversation events yet…</div>';
@@ -1379,6 +1547,111 @@ function pollConversation() {
       }
     })
     .catch(() => {});
+}
+
+// ── Runtime V2 agent event renderer (TP-107) ──────────────────────────────
+
+// Stable cursor for V2 event rendering.
+// Uses a signature string from the last rendered event so the sliding window
+// (server caps at 300) doesn't stall when new tail events push older ones out.
+let v2LastCursor = null; // signature of last rendered event
+let v2FirstRender = true;
+
+function v2EventSignature(evt) {
+  return `${evt.ts || 0}:${evt.type || ''}:${JSON.stringify(evt.payload || {}).slice(0, 80)}`;
+}
+
+function renderV2AgentEvents(events) {
+  if (!Array.isArray(events) || events.length === 0) {
+    if (v2FirstRender) {
+      $terminalBody.innerHTML = '<div class="conv-empty">No agent events yet…</div>';
+    }
+    return;
+  }
+
+  let container = $terminalBody.querySelector('.conv-stream');
+
+  if (v2FirstRender || !container) {
+    // First load or container missing: full render
+    $terminalBody.innerHTML = '';
+    container = document.createElement('div');
+    container.className = 'conv-stream';
+    $terminalBody.appendChild(container);
+    for (const evt of events) {
+      const html = renderV2Event(evt);
+      if (html) container.insertAdjacentHTML('beforeend', html);
+    }
+    v2LastCursor = v2EventSignature(events[events.length - 1]);
+    v2FirstRender = false;
+  } else {
+    // Incremental: find first unseen event after cursor
+    let cursorIdx = -1;
+    if (v2LastCursor) {
+      for (let i = events.length - 1; i >= 0; i--) {
+        if (v2EventSignature(events[i]) === v2LastCursor) {
+          cursorIdx = i;
+          break;
+        }
+      }
+    }
+
+    if (cursorIdx === -1) {
+      // Cursor not found (rotation/restart): full re-render
+      container.innerHTML = '';
+      for (const evt of events) {
+        const html = renderV2Event(evt);
+        if (html) container.insertAdjacentHTML('beforeend', html);
+      }
+    } else if (cursorIdx < events.length - 1) {
+      // Append only new events after cursor
+      const newEvents = events.slice(cursorIdx + 1);
+      for (const evt of newEvents) {
+        const html = renderV2Event(evt);
+        if (html) container.insertAdjacentHTML('beforeend', html);
+      }
+    } else {
+      // No new events
+      return;
+    }
+
+    v2LastCursor = v2EventSignature(events[events.length - 1]);
+  }
+
+  if (autoScrollOn) {
+    isProgrammaticScroll = true;
+    $terminalBody.scrollTop = $terminalBody.scrollHeight;
+    requestAnimationFrame(() => { isProgrammaticScroll = false; });
+  }
+}
+
+function renderV2Event(evt) {
+  const ts = evt.ts ? new Date(evt.ts).toLocaleTimeString() : '';
+  const type = evt.type || 'unknown';
+
+  switch (type) {
+    case 'assistant_message':
+      return `<div class="conv-event conv-assistant"><span class="conv-ts">${escapeHtml(ts)}</span><span class="conv-role">assistant</span><span class="conv-text">${escapeHtml((evt.payload?.text || '').slice(0, 2000))}</span></div>`;
+    case 'prompt_sent':
+      return `<div class="conv-event conv-user"><span class="conv-ts">${escapeHtml(ts)}</span><span class="conv-role">user</span><span class="conv-text">${escapeHtml((evt.payload?.text || '').slice(0, 2000))}</span></div>`;
+    case 'tool_call':
+      return `<div class="conv-event conv-tool"><span class="conv-ts">${escapeHtml(ts)}</span><span class="conv-role">tool</span><span class="conv-text">${escapeHtml(evt.payload?.tool || type)} ${escapeHtml((evt.payload?.path || '').slice(0, 200))}</span></div>`;
+    case 'tool_result':
+      return `<div class="conv-event conv-tool-result"><span class="conv-ts">${escapeHtml(ts)}</span><span class="conv-role">result</span><span class="conv-text">${escapeHtml((evt.payload?.summary || '').slice(0, 500))}</span></div>`;
+    case 'agent_started':
+      return `<div class="conv-event conv-lifecycle"><span class="conv-ts">${escapeHtml(ts)}</span><span class="conv-role">▶</span><span class="conv-text">Agent started (${escapeHtml(evt.role || '')} lane ${evt.laneNumber ?? '?'})</span></div>`;
+    case 'agent_exited':
+      return `<div class="conv-event conv-lifecycle"><span class="conv-ts">${escapeHtml(ts)}</span><span class="conv-role">■</span><span class="conv-text">Agent exited (code ${evt.payload?.exitCode ?? '?'})</span></div>`;
+    case 'agent_crashed':
+    case 'agent_killed':
+    case 'agent_timeout':
+      return `<div class="conv-event conv-lifecycle conv-error"><span class="conv-ts">${escapeHtml(ts)}</span><span class="conv-role">⚠</span><span class="conv-text">${escapeHtml(type)} ${escapeHtml(evt.payload?.reason || '')}</span></div>`;
+    case 'message_delivered':
+      return `<div class="conv-event conv-steer"><span class="conv-ts">${escapeHtml(ts)}</span><span class="conv-role">✉</span><span class="conv-text">Steering: ${escapeHtml((evt.payload?.content || '').slice(0, 500))}</span></div>`;
+    case 'context_pressure':
+      return `<div class="conv-event conv-lifecycle"><span class="conv-ts">${escapeHtml(ts)}</span><span class="conv-role">⚠</span><span class="conv-text">Context pressure: ${evt.payload?.pct ?? '?'}%</span></div>`;
+    default:
+      return `<div class="conv-event conv-lifecycle"><span class="conv-ts">${escapeHtml(ts)}</span><span class="conv-role">•</span><span class="conv-text">${escapeHtml(type)}</span></div>`;
+  }
 }
 
 // ── Open STATUS.md viewer ───────────────────────────────────────────────────
@@ -1617,8 +1890,11 @@ function closeViewer() {
   }
   viewerMode = null;
   viewerTarget = null;
+  viewerV2AgentId = null;
   autoScrollOn = false;
   convRenderedLines = 0;
+  v2LastCursor = null;
+  v2FirstRender = true;
   lastStatusMdText = '';
   $terminalPanel.style.display = 'none';
   $terminalBody.innerHTML = '';
