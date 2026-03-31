@@ -8,9 +8,30 @@ import { join } from "path";
 import { assembleDiagnosticInput, emitDiagnosticReports } from "./diagnostic-reports.ts";
 import { runDiscovery } from "./discovery.ts";
 import { executeOrchBatch } from "./engine.ts";
-import { computeTransitiveDependents, execLog, executeWave, pollUntilTaskComplete, resolveCanonicalTaskPaths, spawnLaneSession, tmuxHasSession } from "./execution.ts";
+import { computeTransitiveDependents, execLog, executeLaneV2, executeWave, pollUntilTaskComplete, resolveCanonicalTaskPaths, spawnLaneSession, tmuxHasSession } from "./execution.ts";
 import type { MonitorUpdateCallback, RuntimeBackend } from "./execution.ts";
 import { selectRuntimeBackend } from "./engine.ts";
+import { readRegistrySnapshot, isTerminalStatus, isProcessAlive } from "./process-registry.ts";
+
+/**
+ * TP-112: Terminate any alive V2 agents for a lane before re-execution.
+ * Per Runtime V2 spec §7.3: detect + terminate + rehydrate.
+ * Prevents duplicate concurrent agents for the same lane/task on resume.
+ */
+function terminateAliveV2Agents(stateRoot: string, batchId: string, sessionName: string): void {
+	const registry = readRegistrySnapshot(stateRoot, batchId);
+	if (!registry) return;
+	for (const suffix of ["-worker", "-reviewer", ""]) {
+		const key = `${sessionName}${suffix}`;
+		const manifest = registry.agents[key];
+		if (manifest && !isTerminalStatus(manifest.status) && isProcessAlive(manifest.pid)) {
+			try {
+				process.kill(manifest.pid, "SIGTERM");
+				execLog("resume", key, `terminated alive V2 agent (PID ${manifest.pid}) before re-execute`);
+			} catch { /* already dead */ }
+		}
+	}
+}
 import { getCurrentBranch, runGit } from "./git.ts";
 import { mergeWaveByRepo } from "./merge.ts";
 import { applyMergeRetryLoop, computeCleanupGatePolicy, computeMergeFailurePolicy, formatRepoMergeSummary, ORCH_MESSAGES } from "./messages.ts";
@@ -852,12 +873,38 @@ export async function resumeOrchBatch(
 		"info",
 	);
 
+	// TP-108/112: Runtime V2 backend selection for resumed batches.
+	// MUST be computed before any backend-aware branch (section 3+).
+	const resumeBackend: RuntimeBackend = selectRuntimeBackend(
+		"all",
+		persistedState.wavePlan,
+		workspaceConfig,
+	).backend;
+	execLog("resume", batchState.batchId, `runtime backend for resumed execution: ${resumeBackend}`);
+
 	// ── 3. Discover live signals ─────────────────────────────────
-	// Check TMUX sessions
+	// TP-112: Backend-aware session liveness check.
+	// V2: check process registry (pid + status). Legacy: check TMUX.
 	const aliveSessions = new Set<string>();
-	for (const task of persistedState.tasks) {
-		if (task.sessionName && tmuxHasSession(task.sessionName)) {
-			aliveSessions.add(task.sessionName);
+	if (resumeBackend === "v2") {
+		const registry = readRegistrySnapshot(stateRoot, persistedState.batchId);
+		if (registry) {
+			for (const manifest of Object.values(registry.agents)) {
+				if (!isTerminalStatus(manifest.status) && isProcessAlive(manifest.pid)) {
+					aliveSessions.add(manifest.agentId);
+					// TP-112: Also add the lane session name (without role suffix)
+					// so reconciliation matches persisted task.sessionName.
+					// e.g., "orch-op-lane-1-worker" -> also add "orch-op-lane-1"
+					const laneSession = manifest.agentId.replace(/-(worker|reviewer)$/, "");
+					if (laneSession !== manifest.agentId) aliveSessions.add(laneSession);
+				}
+			}
+		}
+	} else {
+		for (const task of persistedState.tasks) {
+			if (task.sessionName && tmuxHasSession(task.sessionName)) {
+				aliveSessions.add(task.sessionName);
+			}
 		}
 	}
 
@@ -1054,14 +1101,6 @@ export async function resumeOrchBatch(
 	const depGraph = buildDependencyGraph(discovery.pending, discovery.completed);
 	batchState.dependencyGraph = depGraph;
 
-	// TP-108: Runtime V2 backend selection for resumed batches.
-	// Placed before first use (section 8c merge) for TDZ safety.
-	const resumeBackend: RuntimeBackend = selectRuntimeBackend(
-		"all",
-		persistedState.wavePlan,
-		workspaceConfig,
-	).backend;
-	execLog("resume", batchState.batchId, `runtime backend for resumed execution: ${resumeBackend}`);
 
 	// ── 8. Handle alive sessions (reconnect) ─────────────────────
 	// For tasks with alive sessions, we need to wait for them to complete.
@@ -1104,44 +1143,82 @@ export async function resumeOrchBatch(
 			// Resolve per-lane repo root for workspace mode (v1/repo mode: falls back to repoRoot)
 			const laneRepoRoot = resolveRepoRoot(laneRecord.repoId, repoRoot, workspaceConfig);
 
-			execLog("resume", task.taskId, "reconnecting to alive session", {
-				session: laneRecord.tmuxSessionName,
-				repoId: laneRecord.repoId ?? "(default)",
-			});
-
-			// Poll until task completes
-			try {
-				const pollResult = await pollUntilTaskComplete(
-					lane,
-					allocatedTask,
-					orchConfig,
-					laneRepoRoot,
-					batchState.pauseSignal,
-				);
-
-				if (pollResult.status === "succeeded") {
-					reconnectFinalStatus.set(task.taskId, "succeeded");
-					completedTaskSet.add(task.taskId);
-					failedTaskSet.delete(task.taskId);
-					reconnectTaskSet.delete(task.taskId);
-					batchState.succeededTasks++;
-					execLog("resume", task.taskId, "reconnected task succeeded");
-				} else {
+			// TP-112: Backend-aware reconnect.
+			// V2: re-execute via executeLaneV2 (agent-host doesn't survive restart).
+			// Per spec §7.3: "detect + terminate + rehydrate".
+			// Legacy: poll the still-alive TMUX session.
+			if (resumeBackend === "v2") {
+				execLog("resume", task.taskId, "V2 reconnect: terminate + rehydrate via lane-runner", {
+					repoId: laneRecord.repoId ?? "(default)",
+				});
+				// TP-112 §7.3: detect + terminate + rehydrate.
+				// Kill any alive V2 agent before re-executing to prevent duplicates.
+				terminateAliveV2Agents(stateRoot, persistedState.batchId, laneRecord.tmuxSessionName);
+				try {
+					const laneResult = await executeLaneV2(
+						lane, orchConfig, laneRepoRoot, batchState.pauseSignal,
+						workspaceRoot, !!workspaceConfig,
+						{ ORCH_BATCH_ID: batchState.batchId },
+						emitAlert,
+					);
+					const taskResult = laneResult.tasks.find(t => t.taskId === task.taskId);
+					if (taskResult?.status === "succeeded") {
+						reconnectFinalStatus.set(task.taskId, "succeeded");
+						completedTaskSet.add(task.taskId);
+						failedTaskSet.delete(task.taskId);
+						reconnectTaskSet.delete(task.taskId);
+						batchState.succeededTasks++;
+					} else {
+						reconnectFinalStatus.set(task.taskId, "failed");
+						failedTaskSet.add(task.taskId);
+						completedTaskSet.delete(task.taskId);
+						reconnectTaskSet.delete(task.taskId);
+						batchState.failedTasks++;
+					}
+				} catch (err: unknown) {
 					reconnectFinalStatus.set(task.taskId, "failed");
 					failedTaskSet.add(task.taskId);
 					completedTaskSet.delete(task.taskId);
 					reconnectTaskSet.delete(task.taskId);
 					batchState.failedTasks++;
-					execLog("resume", task.taskId, `reconnected task ${pollResult.status}: ${pollResult.exitReason}`);
+					execLog("resume", task.taskId, `V2 reconnect error: ${err instanceof Error ? err.message : String(err)}`);
 				}
-			} catch (err: unknown) {
-				reconnectFinalStatus.set(task.taskId, "failed");
-				failedTaskSet.add(task.taskId);
-				completedTaskSet.delete(task.taskId);
-				reconnectTaskSet.delete(task.taskId);
-				batchState.failedTasks++;
-				const msg = err instanceof Error ? err.message : String(err);
-				execLog("resume", task.taskId, `reconnection error: ${msg}`);
+			} else {
+				execLog("resume", task.taskId, "reconnecting to alive session", {
+					session: laneRecord.tmuxSessionName,
+					repoId: laneRecord.repoId ?? "(default)",
+				});
+
+				try {
+					const pollResult = await pollUntilTaskComplete(
+						lane,
+						allocatedTask,
+						orchConfig,
+						laneRepoRoot,
+						batchState.pauseSignal,
+					);
+
+					if (pollResult.status === "succeeded") {
+						reconnectFinalStatus.set(task.taskId, "succeeded");
+						completedTaskSet.add(task.taskId);
+						failedTaskSet.delete(task.taskId);
+						reconnectTaskSet.delete(task.taskId);
+						batchState.succeededTasks++;
+					} else {
+						reconnectFinalStatus.set(task.taskId, "failed");
+						failedTaskSet.add(task.taskId);
+						completedTaskSet.delete(task.taskId);
+						reconnectTaskSet.delete(task.taskId);
+						batchState.failedTasks++;
+					}
+				} catch (err: unknown) {
+					reconnectFinalStatus.set(task.taskId, "failed");
+					failedTaskSet.add(task.taskId);
+					completedTaskSet.delete(task.taskId);
+					reconnectTaskSet.delete(task.taskId);
+					batchState.failedTasks++;
+					execLog("resume", task.taskId, `reconnection error: ${err instanceof Error ? err.message : String(err)}`);
+				}
 			}
 		}
 	}
@@ -1195,16 +1272,35 @@ export async function resumeOrchBatch(
 			});
 
 			try {
-				spawnLaneSession(lane, allocatedTask, orchConfig, reExecRepoRoot, undefined, {
-					ORCH_BATCH_ID: batchState.batchId,
-				});
-				const pollResult = await pollUntilTaskComplete(
-					lane,
-					allocatedTask,
-					orchConfig,
-					reExecRepoRoot,
-					batchState.pauseSignal,
-				);
+				// TP-112: Backend-aware re-execution.
+				let pollResult: { status: LaneTaskStatus; exitReason: string; doneFileFound: boolean };
+				if (resumeBackend === "v2") {
+					// TP-112: terminate any alive V2 agent before re-execute
+					terminateAliveV2Agents(stateRoot, batchState.batchId, laneRecord.tmuxSessionName);
+					const laneResult = await executeLaneV2(
+						lane, orchConfig, reExecRepoRoot, batchState.pauseSignal,
+						workspaceRoot, !!workspaceConfig,
+						{ ORCH_BATCH_ID: batchState.batchId },
+						emitAlert,
+					);
+					const taskResult = laneResult.tasks.find(t => t.taskId === task.taskId);
+					pollResult = {
+						status: taskResult?.status ?? "failed",
+						exitReason: taskResult?.exitReason ?? "V2 re-execution completed",
+						doneFileFound: taskResult?.doneFileFound ?? false,
+					};
+				} else {
+					spawnLaneSession(lane, allocatedTask, orchConfig, reExecRepoRoot, undefined, {
+						ORCH_BATCH_ID: batchState.batchId,
+					});
+					pollResult = await pollUntilTaskComplete(
+						lane,
+						allocatedTask,
+						orchConfig,
+						reExecRepoRoot,
+						batchState.pauseSignal,
+					);
+				}
 
 				if (pollResult.status === "succeeded") {
 					reExecuteFinalStatus.set(task.taskId, "succeeded");
