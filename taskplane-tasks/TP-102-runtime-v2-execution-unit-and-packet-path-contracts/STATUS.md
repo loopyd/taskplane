@@ -1,7 +1,7 @@
 # TP-102: Runtime V2 ExecutionUnit and Packet-Path Contracts — Status
 
-**Current Step:** Not Started
-**Status:** 🔵 Ready for Execution
+**Current Step:** Complete
+**Status:** ✅ Complete
 **Last Updated:** 2026-03-30
 **Review Level:** 2
 **Review Counter:** 0
@@ -11,45 +11,45 @@
 ---
 
 ### Step 0: Preflight
-**Status:** ⬜ Not Started
+**Status:** ✅ Complete
 
-- [ ] Trace the current task/lane runtime contracts through engine, execution, and resume
-- [ ] Identify where packet paths, runtime identity, and live artifacts are currently implicit or TMUX-derived
+- [x] Trace the current task/lane runtime contracts through engine, execution, and resume
+- [x] Identify where packet paths, runtime identity, and live artifacts are currently implicit or TMUX-derived
 
 ---
 
 ### Step 1: Define Runtime V2 Contracts
-**Status:** ⬜ Not Started
+**Status:** ✅ Complete
 
-- [ ] Add ExecutionUnit, packet-path, registry manifest, and normalized event type contracts to `types.ts`
-- [ ] Add validation helpers and naming rules that preserve repo/workspace correctness
-- [ ] Document compatibility shims where legacy task/lane records still need to coexist during migration
+- [x] Add ExecutionUnit, packet-path, registry manifest, and normalized event type contracts to `types.ts`
+- [x] Add validation helpers and naming rules that preserve repo/workspace correctness
+- [x] Document compatibility shims where legacy task/lane records still need to coexist during migration
 
 ---
 
 ### Step 2: Thread Contracts into Orchestrator Interfaces
-**Status:** ⬜ Not Started
+**Status:** ✅ Complete
 
-- [ ] Update engine/execution/resume signatures to accept explicit packet-path and runtime identity data where needed
-- [ ] Add helper functions for resolving runtime artifact roots without TMUX/session assumptions
-- [ ] Ensure new contracts are additive and do not yet force the full backend cutover
+- [x] Update engine/execution/resume signatures to accept explicit packet-path and runtime identity data where needed
+- [x] Add helper functions for resolving runtime artifact roots without TMUX/session assumptions
+- [x] Ensure new contracts are additive and do not yet force the full backend cutover
 
 ---
 
 ### Step 3: Testing & Verification
-**Status:** ⬜ Not Started
+**Status:** ✅ Complete
 
-- [ ] Add or update behavioral tests covering ExecutionUnit shape, packet-path authority precedence, and runtime artifact naming
-- [ ] Run the full suite
-- [ ] Fix all failures
+- [x] Add or update behavioral tests covering ExecutionUnit shape, packet-path authority precedence, and runtime artifact naming
+- [x] Run the full suite (3185 pass, 0 fail)
+- [x] Fix all failures
 
 ---
 
 ### Step 4: Documentation & Delivery
-**Status:** ⬜ Not Started
+**Status:** ✅ Complete
 
-- [ ] Update the Runtime V2 docs if implementation naming diverges from the spec suite
-- [ ] Log discoveries in STATUS.md
+- [x] Update the Runtime V2 docs if implementation naming diverges from the spec suite
+- [x] Log discoveries in STATUS.md
 
 ---
 
@@ -64,6 +64,9 @@
 
 | Discovery | Disposition | Location |
 |-----------|-------------|----------|
+| Implementation naming matches spec suite exactly — no doc divergence needed | No action | extensions/taskplane/types.ts |
+| resolveCanonicalTaskPaths already handles cross-repo packet paths via archive fallback; bridge wraps it cleanly | Leverage existing logic | extensions/taskplane/execution.ts |
+| v4/TP-081 fields (packetRepoId, packetTaskPath, activeSegmentId) on ParsedTask are already partially present — ExecutionUnit formalizes the contract these fields point toward | Thread through lane-runner in TP-105 | extensions/taskplane/types.ts |
 
 ---
 
@@ -72,6 +75,10 @@
 | Timestamp | Action | Outcome |
 |-----------|--------|---------|
 | 2026-03-30 | Task staged | PROMPT.md and STATUS.md created |
+| 2026-03-30 | Preflight complete | Traced ParsedTask, AllocatedLane, PersistedTaskRecord, LaneTaskOutcome, resolveCanonicalTaskPaths. TMUX naming in AllocatedLane.tmuxSessionName, PersistedLaneRecord.tmuxSessionName, LaneStatus.tmuxSession. Packet paths partially lifted in v4/TP-081 fields but not yet authoritative. |
+| 2026-03-30 | Steps 0-1 complete | Added all Runtime V2 contracts to types.ts + 43 tests |
+| 2026-03-30 | Steps 2-3 complete | Added bridge helpers to execution.ts + 12 bridge tests. Full suite: 3185 pass, 0 fail |
+| 2026-03-30 | Step 4 complete | No doc divergence. Task complete. |
 
 ---
 
