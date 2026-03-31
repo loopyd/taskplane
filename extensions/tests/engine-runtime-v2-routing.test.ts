@@ -492,11 +492,11 @@ describe("14.x: Monitor de-TMUX for V2 (TP-112)", () => {
 		expect(block).not.toContain("tmux");
 	});
 
-	it("14.3: monitorLanes refreshes V2 registry cache each poll cycle", () => {
+	it("14.3: monitorLanes refreshes V2 registry cache each poll cycle using state root", () => {
 		const fnIdx = execSrc.indexOf("function monitorLanes");
-		const block = execSrc.slice(fnIdx, fnIdx + 5000);
+		const block = execSrc.slice(fnIdx, fnIdx + 6000);
 		expect(block).toContain("setV2LivenessRegistryCache");
-		expect(block).toContain("readRegistrySnapshot");
+		expect(block).toContain("readRegistrySnapshot(stateRootForRegistry ?? repoRoot, batchId)");
 	});
 
 	it("14.4: monitorLanes lane snapshot uses backend-aware liveness", () => {
@@ -526,11 +526,13 @@ describe("14.x: Monitor de-TMUX for V2 (TP-112)", () => {
 		expect(block).not.toContain("tmux");
 	});
 
-	it("14.7: executeWave passes batchId to monitorLanes", () => {
+	it("14.7: executeWave passes batchId and resolved state root to monitorLanes", () => {
 		const waveIdx = execSrc.indexOf("function executeWave(");
-		const waveBlock = execSrc.slice(waveIdx, waveIdx + 20000);
+		const waveBlock = execSrc.slice(waveIdx, waveIdx + 22000);
+		expect(waveBlock).toContain("const monitorStateRoot = resolveRuntimeStateRoot(repoRoot, wsRoot)");
 		const callIdx = waveBlock.indexOf("monitorLanes(");
-		const block = waveBlock.slice(callIdx, callIdx + 300);
+		const block = waveBlock.slice(callIdx, callIdx + 420);
 		expect(block).toContain("batchId");
+		expect(block).toContain("monitorStateRoot");
 	});
 });

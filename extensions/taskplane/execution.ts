@@ -1967,6 +1967,7 @@ export async function monitorLanes(
 	isWorkspaceMode?: boolean,
 	runtimeBackend?: RuntimeBackend,
 	batchId?: string,
+	stateRootForRegistry?: string,
 ): Promise<MonitorState> {
 	const pollIntervalMs = (config.monitoring.poll_interval || 5) * 1000;
 	const stallTimeoutMs = (config.failure.stall_timeout || 30) * 60_000;
@@ -2018,8 +2019,12 @@ export async function monitorLanes(
 		// TP-112: Refresh V2 liveness registry cache once per poll cycle
 		if (runtimeBackend === "v2" && batchId) {
 			try {
-				setV2LivenessRegistryCache(readRegistrySnapshot(repoRoot, batchId));
-			} catch { setV2LivenessRegistryCache(null); }
+				setV2LivenessRegistryCache(readRegistrySnapshot(stateRootForRegistry ?? repoRoot, batchId));
+			} catch {
+				setV2LivenessRegistryCache(null);
+			}
+		} else {
+			setV2LivenessRegistryCache(null);
 		}
 
 		// Check pause signal
@@ -2167,6 +2172,7 @@ export async function monitorLanes(
 				total: tasksTotal,
 				polls: pollCount,
 			});
+			setV2LivenessRegistryCache(null);
 			return monitorState;
 		}
 
@@ -2188,6 +2194,7 @@ export async function monitorLanes(
 		remainingTasks: lane.tasks.map(t => t.taskId),
 	}));
 
+	setV2LivenessRegistryCache(null);
 	return {
 		lanes: laneSnapshots,
 		tasksDone: 0,
@@ -2501,6 +2508,7 @@ export async function executeWave(
 
 	// Start monitoring as a sibling async loop
 	// Monitor runs concurrently and stops when all lanes are terminal or paused
+	const monitorStateRoot = resolveRuntimeStateRoot(repoRoot, wsRoot);
 	const monitorPromise = monitorLanes(
 		lanes,
 		config,
@@ -2511,6 +2519,7 @@ export async function executeWave(
 		isWsMode,
 		backend,
 		batchId,
+		monitorStateRoot,
 	);
 
 	// ── Stage 4: Wait for all lanes + apply policy ───────────────
