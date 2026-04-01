@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.23.8] - 2026-04-01
+
+### Fixed
+- **jiti cache option name** — v0.23.7 used `fsCache: false` (silently ignored by jiti v2). Correct option is `cache: false`. Stale compiled code at `$TEMP/jiti/` was the root cause of telemetry zeros after npm update.
+
 ## [0.23.7] - 2026-04-01
 
 ### Fixed
