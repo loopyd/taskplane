@@ -21,7 +21,7 @@ Copy this template when creating a new task. Replace all `[bracketed]` fields.
 [FULL_PATH_TO_TASK_FOLDER]/
 ├── PROMPT.md   ← This file (immutable above --- divider)
 ├── STATUS.md   ← Execution state (worker updates this)
-├── .reviews/   ← Reviewer output (task-runner creates this)
+├── .reviews/   ← Reviewer output (created by the orchestrator runtime)
 └── .DONE       ← Created when complete
 ```
 
@@ -148,7 +148,7 @@ for this task MUST include the task ID for traceability:
 
 # STATUS.md Template
 
-Create alongside PROMPT.md. If omitted, the task-runner extension auto-generates
+Create alongside PROMPT.md. If omitted, the execution engine may auto-generate
 this from PROMPT.md.
 
 ````markdown
