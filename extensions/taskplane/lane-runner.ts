@@ -280,6 +280,8 @@ export async function executeTaskV2(
 		// Context pressure: write wrap-up signal before kill
 		let workerKillReason: "context" | "timer" | null = null;
 
+		// DEBUG: verify this code path executes
+		try { writeFileSync(config.stateRoot + '/.pi/tp-debug-pre-spawn.json', JSON.stringify({ ts: Date.now(), iter: totalIterations, taskId })); } catch { /* */ }
 		const spawned = spawnAgent(hostOpts, undefined, (telemetry) => {
 			// Context pressure check
 			if (telemetry.contextUsage) {
