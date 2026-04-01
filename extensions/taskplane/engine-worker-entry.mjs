@@ -17,5 +17,5 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // TP-115: Disable jiti filesystem cache to prevent stale compiled code
 // after npm update. Without this, jiti serves old cached .mjs even when
 // the .ts source files have been updated by a new package version.
-const jiti = createJiti(import.meta.url, { fsCache: false });
+const jiti = createJiti(import.meta.url, { cache: false });
 await jiti.import(join(__dirname, "engine-worker.ts"));
