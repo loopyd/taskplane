@@ -1767,6 +1767,8 @@ export function loadBatchHistory(repoRoot: string): BatchHistorySummary[] {
  * Writes atomically via tmp+rename pattern.
  */
 export function saveBatchHistory(repoRoot: string, summary: BatchHistorySummary): void {
+	// DEBUG: log what we're saving
+	try { writeFileSync(join(repoRoot, '.pi', 'tp-debug-history-save.json'), JSON.stringify({ repoRoot, tokens: summary.tokens, tasks: summary.tasks?.map(t => ({ id: t.taskId, tokens: t.tokens })) }, null, 2)); } catch {}
 	const filePath = batchHistoryPath(repoRoot);
 	try {
 		const history = loadBatchHistory(repoRoot);
