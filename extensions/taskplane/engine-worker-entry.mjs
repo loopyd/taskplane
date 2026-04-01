@@ -14,8 +14,21 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-// TP-115: Disable jiti filesystem cache to prevent stale compiled code
-// after npm update. Without this, jiti serves old cached .mjs even when
-// the .ts source files have been updated by a new package version.
-const jiti = createJiti(import.meta.url, { cache: false });
+
+// TP-115: Purge jiti cache for taskplane modules before loading.
+// Pi's main process caches compiled .ts → .mjs at $TEMP/jiti/.
+// The engine-worker fork must compile fresh from current source files,
+// not use stale cached versions from Pi's startup.
+import { readdirSync, unlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+try {
+  const cacheDir = join(tmpdir(), "jiti");
+  for (const f of readdirSync(cacheDir)) {
+    if (f.startsWith("taskplane-") && f.endsWith(".mjs")) {
+      try { unlinkSync(join(cacheDir, f)); } catch {}
+    }
+  }
+} catch { /* cache dir may not exist */ }
+
+const jiti = createJiti(import.meta.url);
 await jiti.import(join(__dirname, "engine-worker.ts"));

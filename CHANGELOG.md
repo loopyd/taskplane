@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.23.10] - 2026-04-01
+
+### Fixed
+- **Batch history token zeros** — `batchState.lanes` was undefined when the batch history writer ran, causing a silent TypeError in the V2 lane snapshot reader. Guarded with `(batchState.lanes || [])`. Dashboard history view now shows real token/cost data.
+
 ## [0.23.9] - 2026-04-01
 
 ### Fixed

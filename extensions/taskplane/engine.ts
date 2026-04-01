@@ -2268,7 +2268,7 @@ export async function executeOrchBatch(
 						const w = snap.worker || {};
 						const r = snap.reviewer || {};
 						// Key by session name (match lane record) for per-task lookup
-						const laneRec = batchState.lanes.find((l: { laneNumber: number }) => l.laneNumber === snap.laneNumber);
+						const laneRec = (batchState.lanes || []).find((l: { laneNumber: number }) => l.laneNumber === snap.laneNumber);
 						const key = laneRec?.tmuxSessionName || `lane-${snap.laneNumber}`;
 						laneTokens.set(key, {
 							input: (w.inputTokens || 0) + (r.inputTokens || 0),
@@ -2281,6 +2281,7 @@ export async function executeOrchBatch(
 				}
 			}
 		} catch { /* runtime dir may not exist */ }
+
 
 		// Legacy fallback: lane-state-*.json sidecars (only if V2 found nothing)
 		if (laneTokens.size === 0) {
