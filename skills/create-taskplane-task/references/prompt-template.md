@@ -21,7 +21,7 @@ Copy this template when creating a new task. Replace all `[bracketed]` fields.
 [FULL_PATH_TO_TASK_FOLDER]/
 ├── PROMPT.md   ← This file (immutable above --- divider)
 ├── STATUS.md   ← Execution state (worker updates this)
-├── .reviews/   ← Reviewer output (task-runner creates this)
+├── .reviews/   ← Reviewer output (created by the orchestrator runtime)
 └── .DONE       ← Created when complete
 ```
 
@@ -90,7 +90,7 @@ Copy this template when creating a new task. Replace all `[bracketed]` fields.
 > ZERO test failures allowed. This step runs the FULL test suite as a quality gate.
 > (Earlier steps should use targeted tests for fast feedback — see worker prompt.)
 
-- [ ] Run FULL test suite: `[test command from task-runner.yaml]`
+- [ ] Run FULL test suite: `[test command from project config]`
 - [ ] Run integration tests (if applicable)
 - [ ] Fix all failures
 - [ ] Build passes: `[build command]`
@@ -148,7 +148,7 @@ for this task MUST include the task ID for traceability:
 
 # STATUS.md Template
 
-Create alongside PROMPT.md. If omitted, the task-runner extension auto-generates
+Create alongside PROMPT.md. If omitted, the execution engine may auto-generate
 this from PROMPT.md.
 
 ````markdown

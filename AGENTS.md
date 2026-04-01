@@ -236,6 +236,31 @@ When in doubt, optimize for: **determinism, recoverability, and clear operator v
 
 ---
 
+## Supervisor tools reference
+
+When operating as the supervisor (during `/orch` execution), these tools are available:
+
+| Tool | Usage | Description |
+|------|-------|-------------|
+| `orch_start(target)` | `target="all"`, area name, directory, or PROMPT.md path(s) | Start a batch. Multiple PROMPT.md paths can be space-separated. |
+| `orch_status()` | No params | Check batch phase, wave progress, task counts |
+| `orch_pause()` | No params | Pause after current tasks finish |
+| `orch_resume(force?)` | `force=true` for stopped/failed state | Resume a paused batch |
+| `orch_abort(hard?)` | `hard=true` for immediate kill | Abort the running batch |
+| `orch_retry_task(taskId)` | Task ID (e.g., `"TP-003"`) | Reset a failed task for re-execution |
+| `orch_skip_task(taskId)` | Task ID | Skip a task and unblock dependents |
+| `orch_force_merge(waveIndex?, skipFailed?)` | 0-based wave index | Force merge a wave with mixed results |
+| `orch_integrate(mode?, force?, branch?)` | `mode="fast-forward"\|"merge"\|"pr"` | Integrate completed batch into working branch |
+| `send_agent_message(to, content, type?)` | Agent session name | Steer a running agent |
+| `read_agent_replies(from?)` | Agent ID or omit for all | Read replies/escalations (non-consuming) |
+| `broadcast_message(content, type?)` | Content string | Send to all agents (all-or-none rate limit) |
+| `read_agent_status(lane?)` | Lane number or omit for all | Read STATUS.md + telemetry for a lane |
+| `list_active_agents()` | No params | Show all running agent sessions |
+| `trigger_wrap_up(lane)` | Lane number | Signal a worker to finish and exit |
+| `read_lane_logs(lane)` | Lane number | Read stderr/crash logs for a lane |
+
+---
+
 ## Practical dev commands
 
 - Run both extensions locally:
