@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.23.4] - 2026-04-01
+
+### Fixed
+- **Monitor startup race** — First monitor poll could fire before lane-runner wrote its initial snapshot, causing the task to be cached as "failed" in `terminalTasks` for the entire execution. Now assumes alive during startup grace window. Root cause of CLI widget showing "✗ failed" despite task succeeding.
+
 ## [0.23.3] - 2026-04-01
 
 ### Fixed
