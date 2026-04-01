@@ -1,5 +1,3 @@
-// DEBUG: module load marker
-try { require('fs').writeFileSync('/c/dev/taskplane/.pi/tp-lane-runner-loaded.txt', 'loaded at ' + new Date().toISOString() + ' from ' + __filename); } catch(e) { try { require('fs').writeFileSync('/c/dev/taskplane/.pi/tp-lane-runner-loaded.txt', 'loaded at ' + new Date().toISOString() + ' err: ' + e); } catch {} }
 /**
  * Lane Runner — Headless per-lane execution for Runtime V2
  *
@@ -283,7 +281,7 @@ export async function executeTaskV2(
 		let workerKillReason: "context" | "timer" | null = null;
 
 		// DEBUG: verify this code path executes
-		try { writeFileSync(config.stateRoot + '/.pi/tp-debug-pre-spawn.json', JSON.stringify({ ts: Date.now(), iter: totalIterations, taskId })); } catch { /* */ }
+		try { writeFileSync(join(config.stateRoot, '.pi', 'tp-debug-pre-spawn.json'), JSON.stringify({ ts: Date.now(), iter: totalIterations, taskId, stateRoot: config.stateRoot })); } catch(e: any) { try { writeFileSync(join(config.stateRoot, '.pi', 'tp-debug-err.txt'), 'pre-spawn: ' + String(e?.message || e)); } catch {} }
 		const spawned = spawnAgent(hostOpts, undefined, (telemetry) => {
 			// Context pressure check
 			if (telemetry.contextUsage) {
@@ -308,7 +306,7 @@ export async function executeTaskV2(
 		// TP-115: Update lastTelemetry with definitive final values from AgentHostResult
 		lastTelemetry = workerResult;
 		// DEBUG
-		try { writeFileSync(config.stateRoot + '/.pi/tp-debug-workerResult.json', JSON.stringify({ iter: totalIterations, cost: workerResult.costUsd, tools: workerResult.toolCalls, input: workerResult.inputTokens, keys: Object.keys(workerResult) }, null, 2)); } catch { /* */ }
+		try { writeFileSync(join(config.stateRoot, '.pi', 'tp-debug-workerResult.json'), JSON.stringify({ iter: totalIterations, cost: workerResult.costUsd, tools: workerResult.toolCalls, input: workerResult.inputTokens, keys: Object.keys(workerResult) }, null, 2)); } catch(e: any) { try { writeFileSync(join(config.stateRoot, '.pi', 'tp-debug-err2.txt'), 'workerResult: ' + String(e?.message || e)); } catch {} }
 
 		// Clean up wrap-up signal
 		if (existsSync(wrapUpFile)) try { unlinkSync(wrapUpFile); } catch { /* ignore */ }
