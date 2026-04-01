@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.23.2] - 2026-04-01
+
+### Fixed
+- **Dashboard reads V2 lane snapshots natively** — Server synthesizes `laneStates` from `.pi/runtime/{batchId}/lanes/*.json` directly. No legacy `lane-state-*.json` sidecar files needed for V2 batches. Dashboard and CLI widget now show live worker stats, telemetry, and progress during V2 execution.
+- **Removed legacy lane-state shim** — V2 lane-runner writes only to `.pi/runtime/` (no TMUX-era files).
+
 ## [0.23.1] - 2026-04-01
 
 ### Fixed
