@@ -303,6 +303,8 @@ export async function executeTaskV2(
 
 		// TP-115: Update lastTelemetry with definitive final values from AgentHostResult
 		lastTelemetry = workerResult;
+		// DEBUG
+		try { writeFileSync(config.stateRoot + '/.pi/tp-debug-workerResult.json', JSON.stringify({ iter: totalIterations, cost: workerResult.costUsd, tools: workerResult.toolCalls, input: workerResult.inputTokens, keys: Object.keys(workerResult) }, null, 2)); } catch { /* */ }
 
 		// Clean up wrap-up signal
 		if (existsSync(wrapUpFile)) try { unlinkSync(wrapUpFile); } catch { /* ignore */ }
