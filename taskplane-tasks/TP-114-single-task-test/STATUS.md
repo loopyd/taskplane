@@ -1,6 +1,6 @@
 # TP-114: Single Task Test — Status
 
-**Current Step:** Complete
+**Current Step:** Step 3: Documentation & Delivery
 **Status:** ✅ Complete
 **Last Updated:** 2026-04-01
 **Review Level:** 0
@@ -17,48 +17,45 @@
 
 ---
 
-### Step 1: Write Test File
+### Step 1: Create Test Files
 **Status:** ✅ Complete
 
 - [x] Create `hello.txt` in this task folder with content "Runtime V2 works!"
+- [x] Create `fibonacci.txt` with the first 20 Fibonacci numbers, one per line
+- [x] Create `summary.txt` with a 3-paragraph summary of what Runtime V2 is
 
 ---
 
-### Step 2: Documentation & Delivery
+### Step 2: Code Analysis
 **Status:** ✅ Complete
 
-- [x] Log completion in STATUS.md
+- [x] Read `extensions/taskplane/lane-runner.ts` and count exported functions → `analysis.txt`
+- [x] Read `extensions/taskplane/agent-host.ts` and list emitEvent types → `events.txt`
+
+---
+
+### Step 3: Documentation & Delivery
+**Status:** ✅ Complete
+
+- [x] Log completion in STATUS.md with a summary of all files created
+
+Summary of files created:
+- `hello.txt`
+- `fibonacci.txt`
+- `summary.txt`
+- `analysis.txt`
+- `events.txt`
 
 ---
 
 ## Execution Log
 
 | Timestamp | Action | Outcome |
-|-----------|--------|---------|
-| 2026-04-01 12:58 | Task started | Runtime V2 lane-runner execution |
-| 2026-04-01 12:58 | Step 0 started | Preflight |
-| 2026-04-01 12:59 | Step 0 completed | PROMPT.md and STATUS.md confirmed present |
-| 2026-04-01 12:59 | Step 1 completed | `hello.txt` created with expected content |
-| 2026-04-01 12:59 | Step 2 completed | STATUS.md updated to reflect completion |
-| 2026-04-01 12:59 | Worker iter 1 | done in 47s, tools: 15 |
-| 2026-04-01 12:59 | Task complete | .DONE created |
-| 2026-04-01 13:07 | Task started | Runtime V2 lane-runner execution |
-| 2026-04-01 13:07 | Task complete | .DONE created |
-| 2026-04-01 13:20 | Task started | Runtime V2 lane-runner execution |
-| 2026-04-01 13:20 | Task complete | .DONE created |
-| 2026-04-01 13:22 | Task started | Runtime V2 lane-runner execution |
-| 2026-04-01 13:22 | Task complete | .DONE created |
-| 2026-04-01 13:25 | Task started | Runtime V2 lane-runner execution |
-| 2026-04-01 13:25 | Task complete | .DONE created |
-| 2026-04-01 13:28 | Task started | Runtime V2 lane-runner execution |
-| 2026-04-01 13:28 | Task complete | .DONE created |
-| 2026-04-01 13:32 | Task started | Runtime V2 lane-runner execution |
-| 2026-04-01 13:32 | Task complete | .DONE created |
-| 2026-04-01 13:37 | Task started | Runtime V2 lane-runner execution |
-| 2026-04-01 13:37 | Task complete | .DONE created |
-| 2026-04-01 13:40 | Task started | Runtime V2 lane-runner execution |
-| 2026-04-01 13:40 | Task complete | .DONE created |
-| 2026-04-01 13:44 | Task started | Runtime V2 lane-runner execution |
-| 2026-04-01 13:44 | Task complete | .DONE created |
-| 2026-04-01 14:34 | Task started | Runtime V2 lane-runner execution |
-| 2026-04-01 14:34 | Task complete | .DONE created |
+| 2026-04-01 15:19 | Task started | Runtime V2 lane-runner execution |
+| 2026-04-01 15:19 | Step 0 started | Preflight |
+| 2026-04-01 15:20 | Step 0 complete | PROMPT.md and STATUS.md confirmed |
+| 2026-04-01 15:22 | Step 1 complete | hello.txt, fibonacci.txt, summary.txt created |
+| 2026-04-01 15:24 | Step 2 complete | analysis.txt and events.txt created from source inspection |
+| 2026-04-01 15:25 | Step 3 complete | STATUS.md updated with completion summary |
+| 2026-04-01 15:19 | Worker iter 1 | done in 50s, tools: 15 |
+| 2026-04-01 15:19 | Task complete | .DONE created |
