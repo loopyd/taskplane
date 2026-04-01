@@ -2282,6 +2282,8 @@ export async function executeOrchBatch(
 			}
 		} catch { /* runtime dir may not exist */ }
 
+		// DEBUG: log laneTokens state
+		try { writeFileSync(join(stateRoot, '.pi', 'tp-debug-laneTokens.json'), JSON.stringify({ size: laneTokens.size, keys: [...laneTokens.keys()], values: [...laneTokens.values()], batchId: batchState.batchId, piDir, lanesDir: join(piDir, 'runtime', batchState.batchId, 'lanes') })); } catch {}
 		// Legacy fallback: lane-state-*.json sidecars (only if V2 found nothing)
 		if (laneTokens.size === 0) {
 			try {
