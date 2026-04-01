@@ -36,5 +36,6 @@
 | Timestamp | Action | Outcome |
 |-----------|--------|---------|
 | 2026-04-01 | Run 1 | V2 execution OK, telemetry zeros (pre-fix) |
-| 2026-04-01 | Run 2 | V2 execution OK, telemetry populated, dashboard empty (pre-fix) |
-| 2026-04-01 | Run 3 | Testing dashboard V2 native data flow |
+| 2026-04-01 | Run 2 | V2 execution OK, telemetry populated, dashboard empty |
+| 2026-04-01 | Run 3 | V2 execution OK, CLI shows failed (naming mismatch) |
+| 2026-04-01 | Run 4 | Testing agent ID alignment + snapshot-based liveness |

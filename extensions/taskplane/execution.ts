@@ -11,8 +11,9 @@ import { userInfo } from "os";
 import { DONE_GRACE_MS, EXECUTION_POLL_INTERVAL_MS, ExecutionError, SESSION_SPAWN_RETRY_MAX } from "./types.ts";
 import type { AllocatedLane, AllocatedTask, DependencyGraph, LaneExecutionResult, LaneMonitorSnapshot, LaneTaskOutcome, LaneTaskStatus, MonitorState, MtimeTracker, OrchestratorConfig, ParsedTask, TaskMonitorSnapshot, WaveExecutionResult, WorkspaceConfig, ExecutionUnit, PacketPaths, RuntimeAgentId, RuntimeAgentRole, SupervisorAlertCallback } from "./types.ts";
 import { resolvePacketPaths, buildRuntimeAgentId } from "./types.ts";
-import { readRegistrySnapshot, isTerminalStatus, isProcessAlive } from "./process-registry.ts";
+import { readRegistrySnapshot, readLaneSnapshot, isTerminalStatus, isProcessAlive } from "./process-registry.ts";
 import { allocateLanes } from "./waves.ts";
+import { resolveOperatorId } from "./naming.ts";
 import { runGit } from "./git.ts";
 
 // ── Taskplane Package File Resolution ────────────────────────────────
@@ -1752,11 +1753,18 @@ export async function resolveTaskMonitorState(
 	stallTimeoutMs: number,
 	now: number,
 	runtimeBackend?: RuntimeBackend,
+	v2Context?: { stateRoot: string; batchId: string; laneNumber: number },
 ): Promise<TaskMonitorSnapshot> {
-	// TP-112: Backend-aware liveness check.
-	// V2: check process registry (PID liveness). Legacy: check TMUX session.
+	// TP-115: Backend-aware liveness check.
+	// V2: read the lane snapshot file written by lane-runner every second.
+	// Snapshot status is authoritative — no PID probing needed.
+	// Legacy: check TMUX session.
 	let sessionAlive: boolean;
-	if (runtimeBackend === "v2") {
+	if (runtimeBackend === "v2" && v2Context) {
+		const snap = readLaneSnapshot(v2Context.stateRoot, v2Context.batchId, v2Context.laneNumber);
+		sessionAlive = snap != null && snap.status === "running";
+	} else if (runtimeBackend === "v2") {
+		// Fallback to registry-based check if no v2Context
 		sessionAlive = isV2AgentAlive(sessionName, runtimeBackend);
 	} else {
 		sessionAlive = await tmuxHasSessionAsync(sessionName);
@@ -2080,6 +2088,11 @@ export async function monitorLanes(
 						stallTimeoutMs,
 						now,
 						runtimeBackend,
+						(runtimeBackend === "v2" && batchId) ? {
+							stateRoot: stateRootForRegistry ?? repoRoot,
+							batchId,
+							laneNumber: lane.laneNumber,
+						} : undefined,
 					);
 
 					currentTaskSnapshot = snapshot;
@@ -2957,9 +2970,10 @@ export async function executeLaneV2(
 	const stateRoot = resolveRuntimeStateRoot(repoRoot, workspaceRoot);
 	const batchId = config.orchestrator?.batchId || extraEnvVars?.ORCH_BATCH_ID || String(Date.now());
 
-	// Build agent ID prefix from orchestrator config
+	// Build agent ID prefix — must match the wave planner's naming (TP-115).
+	// Uses resolveOperatorId() so agent registry keys align with tmuxSessionName.
 	const tmuxPrefix = config.orchestrator?.tmux_prefix ?? "orch";
-	const opId = config.orchestrator?.operatorId || "op";
+	const opId = resolveOperatorId(config);
 	const agentIdPrefix = `${tmuxPrefix}-${opId}`;
 
 	// Load worker agent definition for system prompt

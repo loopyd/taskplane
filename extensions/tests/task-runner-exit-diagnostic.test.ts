@@ -391,11 +391,13 @@ describe("persistence — exitDiagnostic validation", () => {
 // ── Helpers for outcome/monitor tests ────────────────────────────────
 
 /** Build a minimal LaneTaskOutcome. */
+// Use a fixed timestamp to avoid flaky Date.now() drift between calls
+const FIXED_START = 1700000000000;
 function makeOutcome(overrides: Partial<LaneTaskOutcome> = {}): LaneTaskOutcome {
 	return {
 		taskId: "task-1",
 		status: "running",
-		startTime: Date.now(),
+		startTime: FIXED_START,
 		endTime: null,
 		exitReason: "Task in progress",
 		sessionName: "orch-lane-1-worker",
