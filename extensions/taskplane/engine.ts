@@ -2283,7 +2283,12 @@ export async function executeOrchBatch(
 		} catch { /* runtime dir may not exist */ }
 
 		// DEBUG: log laneTokens state
-		try { writeFileSync(join(stateRoot, '.pi', 'tp-debug-laneTokens.json'), JSON.stringify({ size: laneTokens.size, keys: [...laneTokens.keys()], values: [...laneTokens.values()], batchId: batchState.batchId, piDir, lanesDir: join(piDir, 'runtime', batchState.batchId, 'lanes') })); } catch {}
+		try {
+			const _dbg = { size: laneTokens.size, keys: [...laneTokens.keys()], batchId: batchState.batchId, stateRoot, piDir };
+			writeFileSync(join(stateRoot, '.pi', 'tp-debug-laneTokens.json'), JSON.stringify(_dbg, null, 2));
+		} catch (e: any) {
+			try { writeFileSync(join(stateRoot, '.pi', 'tp-debug-error.txt'), String(e?.stack || e)); } catch {}
+		}
 		// Legacy fallback: lane-state-*.json sidecars (only if V2 found nothing)
 		if (laneTokens.size === 0) {
 			try {
