@@ -1,38 +1,41 @@
 ---
 name: create-taskplane-task
 version: 1.1.0
-description: Creates structured Taskplane task packets (PROMPT.md, STATUS.md) for autonomous agent execution via the task-runner and task-orchestrator extensions. Use when asked to "create a task", "create a taskplane task", "stage a task", "prepare a task for execution", "write a PROMPT.md", "set up work for the agent", "queue a task", or whenever the user wants to define work that will be executed autonomously by another agent instance.
+description: Creates structured Taskplane task packets (PROMPT.md, STATUS.md) for autonomous agent execution via the task-orchestrator extension (/orch). Use when asked to "create a task", "create a taskplane task", "stage a task", "prepare a task for execution", "write a PROMPT.md", "set up work for the agent", "queue a task", or whenever the user wants to define work that will be executed autonomously by another agent instance.
 ---
 
 # Create Taskplane Task
 
 Creates structured task packets (PROMPT.md + STATUS.md) for autonomous execution
-via the **task-runner extension** and parallel batch execution via the
-**task-orchestrator extension**. The extensions handle the execution loop,
-fresh-context management, cross-model reviews, wave scheduling, and live
-dashboard — so PROMPT.md stays focused on WHAT to do, not HOW to execute.
+via the **task-orchestrator extension** (`/orch`). The orchestrator handles the
+execution loop, fresh-context management, cross-model reviews, wave scheduling,
+and live dashboard — so PROMPT.md stays focused on WHAT to do, not HOW to execute.
 
 ## Architecture
 
 ```
 create-taskplane-task skill       → Creates PROMPT.md + STATUS.md
-task-runner extension            → Executes the task autonomously
+task-orchestrator extension      → Executes tasks (single or batch)
   ├─ task-worker.md agent        → Worker system prompt (checkpoint discipline, resume logic)
   ├─ task-reviewer.md agent      → Reviewer system prompt (review formats, criteria)
-  └─ task-runner.yaml config     → Project-specific settings, paths, standards
+  └─ taskplane-config.json       → Project-specific settings, paths, standards
 ```
 
-The skill only creates files. All execution behavior lives in the extension and agents.
+The skill only creates files. All execution behavior lives in the orchestrator
+and its agent-host runtime (Runtime V2 — direct process hosting, no TMUX).
 
 ## Prerequisites
 
-**If `.pi/task-runner.yaml` does not exist**, the project has not been initialized.
-Tell the user to run `taskplane init` first — the skill cannot create tasks
-without knowing where task areas live.
+**If `.pi/taskplane-config.json` does not exist** (and `.pi/task-runner.yaml`
+is also absent), the project has not been initialized. Tell the user to run
+`taskplane init` first — the skill cannot create tasks without knowing where
+task areas live.
 
 ## Configuration
 
-**Read `.pi/task-runner.yaml` before creating any task.** It contains:
+**Read `.pi/taskplane-config.json` first** (JSON, canonical). Fall back to
+`.pi/task-runner.yaml` only if the JSON config does not exist. The config
+contains:
 - `task_areas` — folder paths, prefixes, CONTEXT.md locations per area
 - `reference_docs` — available Tier 3 docs for "Context to Read First"
 - `standards` — project coding rules and standards docs
@@ -53,7 +56,7 @@ The user will rarely specify which area to use — **figure it out from context.
 
 **When there are multiple areas**, match the task to the right area:
 
-1. Read `.pi/task-runner.yaml` → `task_areas` to get all areas
+1. Read the project config (`taskplane-config.json` or `task-runner.yaml`) → `task_areas` to get all areas
 2. Read each area's `CONTEXT.md` — the "Current State" section describes what
    that area owns (its domain, services, file scope)
 3. Match the task description to the area whose scope best fits:
@@ -71,7 +74,7 @@ The user will rarely specify which area to use — **figure it out from context.
 
 **Note:** Task area structures evolve over time. A new project starts with a
 single `taskplane-tasks/` folder and one area. As the project grows, users add
-domains and platform areas in `task-runner.yaml`. The skill adapts — it always
+domains and platform areas in the config. The skill adapts — it always
 reads the config to discover what areas exist rather than assuming a layout.
 
 ### Step 2: Assess Complexity & Size
@@ -96,13 +99,14 @@ Use the STATUS.md template in [references/prompt-template.md](references/prompt-
 ### Step 6: Update Tracking
 
 - **CONTEXT.md** — Increment `Next Task ID` (done in Step 1)
-- **PROGRESS.md** — Add row to "Active Tasks" table
 
 ### Step 7: Report Launch Command
 
 ```
-/task {area.path}/{PREFIX-###-slug}/PROMPT.md
+/orch {area.path}/{PREFIX-###-slug}/PROMPT.md
 ```
+
+For batch execution of multiple tasks: `/orch all`
 
 ---
 
@@ -165,9 +169,9 @@ PROMPT.md tells the worker what to load. Less is better.
 | **3** | Specific reference docs | Only the docs this task needs |
 
 Populate "Context to Read First" in PROMPT.md using docs from
-`task-runner.yaml → reference_docs`. List only what the task actually needs.
+the project config → `reference_docs`. List only what the task actually needs.
 
-Docs in `task-runner.yaml → never_load` must NOT appear in any task.
+Docs listed in config → `never_load` must NOT appear in any task.
 
 ---
 
@@ -319,8 +323,7 @@ Verify every task against this before reporting the launch command:
 - [ ] STATUS.md created with matching step structure
   - [ ] Checkboxes match PROMPT.md granularity (1:1 where items are known)
   - [ ] `⚠️ Hydrate` markers for discovery-dependent steps
-- [ ] PROGRESS.md updated (add to "Active Tasks")
-- [ ] Launch command reported: `/task {path}/PROMPT.md`
+- [ ] Launch command reported: `/orch {path}/PROMPT.md`
 
 ---
 

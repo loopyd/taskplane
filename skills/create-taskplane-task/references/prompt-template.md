@@ -90,7 +90,7 @@ Copy this template when creating a new task. Replace all `[bracketed]` fields.
 > ZERO test failures allowed. This step runs the FULL test suite as a quality gate.
 > (Earlier steps should use targeted tests for fast feedback — see worker prompt.)
 
-- [ ] Run FULL test suite: `[test command from task-runner.yaml]`
+- [ ] Run FULL test suite: `[test command from project config]`
 - [ ] Run integration tests (if applicable)
 - [ ] Fix all failures
 - [ ] Build passes: `[build command]`
