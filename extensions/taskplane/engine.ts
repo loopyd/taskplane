@@ -2277,7 +2277,7 @@ export async function executeOrchBatch(
 							cacheWrite: (w.cacheWriteTokens || 0) + (r.cacheWriteTokens || 0),
 							costUsd: (w.costUsd || 0) + (r.costUsd || 0),
 						});
-					} catch { /* skip invalid files */ }
+					} catch (snapErr: any) { try { writeFileSync(join(stateRoot, '.pi', 'tp-debug-snap-err.txt'), `file=${f} err=${snapErr?.message}\nstack=${snapErr?.stack}`); } catch {} }
 				}
 			}
 		} catch { /* runtime dir may not exist */ }
