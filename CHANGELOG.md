@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.23.9] - 2026-04-01
+
+### Fixed
+- **Batch history token lookup** — V2 task outcomes have `-worker` suffix on sessionName but laneTokens was keyed without suffix. Now strips suffix as fallback. Dashboard summary page shows real token/cost data.
+- **Merge agent "killed" → "exited"** — After successful merge, registry manifest updated to "exited" instead of "killed". Dashboard agents panel shows correct status.
+- **jiti cache option** — v0.23.7-8 used wrong option name (`fsCache` instead of `cache`). Now correct.
+
+### Important
+- After `npm update`, clear stale jiti cache: `rm -rf "$TEMP/jiti"` then restart Pi.
+
 ## [0.23.8] - 2026-04-01
 
 ### Fixed
