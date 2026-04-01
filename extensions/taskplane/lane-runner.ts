@@ -280,8 +280,6 @@ export async function executeTaskV2(
 		// Context pressure: write wrap-up signal before kill
 		let workerKillReason: "context" | "timer" | null = null;
 
-		// DEBUG: verify this code path executes
-		try { writeFileSync(join(config.stateRoot, '.pi', 'tp-debug-pre-spawn.json'), JSON.stringify({ ts: Date.now(), iter: totalIterations, taskId, stateRoot: config.stateRoot })); } catch(e: any) { try { writeFileSync(join(config.stateRoot, '.pi', 'tp-debug-err.txt'), 'pre-spawn: ' + String(e?.message || e)); } catch {} }
 		const spawned = spawnAgent(hostOpts, undefined, (telemetry) => {
 			// Context pressure check
 			if (telemetry.contextUsage) {
@@ -305,8 +303,6 @@ export async function executeTaskV2(
 
 		// TP-115: Update lastTelemetry with definitive final values from AgentHostResult
 		lastTelemetry = workerResult;
-		// DEBUG
-		try { writeFileSync(join(config.stateRoot, '.pi', 'tp-debug-workerResult.json'), JSON.stringify({ iter: totalIterations, cost: workerResult.costUsd, tools: workerResult.toolCalls, input: workerResult.inputTokens, keys: Object.keys(workerResult) }, null, 2)); } catch(e: any) { try { writeFileSync(join(config.stateRoot, '.pi', 'tp-debug-err2.txt'), 'workerResult: ' + String(e?.message || e)); } catch {} }
 
 		// Clean up wrap-up signal
 		if (existsSync(wrapUpFile)) try { unlinkSync(wrapUpFile); } catch { /* ignore */ }
