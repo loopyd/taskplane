@@ -343,3 +343,22 @@ export function writeLaneSnapshot(
 	writeFileSync(tmpPath, JSON.stringify(snapshot, null, 2) + "\n", "utf-8");
 	renameSync(tmpPath, path);
 }
+
+/**
+ * Read a V2 lane snapshot from disk.
+ * Returns null if the file doesn't exist or is unreadable.
+ * @since TP-115
+ */
+export function readLaneSnapshot(
+	stateRoot: string,
+	batchId: string,
+	laneNumber: number,
+): { status: string; updatedAt?: number } | null {
+	try {
+		const p = runtimeLaneSnapshotPath(stateRoot, batchId, laneNumber);
+		if (!existsSync(p)) return null;
+		return JSON.parse(readFileSync(p, "utf-8"));
+	} catch {
+		return null;
+	}
+}
