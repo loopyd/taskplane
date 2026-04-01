@@ -2,7 +2,7 @@
  * Main batch execution engine
  * @module orch/engine
  */
-import { existsSync, readdirSync, readFileSync, writeFileSync, unlinkSync } from "fs";
+import { existsSync, readdirSync, readFileSync, unlinkSync } from "fs";
 import { join, resolve } from "path";
 
 import { formatDiscoveryResults, runDiscovery } from "./discovery.ts";
@@ -2268,7 +2268,7 @@ export async function executeOrchBatch(
 						const w = snap.worker || {};
 						const r = snap.reviewer || {};
 						// Key by session name (match lane record) for per-task lookup
-						const laneRec = batchState.lanes.find((l: { laneNumber: number }) => l.laneNumber === snap.laneNumber);
+						const laneRec = (batchState.lanes || []).find((l: { laneNumber: number }) => l.laneNumber === snap.laneNumber);
 						const key = laneRec?.tmuxSessionName || `lane-${snap.laneNumber}`;
 						laneTokens.set(key, {
 							input: (w.inputTokens || 0) + (r.inputTokens || 0),
@@ -2277,21 +2277,12 @@ export async function executeOrchBatch(
 							cacheWrite: (w.cacheWriteTokens || 0) + (r.cacheWriteTokens || 0),
 							costUsd: (w.costUsd || 0) + (r.costUsd || 0),
 						});
-					} catch (snapErr: any) { try { writeFileSync(join(stateRoot, '.pi', 'tp-debug-snap-err.txt'), `file=${f} err=${snapErr?.message}\nstack=${snapErr?.stack}`); } catch {} }
+					} catch { /* skip invalid files */ }
 				}
 			}
 		} catch { /* runtime dir may not exist */ }
 
-		// DEBUG: log laneTokens state + directory check
-		try {
-			const _lanesDir = join(piDir, 'runtime', batchState.batchId, 'lanes');
-			const _dirExists = existsSync(_lanesDir);
-			const _files = _dirExists ? readdirSync(_lanesDir) : [];
-			const _dbg = { size: laneTokens.size, keys: [...laneTokens.keys()], batchId: batchState.batchId, stateRoot, piDir, lanesDir: _lanesDir, dirExists: _dirExists, files: _files };
-			writeFileSync(join(stateRoot, '.pi', 'tp-debug-laneTokens.json'), JSON.stringify(_dbg, null, 2));
-		} catch (e: any) {
-			try { writeFileSync(join(stateRoot, '.pi', 'tp-debug-error.txt'), String(e?.stack || e)); } catch {}
-		}
+
 		// Legacy fallback: lane-state-*.json sidecars (only if V2 found nothing)
 		if (laneTokens.size === 0) {
 			try {
