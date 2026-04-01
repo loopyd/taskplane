@@ -7,15 +7,95 @@
  * Run: node --experimental-strip-types --experimental-test-module-mocks --no-warnings --import ./tests/loader.mjs --test tests/conversation-event-fidelity.test.ts
  */
 
-import { describe, it } from "node:test";
+import { describe, it, mock, beforeEach, afterEach } from "node:test";
 import { expect } from "./expect.ts";
-import { readFileSync } from "fs";
+import { readFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
+import { tmpdir } from "os";
+import { PassThrough } from "stream";
+import { EventEmitter } from "events";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const agentHostSrc = readFileSync(join(__dirname, "..", "taskplane", "agent-host.ts"), "utf-8");
 const dashboardAppSrc = readFileSync(join(__dirname, "..", "..", "dashboard", "public", "app.js"), "utf-8");
+
+type RuntimeAgentEvent = import("../taskplane/types.ts").RuntimeAgentEvent;
+
+interface FakeChildProc extends EventEmitter {
+	stdout: PassThrough;
+	stderr: PassThrough;
+	stdin: {
+		destroyed: boolean;
+		writes: string[];
+		write: (chunk: string | Buffer) => boolean;
+		end: () => void;
+	};
+	pid: number;
+	kill: (signal?: NodeJS.Signals | number) => boolean;
+}
+
+let lastSpawnedProc: FakeChildProc | null = null;
+let onStdinWrite: ((chunk: string) => void) | null = null;
+
+const realChildProcess = await import("node:child_process");
+const mockSpawnSync = mock.fn(() => ({ stdout: "", stderr: "", status: 0 } as any));
+const mockSpawn = mock.fn((_cmd: string, _args?: readonly string[], _opts?: any) => {
+	const proc = new EventEmitter() as FakeChildProc;
+	proc.stdout = new PassThrough();
+	proc.stderr = new PassThrough();
+	proc.stdin = {
+		destroyed: false,
+		writes: [],
+		write(chunk: string | Buffer) {
+			const asText = typeof chunk === "string" ? chunk : chunk.toString("utf-8");
+			this.writes.push(asText);
+			if (onStdinWrite) onStdinWrite(asText);
+			return true;
+		},
+		end() {
+			this.destroyed = true;
+		},
+	};
+	proc.pid = 43210;
+	proc.kill = (_signal?: NodeJS.Signals | number) => true;
+	lastSpawnedProc = proc;
+	return proc as any;
+});
+
+mock.module("child_process", {
+	namedExports: {
+		...realChildProcess,
+		spawn: mockSpawn,
+		spawnSync: mockSpawnSync,
+	},
+});
+
+const { spawnAgent } = await import("../taskplane/agent-host.ts");
+
+let originalAppData = process.env.APPDATA;
+let fakeAppDataRoot = "";
+
+beforeEach(() => {
+	mockSpawn.mock.resetCalls();
+	mockSpawnSync.mock.resetCalls();
+	lastSpawnedProc = null;
+	onStdinWrite = null;
+	fakeAppDataRoot = mkdtempSync(join(tmpdir(), "tp111-agent-host-"));
+	const fakeCliDir = join(fakeAppDataRoot, "npm", "node_modules", "@mariozechner", "pi-coding-agent", "dist");
+	mkdirSync(fakeCliDir, { recursive: true });
+	writeFileSync(join(fakeCliDir, "cli.js"), "// fake cli for tests\n", "utf-8");
+	process.env.APPDATA = fakeAppDataRoot;
+});
+
+afterEach(() => {
+	process.env.APPDATA = originalAppData;
+	if (fakeAppDataRoot) {
+		try { rmSync(fakeAppDataRoot, { recursive: true, force: true }); } catch { /* best effort */ }
+	}
+	lastSpawnedProc = null;
+	onStdinWrite = null;
+});
 
 // ── 1. Agent-host conversation event emission ───────────────────────
 
@@ -140,108 +220,141 @@ describe("4.x: Event type contract (TP-111)", () => {
 	});
 });
 
-// ── 5. Behavioral tests (runtime, not source-shape) ─────────────────
+// ── 5. Runtime behavioral tests with mocked child process ───────────
 
-// Import the helpers directly for behavioral validation
-const {
-	truncatePayload: _truncate,
-	extractAssistantText: _extract,
-	MAX_CONV_PAYLOAD_CHARS: _maxChars,
-} = await (async () => {
-	// These are module-private; re-implement here for behavioral testing
-	// (mirrors the exact logic in agent-host.ts)
-	const MAX_CONV_PAYLOAD_CHARS = 2000;
-	function truncatePayload(text: string, maxLen: number): string {
-		if (text.length <= maxLen) return text;
-		return text.slice(0, maxLen) + "\u2026";
-	}
-	function extractAssistantText(message: Record<string, unknown>): string {
-		if (typeof message.content === "string") return message.content;
-		if (Array.isArray(message.content)) {
-			const textBlocks = message.content
-				.filter((b: unknown): b is { type: string; text: string } =>
-					typeof b === "object" && b !== null &&
-					(b as any).type === "text" && typeof (b as any).text === "string")
-				.map(b => b.text);
-			if (textBlocks.length > 0) return textBlocks.join("\n");
-		}
-		if (typeof message.text === "string") return message.text;
-		return "";
-	}
-	return { truncatePayload, extractAssistantText, MAX_CONV_PAYLOAD_CHARS };
-})();
+describe("5.x: Runtime behavioral emission (TP-111)", () => {
+	it("5.1: emits prompt_sent after prompt write and truncates conversation payloads", async () => {
+		const events: RuntimeAgentEvent[] = [];
+		const timeline: string[] = [];
+		onStdinWrite = (chunk) => {
+			if (chunk.includes('"type":"prompt"')) timeline.push("prompt_write");
+		};
 
-describe("5.x: Behavioral — truncatePayload", () => {
-	it("5.1: returns short text unchanged", () => {
-		expect(_truncate("hello", 2000)).toBe("hello");
+		const { promise } = spawnAgent({
+			agentId: "orch-test-lane-1-worker",
+			role: "worker",
+			batchId: "batch-tp111",
+			laneNumber: 1,
+			taskId: "TP-111",
+			repoId: "default",
+			cwd: process.cwd(),
+			prompt: "P".repeat(2200),
+			mailboxDir: null,
+			stateRoot: null,
+		}, (evt) => {
+			events.push(evt);
+			timeline.push(`event:${evt.type}`);
+		});
+
+		expect(mockSpawn).toHaveBeenCalledTimes(1);
+		expect(lastSpawnedProc).toBeDefined();
+
+		lastSpawnedProc!.stdout.write(JSON.stringify({
+			type: "message_end",
+			message: { role: "assistant", content: "A".repeat(2600) },
+		}) + "\n");
+		lastSpawnedProc!.stdout.write(JSON.stringify({ type: "agent_end" }) + "\n");
+		lastSpawnedProc!.emit("close", 0, null);
+
+		await promise;
+
+		expect(timeline.indexOf("prompt_write")).toBeGreaterThan(-1);
+		expect(timeline.indexOf("event:prompt_sent")).toBeGreaterThan(timeline.indexOf("prompt_write"));
+
+		const promptEvt = events.find(e => e.type === "prompt_sent");
+		const assistantEvt = events.find(e => e.type === "assistant_message");
+		expect(promptEvt).toBeDefined();
+		expect(assistantEvt).toBeDefined();
+
+		const promptText = String((promptEvt!.payload as any).text || "");
+		const assistantText = String((assistantEvt!.payload as any).text || "");
+		expect(promptText.length).toBe(2001); // 2000 + ellipsis
+		expect(assistantText.length).toBe(2001); // 2000 + ellipsis
+		expect(promptText.endsWith("…")).toBe(true);
+		expect(assistantText.endsWith("…")).toBe(true);
 	});
 
-	it("5.2: truncates at boundary and appends ellipsis", () => {
-		const long = "x".repeat(3000);
-		const result = _truncate(long, 2000);
-		expect(result.length).toBe(2001); // 2000 chars + 1 ellipsis
-		expect(result.endsWith("\u2026")).toBe(true);
+	it("5.2: emits bounded tool_call/tool_result payloads with no raw args object", async () => {
+		const events: RuntimeAgentEvent[] = [];
+		const huge = "X".repeat(5000);
+		const longPath = `/tmp/${"p".repeat(400)}.txt`;
+
+		const { promise } = spawnAgent({
+			agentId: "orch-test-lane-2-worker",
+			role: "worker",
+			batchId: "batch-tp111",
+			laneNumber: 2,
+			taskId: "TP-111",
+			repoId: "default",
+			cwd: process.cwd(),
+			prompt: "run",
+			mailboxDir: null,
+			stateRoot: null,
+		}, evt => events.push(evt));
+
+		expect(lastSpawnedProc).toBeDefined();
+
+		lastSpawnedProc!.stdout.write(JSON.stringify({
+			type: "tool_execution_start",
+			toolName: "write",
+			args: { content: huge, path: longPath },
+		}) + "\n");
+		lastSpawnedProc!.stdout.write(JSON.stringify({
+			type: "tool_execution_end",
+			toolName: "write",
+			result: huge,
+		}) + "\n");
+		lastSpawnedProc!.stdout.write(JSON.stringify({ type: "agent_end" }) + "\n");
+		lastSpawnedProc!.emit("close", 0, null);
+
+		await promise;
+
+		const toolCall = events.find(e => e.type === "tool_call");
+		const toolResult = events.find(e => e.type === "tool_result");
+		expect(toolCall).toBeDefined();
+		expect(toolResult).toBeDefined();
+
+		const callPayload = toolCall!.payload as Record<string, unknown>;
+		expect(callPayload["args"]).toBeUndefined();
+		expect(String(callPayload["path"] || "").length).toBeLessThanOrEqual(200);
+		expect(String(callPayload["argsPreview"] || "").length).toBeLessThanOrEqual(80);
+
+		const resultPayload = toolResult!.payload as Record<string, unknown>;
+		expect(String(resultPayload["summary"] || "").length).toBeLessThanOrEqual(200);
 	});
 
-	it("5.3: exact boundary is not truncated", () => {
-		const exact = "y".repeat(2000);
-		expect(_truncate(exact, 2000)).toBe(exact);
-	});
-});
+	it("5.3: malformed assistant content arrays do not crash and still emit text blocks", async () => {
+		const events: RuntimeAgentEvent[] = [];
 
-describe("6.x: Behavioral — extractAssistantText", () => {
-	it("6.1: extracts string content", () => {
-		expect(_extract({ content: "Hello world" })).toBe("Hello world");
-	});
+		const { promise } = spawnAgent({
+			agentId: "orch-test-lane-3-worker",
+			role: "worker",
+			batchId: "batch-tp111",
+			laneNumber: 3,
+			taskId: "TP-111",
+			repoId: "default",
+			cwd: process.cwd(),
+			prompt: "run",
+			mailboxDir: null,
+			stateRoot: null,
+		}, evt => events.push(evt));
 
-	it("6.2: extracts from Anthropic content-block array", () => {
-		const msg = { content: [{ type: "text", text: "Part 1" }, { type: "text", text: "Part 2" }] };
-		expect(_extract(msg)).toBe("Part 1\nPart 2");
-	});
+		expect(lastSpawnedProc).toBeDefined();
 
-	it("6.3: handles null entries in content array without throwing", () => {
-		const msg = { content: [null, { type: "text", text: "OK" }, undefined, 42, "bare string"] };
-		// Must not throw
-		const result = _extract(msg as any);
-		expect(result).toBe("OK");
-	});
+		lastSpawnedProc!.stdout.write(JSON.stringify({
+			type: "message_end",
+			message: {
+				role: "assistant",
+				content: [null, { type: "text", text: "OK" }, undefined, 42, { type: "text" }],
+			},
+		}) + "\n");
+		lastSpawnedProc!.stdout.write(JSON.stringify({ type: "agent_end" }) + "\n");
+		lastSpawnedProc!.emit("close", 0, null);
 
-	it("6.4: handles empty content array", () => {
-		expect(_extract({ content: [] })).toBe("");
-	});
+		await promise;
 
-	it("6.5: falls back to message.text", () => {
-		expect(_extract({ text: "fallback" })).toBe("fallback");
-	});
-
-	it("6.6: returns empty string for completely empty message", () => {
-		expect(_extract({})).toBe("");
-	});
-
-	it("6.7: handles content blocks with missing text field", () => {
-		const msg = { content: [{ type: "text" }, { type: "image", url: "x" }] };
-		expect(_extract(msg as any)).toBe("");
-	});
-});
-
-describe("7.x: Behavioral — payload bounding contract", () => {
-	it("7.1: MAX_CONV_PAYLOAD_CHARS is 2000", () => {
-		expect(_maxChars).toBe(2000);
-	});
-
-	it("7.2: tool_call argsPreview is bounded (no raw args in source)", () => {
-		// Verify the emit line does NOT include 'args: event.args'
-		const emitLine = agentHostSrc.split(/\r?\n/).find(l => l.includes('emitEvent("tool_call"'));
-		expect(emitLine).not.toBe(undefined);
-		expect(emitLine!).not.toContain("args: event.args");
-		expect(emitLine!).toContain("argsPreview");
-	});
-
-	it("7.3: tool_result summary is bounded to 200 chars in source", () => {
-		const resultBlock = agentHostSrc.slice(
-			agentHostSrc.indexOf('case "tool_execution_end"'),
-			agentHostSrc.indexOf('case "tool_execution_end"') + 500
-		);
-		expect(resultBlock).toContain(".slice(0, 200)");
+		const assistantEvt = events.find(e => e.type === "assistant_message");
+		expect(assistantEvt).toBeDefined();
+		expect((assistantEvt!.payload as any).text).toBe("OK");
 	});
 });
