@@ -2,7 +2,7 @@
  * Main batch execution engine
  * @module orch/engine
  */
-import { existsSync, readdirSync, readFileSync, unlinkSync } from "fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync, unlinkSync } from "fs";
 import { join, resolve } from "path";
 
 import { formatDiscoveryResults, runDiscovery } from "./discovery.ts";
