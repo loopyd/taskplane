@@ -319,6 +319,26 @@ Required controls:
 
 ## 13. Implementation notes (from TP-104, TP-107)
 
+### Conversation event fidelity (TP-111)
+
+The agent-host (`extensions/taskplane/agent-host.ts`) now emits complete
+conversation events for the dashboard conversation viewer:
+
+- `prompt_sent` — emitted after the prompt is written to the agent's stdin,
+  with bounded `text` payload (max 2000 chars)
+- `assistant_message` — emitted on each `message_end` RPC event when
+  `message.role === "assistant"`, with content extracted from string or
+  Anthropic content-block array format, bounded to 2000 chars
+- `tool_call` — emits bounded `{ tool, path, argsPreview }` only (no raw
+  args object persisted — prevents large write/edit content from bloating logs)
+- `tool_result` — enriched with `summary` field from tool output (max 200 chars)
+
+Payload bounding prevents unbounded event-log growth during long-running batches:
+- `MAX_CONV_PAYLOAD_CHARS = 2000` for conversation text (prompt_sent, assistant_message)
+- 200 chars for tool paths, arg previews, and result summaries
+- `extractAssistantText()` safely handles string content, Anthropic content-block
+  arrays, null/malformed entries, and message.text fallback without throwing
+
 ### Dashboard Runtime V2 integration (TP-107)
 
 The dashboard server (`dashboard/server.cjs`) now loads Runtime V2 artifacts
