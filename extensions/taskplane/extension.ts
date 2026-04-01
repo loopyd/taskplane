@@ -3529,19 +3529,22 @@ export default function (pi: ExtensionAPI) {
 		label: "Start Batch",
 		description:
 			"Start a new orchestration batch. Target is \"all\" to run all pending tasks, " +
-			"or a specific task area name or path. The batch runs asynchronously — " +
-			"use orch_status() to monitor progress.",
+			"a task area name, a directory path, or one or more PROMPT.md paths. " +
+			"The batch runs asynchronously — use orch_status() to monitor progress.",
 		promptSnippet: "orch_start(target) — start a new batch",
 		promptGuidelines: [
 			"Call orch_start to begin executing pending tasks as a batch.",
-			'Use target="all" to run all pending tasks, or specify a task area name or path.',
+			'Use target="all" to run all pending tasks.',
+			"Specify a task area name to run all pending tasks in that area.",
+			"Specify a PROMPT.md path to run a single task: target=\"taskplane-tasks/TP-101/PROMPT.md\"",
+			"Specify multiple space-separated PROMPT.md paths to run specific tasks: target=\"path/TP-001/PROMPT.md path/TP-002/PROMPT.md\"",
 			"Cannot start if a batch is already running — check orch_status() first.",
 			"The batch runs asynchronously. The tool returns immediately with an ACK.",
 			"After starting, use orch_status() to track progress.",
 		],
 		parameters: Type.Object({
 			target: Type.String({
-				description: 'Target to run: "all" for all pending tasks, or a task area name/path',
+				description: 'Target to run: "all" for all pending tasks, a task area name, a directory path, or one or more PROMPT.md paths (space-separated)',
 			}),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
