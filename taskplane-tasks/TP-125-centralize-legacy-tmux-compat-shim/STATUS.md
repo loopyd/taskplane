@@ -1,10 +1,10 @@
 # TP-125: Centralize Legacy TMUX Compatibility Shim — Status
 
 **Current Step:** Step 4: Delivery
-**Status:** 🟡 In Progress
+**Status:** ✅ Complete
 **Last Updated:** 2026-04-02
 **Review Level:** 2
-**Review Counter:** 4
+**Review Counter:** 5
 **Iteration:** 1
 **Size:** M
 
@@ -37,9 +37,9 @@
 - [x] Fix failures
 
 ### Step 4: Delivery
-**Status:** 🟨 In Progress
-- [ ] Record TMUX-reference count delta
-- [ ] Document exactly which legacy inputs remain supported
+**Status:** ✅ Complete
+- [x] Record TMUX-reference count delta
+- [x] Document exactly which legacy inputs remain supported
 
 ---
 
@@ -62,6 +62,32 @@ Remaining runtime TMUX-shaped legacy-input handling call sites:
 
 Ingress-only confirmation: all identified sites are config/state compatibility normalization or deprecation/warning/reporting. None of them route execution into a tmux backend under Runtime V2.
 
+## Step 4 Delivery Findings
+
+### TMUX-reference count delta (legacy ingress patterns)
+
+Pattern counted: `tmuxPrefix|tmuxSessionName|spawnMode === "tmux"|spawn_mode === "tmux"`
+
+- Pre-centralization (Step 2 baseline `8e15f25`) across ingress runtime files
+  (`config-loader.ts`, `persistence.ts`, `worktree.ts`, `extension.ts`): **24** matches
+- Post-centralization (HEAD) across the same ingress runtime files: **7** matches
+- Net delta in scattered ingress files: **-17**
+- Centralized in shim (`extensions/taskplane/tmux-compat.ts`): **15** matches
+
+### Legacy inputs still supported (and where)
+
+1. `orchestrator.tmuxPrefix` (legacy YAML shape) → normalized to `sessionPrefix`
+   via `normalizeSessionPrefixAlias` in `config-loader.ts` (`mapOrchestratorYaml`).
+2. `orchestrator.orchestrator.tmuxPrefix` (legacy JSON shape) → normalized to `sessionPrefix`
+   via `normalizeSessionPrefixAlias` in `config-loader.ts` (`loadJsonConfig`).
+3. User preference `tmuxPrefix` → normalized to `sessionPrefix`
+   via `resolveSessionPrefixAlias` in `config-loader.ts` (`extractAllowlistedPreferences`).
+4. Persisted lane field `lanes[].tmuxSessionName` → normalized to `laneSessionId`
+   via `readLaneSessionAliases` + `normalizeLaneSessionAlias` in `persistence.ts`.
+5. `spawnMode: "tmux"` / `spawn_mode: "tmux"` (legacy value) remains accepted for
+   compatibility, classified as legacy via `classifySpawnModeCompatibility` /
+   `isLegacyTmuxSpawnMode`, and reported through deprecation/warning messaging.
+
 ## Execution Log
 
 | Timestamp | Action | Outcome |
@@ -72,3 +98,4 @@ Ingress-only confirmation: all identified sites are config/state compatibility n
 | 2026-04-02 21:18 | Review R002 | plan Step 2: APPROVE |
 | 2026-04-02 21:23 | Review R003 | code Step 2: APPROVE |
 | 2026-04-02 21:23 | Review R004 | plan Step 3: APPROVE |
+| 2026-04-02 21:29 | Review R005 | code Step 3: APPROVE |
