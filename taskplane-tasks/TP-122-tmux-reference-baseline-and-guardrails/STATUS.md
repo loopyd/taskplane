@@ -1,10 +1,10 @@
 # TP-122: TMUX Reference Baseline and Guardrails — Status
 
-**Current Step:** Step 2: Add regression guard test
+**Current Step:** Step 3: Tests and validation
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-02
 **Review Level:** 2
-**Review Counter:** 3
+**Review Counter:** 5
 **Iteration:** 1
 **Size:** S
 
@@ -26,13 +26,13 @@
 - [x] Fix Windows path normalization so output paths are always POSIX-style
 
 ### Step 2: Add regression guard test
-**Status:** 🟨 In Progress
-- [ ] Add `extensions/tests/tmux-reference-guard.test.ts`
-- [ ] Assert no functional TMUX command execution remains in `extensions/taskplane/*.ts`
-- [ ] Assert audit script output stays parseable and deterministic
+**Status:** ✅ Complete
+- [x] Add `extensions/tests/tmux-reference-guard.test.ts`
+- [x] Assert no functional TMUX command execution remains in `extensions/taskplane/*.ts`
+- [x] Assert audit script output stays parseable and deterministic
 
 ### Step 3: Tests and validation
-**Status:** ⬜ Not Started
+**Status:** 🟨 In Progress
 - [ ] Run targeted tests including new guard test
 - [ ] Run full extension suite
 - [ ] Fix failures
@@ -57,7 +57,11 @@
 | 2026-04-02 20:38 | Review R003 (code, step 1) | REVISE — normalize output paths to POSIX separators on Windows |
 | 2026-04-02 20:40 | Step 1 revision applied | POSIX path normalization fixed in audit output |
 | 2026-04-02 20:40 | Step 1 completed (post-review) | Ready for re-review |
+| 2026-04-02 20:41 | Review R004 (code, step 1) | APPROVE |
+| 2026-04-02 20:41 | Review R005 (plan, step 2) | APPROVE |
 | 2026-04-02 20:40 | Step 2 started | Add regression guard test |
+| 2026-04-02 20:45 | Step 2 completed | Added guard test for strict/no-functional-TMUX + deterministic JSON |
+| 2026-04-02 20:45 | Step 3 started | Tests and validation |
 |-----------|--------|---------|
 
 ## Baseline Snapshot (2026-04-02)
@@ -138,3 +142,5 @@ Initial hotspot files by total refs: `types.ts` (44), `execution.ts` (26), `pers
 | 2026-04-02 20:22 | Review R001 | plan Step 1: REVISE |
 | 2026-04-02 20:23 | Review R002 | plan Step 1: APPROVE |
 | 2026-04-02 20:27 | Review R003 | code Step 1: REVISE |
+| 2026-04-02 20:29 | Review R004 | code Step 1: APPROVE |
+| 2026-04-02 20:30 | Review R005 | plan Step 2: APPROVE |
