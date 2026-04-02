@@ -553,4 +553,16 @@ describe("14.x: Monitor de-TMUX for V2 (TP-112)", () => {
 		expect(block).toContain("batchId");
 		expect(block).toContain("monitorStateRoot");
 	});
+
+	it("14.8: final cleanup kills lingering Runtime V2 agents without TMUX fallbacks", () => {
+		const cleanupIdx = engineSrc.indexOf("Kill lingering Runtime V2 agents BEFORE removing worktrees.");
+		expect(cleanupIdx).toBeGreaterThan(-1);
+		const cleanupBlock = engineSrc.slice(cleanupIdx, cleanupIdx + 1600);
+		expect(cleanupBlock).toContain("readRegistrySnapshot(stateRoot, batchState.batchId)");
+		expect(cleanupBlock).toContain("lingeringLaneSessions.add(manifest.agentId.replace(/-(worker|reviewer)$/");
+		expect(cleanupBlock).toContain("killV2LaneAgents(sessionName");
+		expect(cleanupBlock).toContain("killAllMergeAgentsV2()");
+		expect(cleanupBlock).not.toContain("tmuxHasSession");
+		expect(cleanupBlock).not.toContain("tmuxKillSession");
+	});
 });
