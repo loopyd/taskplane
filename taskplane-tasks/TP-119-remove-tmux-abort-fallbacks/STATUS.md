@@ -4,7 +4,7 @@
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-02
 **Review Level:** 2
-**Review Counter:** 4
+**Review Counter:** 6
 **Iteration:** 1
 **Size:** S
 
@@ -31,6 +31,8 @@
 
 ### Step 3: Remove dead TMUX helpers
 **Status:** 🟨 In Progress
+- [ ] Migrate engine.ts and extension.ts off tmuxHasSession/tmuxKillSession imports
+- [ ] Re-home tmuxAsync consumers (execution async wrappers + merge capture helper)
 - [ ] Remove tmuxHasSession, tmuxKillSession, tmuxAsync
 - [ ] Remove sessions.ts helpers
 - [ ] Remove TMUX imports
@@ -68,6 +70,8 @@
 
 - R001 suggestion: after Step 1 edits, run a grep sweep on `abort.ts|execution.ts|merge.ts` for `tmuxHasSession|tmuxKillSession` to verify fallback branches are removed.
 - R001 suggestion: run targeted abort/cleanup tests before Step 3 helper deletion.
+- R006 suggestion: run post-edit grep for `tmuxHasSession|tmuxKillSession|tmuxAsync` usage/imports to verify only intended TMUX paths remain.
+- R006 suggestion: remove unused `prefix` in `resume.ts` while touching TMUX cleanup scope.
 
 ## Execution Log
 
@@ -79,3 +83,5 @@
 | 2026-04-02 06:09 | Review R002 | plan Step 1: APPROVE |
 | 2026-04-02 06:15 | Review R003 | code Step 1: APPROVE |
 | 2026-04-02 06:16 | Review R004 | plan Step 2: APPROVE |
+| 2026-04-02 06:19 | Review R005 | code Step 2: APPROVE |
+| 2026-04-02 06:20 | Review R006 | plan Step 3: REVISE |
