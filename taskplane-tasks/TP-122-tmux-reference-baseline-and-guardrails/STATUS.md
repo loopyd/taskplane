@@ -1,10 +1,10 @@
 # TP-122: TMUX Reference Baseline and Guardrails — Status
 
-**Current Step:** Step 1: Add audit script
+**Current Step:** Step 2: Add regression guard test
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-02
 **Review Level:** 2
-**Review Counter:** 1
+**Review Counter:** 2
 **Iteration:** 1
 **Size:** S
 
@@ -17,15 +17,15 @@
 - [x] Capture baseline in STATUS.md for future tasks
 
 ### Step 1: Add audit script
-**Status:** 🟨 In Progress
-- [ ] Define strict-mode functional TMUX detection scope and explicit exclusions
-- [ ] Define deterministic JSON output contract (schema + stable ordering + normalized paths)
-- [ ] Create `scripts/tmux-reference-audit.mjs`
-- [ ] Emit machine-readable summary (total + by-file + by-category)
-- [ ] Support strict mode failure on functional TMUX usage with explicit exit-code + diagnostics contract
+**Status:** ✅ Complete
+- [x] Define strict-mode functional TMUX detection scope and explicit exclusions
+- [x] Define deterministic JSON output contract (schema + stable ordering + normalized paths)
+- [x] Create `scripts/tmux-reference-audit.mjs`
+- [x] Emit machine-readable summary (total + by-file + by-category)
+- [x] Support strict mode failure on functional TMUX usage with explicit exit-code + diagnostics contract
 
 ### Step 2: Add regression guard test
-**Status:** ⬜ Not Started
+**Status:** 🟨 In Progress
 - [ ] Add `extensions/tests/tmux-reference-guard.test.ts`
 - [ ] Assert no functional TMUX command execution remains in `extensions/taskplane/*.ts`
 - [ ] Assert audit script output stays parseable and deterministic
@@ -51,6 +51,9 @@
 | 2026-04-02 20:27 | Step 0 completed | Baseline captured with per-file and per-bucket counts |
 | 2026-04-02 20:27 | Step 1 started | Add audit script |
 | 2026-04-02 20:28 | Review R001 (plan, step 1) | REVISE — add strict-mode boundary + deterministic output contract items |
+| 2026-04-02 20:29 | Review R002 (plan, step 1) | APPROVE |
+| 2026-04-02 20:37 | Step 1 completed | Added deterministic audit script with `--json` and `--strict` |
+| 2026-04-02 20:37 | Step 2 started | Add regression guard test |
 |-----------|--------|---------|
 
 ## Baseline Snapshot (2026-04-02)
@@ -111,8 +114,21 @@ Bucket classification (occurrence-level, same baseline scan):
 
 Initial hotspot files by total refs: `types.ts` (44), `execution.ts` (26), `persistence.ts` (18), `config-loader.ts` (17), `supervisor.ts` (11).
 
+## Step 1 Plan Contracts (R001)
+
+### Strict-mode functional TMUX detection
+- Included: executable TMUX command usage in non-comment code lines where TMUX appears in process-exec patterns (`spawn*`, `exec*`, `execFile*`, `execa*`) either as the executable (`"tmux"`) or in an executed shell payload.
+- Excluded: comments/docs, user-facing copy (`"tmux attach ..."`), and compatibility metadata/identifiers (`tmuxPrefix`, `tmuxSessionName`, type unions, legacy aliases).
+- Failure contract: `--strict` exits with code `2` when functional usages are detected and includes deterministic `functionalUsage.matches[]` diagnostics in JSON output.
+
+### Deterministic JSON contract
+- Schema root fields: `schemaVersion`, `scope`, `contracts`, `totals`, `byCategory`, `byFile`, `functionalUsage`.
+- Stable ordering: files sorted lexicographically by normalized path; category keys emitted in fixed order (`compat-code`, `user-facing strings`, `comments/docs`, `types/contracts`); functional matches sorted by file/line/column.
+- Path normalization: repo-relative POSIX-style paths (e.g., `extensions/taskplane/execution.ts`).
+
 ## Notes
 
 - Reviewer suggestion (R001): keep explicit CLI flags (`--strict`, `--json`) so Step 2 tests can target a stable interface.
 - Reviewer suggestion (R001): add a known-good audit JSON example in STATUS.md once Step 1 implementation is complete.
 | 2026-04-02 20:22 | Review R001 | plan Step 1: REVISE |
+| 2026-04-02 20:23 | Review R002 | plan Step 1: APPROVE |
