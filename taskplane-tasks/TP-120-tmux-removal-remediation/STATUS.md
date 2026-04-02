@@ -4,7 +4,7 @@
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-02
 **Review Level:** 2
-**Review Counter:** 1
+**Review Counter:** 2
 **Iteration:** 1
 **Size:** M
 
@@ -29,6 +29,8 @@
 - [x] Remove other TMUX-only helpers
 - [x] Update imports — remove TMUX references
 - [x] Remove fallback branches, keep V2-only paths
+- [ ] R002: Seed/clear V2 liveness registry cache in MergeHealthMonitor.poll()
+- [ ] R002: Update supervisor-merge-monitoring test expectations for V2 liveness path
 
 ### Step 2: Remove merge health monitor TMUX polling
 **Status:** ⬜ Not Started
@@ -86,6 +88,11 @@
 - `extensions/taskplane/abort.ts` TMUX usage identified:
   - `execSync('tmux list-sessions -F "#{session_name}"')` in abort flow Step 3 for session discovery
 
+## Notes
+
+- Reviewer suggestion (R002): add focused unit coverage for merge-monitor behavior when liveness cache is missing/populated.
+- Reviewer suggestion (R002): clean up residual TMUX wording in execution comments in a follow-up.
+
 ## Execution Log
 
 | Timestamp | Action | Outcome |
@@ -93,3 +100,4 @@
 | 2026-04-02 13:48 | Step 0 started | Preflight — Inventory remaining TMUX code |
 |-----------|--------|---------|
 | 2026-04-02 13:51 | Review R001 | plan Step 1: APPROVE |
+| 2026-04-02 14:01 | Review R002 | code Step 1: REVISE |
