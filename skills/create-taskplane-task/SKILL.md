@@ -82,7 +82,14 @@ reads the config to discover what areas exist rather than assuming a layout.
 
 ### Step 2: Assess Complexity & Size
 
-See [Complexity Assessment](#complexity-assessment) and [Task Sizing](#task-sizing).
+**You MUST explicitly score and assign review level before creating PROMPT.md.**
+
+Quick reference (full rubric in [Complexity Assessment](#complexity-assessment)):
+- Score each dimension 0-2: Blast radius, Pattern novelty, Security, Reversibility
+- Sum → Level: 0-1→L0 (None), 2-3→L1 (Plan), 4-5→L2 (Plan+Code), 6-8→L3 (Full)
+- Size: S (<2h), M (2-4h), L (4-8h), XL (8h+ → must split)
+
+**Do not default to Review Level 0.** Level 0 is only appropriate for trivial changes (doc updates, config, boilerplate). Most M-sized tasks score ≥2 and require at least Level 1.
 
 ### Step 3: Create Task Folder
 
