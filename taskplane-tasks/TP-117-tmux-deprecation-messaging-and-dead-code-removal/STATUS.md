@@ -99,6 +99,9 @@
 | 2026-04-02 04:51 | Review R007 | plan Step 4: APPROVE |
 | 2026-04-02 04:52 | Worker iter 1 | killed (wall-clock timeout) in 1800s, tools: 178 |
 | 2026-04-02 05:04 | Review R008 | code Step 4: APPROVE |
+| 2026-04-02 05:06 | Agent reply | TP-117 completed. Steps 4–5 are fully checked and STATUS.md is set to ✅ Complete (Current Step: Step 5). Updated/removed stale legacy-TMUX tests across 5 files, ran targeted regressions, then full sui |
+| 2026-04-02 05:06 | Worker iter 2 | done in 829s, tools: 80 |
+| 2026-04-02 05:06 | Task complete | .DONE created |
 
 ## Completion Summary
 
