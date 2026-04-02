@@ -2938,6 +2938,83 @@ export function buildAgentIdFromLane(
  *
  * @since TP-102
  */
+/**
+ * Parse an agent .md file: extract frontmatter and body.
+ * Returns null if file doesn't exist or is malformed.
+ * @since TP-117
+ */
+function parseAgentFile(filePath: string): { fm: Record<string, string>; body: string } | null {
+	try {
+		if (!existsSync(filePath)) return null;
+		const raw = readFileSync(filePath, "utf-8");
+		const fmEnd = raw.indexOf("---", 4);
+		if (fmEnd < 0) return { fm: {}, body: raw.trim() };
+		const fmBlock = raw.slice(4, fmEnd).trim();
+		const fm: Record<string, string> = {};
+		for (const line of fmBlock.split("\n")) {
+			const m = line.match(/^([\w-]+)\s*:\s*(.+)/);
+			if (m) fm[m[1]] = m[2].trim();
+		}
+		return { fm, body: raw.slice(fmEnd + 3).trim() };
+	} catch { return null; }
+}
+
+/**
+ * Load the base agent prompt from the taskplane package's templates/ directory.
+ * Resolves the package root via well-known npm global paths.
+ * @since TP-117
+ */
+function loadBaseAgentPrompt(agentName: string): string {
+	const relPath = join("node_modules", "taskplane", "templates", "agents", `${agentName}.md`);
+	const candidates: string[] = [];
+
+	// Global npm paths
+	const home = process.env.HOME || process.env.USERPROFILE || "";
+	if (process.env.APPDATA) candidates.push(join(process.env.APPDATA, "npm", relPath));
+	if (home) {
+		candidates.push(join(home, "AppData", "Roaming", "npm", relPath));
+		candidates.push(join(home, ".npm-global", "lib", relPath));
+	}
+	candidates.push(join("/usr", "local", "lib", relPath));
+	candidates.push(join("/opt", "homebrew", "lib", relPath));
+
+	// Dynamic: npm root -g
+	try {
+		const result = spawnSync("npm", ["root", "-g"], { encoding: "utf-8", timeout: 5000, shell: true });
+		if (result.stdout?.trim()) {
+			candidates.push(join(result.stdout.trim(), "taskplane", "templates", "agents", `${agentName}.md`));
+		}
+	} catch { /* ignore */ }
+
+	for (const p of candidates) {
+		const def = parseAgentFile(p);
+		if (def?.body) return def.body;
+	}
+	return "";
+}
+
+/**
+ * Load local project agent prompt from .pi/agents/ or agents/ directory.
+ * Supports standalone mode (local replaces base entirely).
+ * @since TP-117
+ */
+function loadLocalAgentPrompt(stateRoot: string, agentName: string): string {
+	const paths = [
+		join(stateRoot, ".pi", "agents", `${agentName}.md`),
+		join(stateRoot, "agents", `${agentName}.md`),
+	];
+	for (const p of paths) {
+		const def = parseAgentFile(p);
+		if (def) {
+			// standalone: true → use local as-is (body only, replaces base)
+			if (def.fm.standalone === "true") return def.body;
+			// Otherwise return body as project-specific guidance to append
+			if (def.body) return def.body;
+		}
+	}
+	return "";
+}
+
 export function resolveRuntimeStateRoot(
 	repoRoot: string,
 	workspaceRoot?: string,
@@ -2987,16 +3064,20 @@ export async function executeLaneV2(
 	const opId = resolveOperatorId(config);
 	const agentIdPrefix = `${tmuxPrefix}-${opId}`;
 
-	// Load worker agent definition for system prompt
+	// Load worker agent definition: compose base template + local project guidance.
+	// The base template (templates/agents/task-worker.md) contains critical behavioral
+	// rules: checkpoint discipline, STATUS.md resume algorithm, review_step instructions.
+	// The local file (.pi/agents/task-worker.md) adds project-specific guidance.
 	let workerSystemPrompt = "You are a task execution agent. Read STATUS.md first, find unchecked items, work on them, checkpoint after each.";
 	try {
-		const agentPath = join(stateRoot, ".pi", "agents", "task-worker.md");
-		if (existsSync(agentPath)) {
-			const raw = readFileSync(agentPath, "utf-8");
-			const fmEnd = raw.indexOf("---", 4);
-			if (fmEnd > 0) {
-				workerSystemPrompt = raw.slice(fmEnd + 3).trim();
-			}
+		const basePrompt = loadBaseAgentPrompt("task-worker");
+		const localPrompt = loadLocalAgentPrompt(stateRoot, "task-worker");
+		if (basePrompt && localPrompt) {
+			workerSystemPrompt = basePrompt + "\n\n---\n\n## Project-Specific Guidance\n\n" + localPrompt;
+		} else if (basePrompt) {
+			workerSystemPrompt = basePrompt;
+		} else if (localPrompt) {
+			workerSystemPrompt = localPrompt;
 		}
 	} catch { /* use default */ }
 
