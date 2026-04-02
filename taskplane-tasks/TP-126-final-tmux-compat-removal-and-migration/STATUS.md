@@ -1,23 +1,34 @@
 # TP-126: Final TMUX Compatibility Removal and Migration — Status
 
-**Current Step:** Not Started
-**Status:** 🔵 Ready for Execution
+**Current Step:** Step 1: Remove remaining compatibility paths
+**Status:** 🟡 In Progress
 **Last Updated:** 2026-04-02
 **Review Level:** 3
 **Review Counter:** 0
-**Iteration:** 0
+**Iteration:** 1
 **Size:** L
 
 ---
 
 ### Step 0: Removal plan and migration contract
-**Status:** ⬜ Not Started
-- [ ] Define exact legacy inputs to retire
-- [ ] Choose migration policy per input (normalize/error/grace period)
-- [ ] Document policy in STATUS.md before code changes
+**Status:** ✅ Complete
+- [x] Define exact legacy inputs to retire
+- [x] Choose migration policy per input (normalize/error/grace period)
+- [x] Document policy in STATUS.md before code changes
+
+#### Step 0 Working Notes (legacy input inventory)
+- `orchestrator.orchestrator.tmuxPrefix` alias ingress in JSON config loading (`loadJsonConfig()` in `config-loader.ts`).
+- `tmuxPrefix` alias ingress in user preferences extraction (`extractAllowlistedPreferences()` in `config-loader.ts`).
+- `lanes[].tmuxSessionName` ingress in persisted state validation/normalization (`validateBatchStateShape()` in `persistence.ts`).
+- `spawn_mode: "tmux"` acceptance in config/preferences/task-runner adapters via compatibility classifier + union types (`config-loader.ts`, `config-schema.ts`, `types.ts`, and `tmux-compat.ts`).
+
+#### Step 0 Working Notes (migration policy decisions)
+- `tmuxPrefix` (project config + user preferences): **hard error with fix hint**. Do not alias silently. Error must name replacement key (`sessionPrefix`).
+- `lanes[].tmuxSessionName` in persisted state: **one-release migration grace**. Accept only for migration path with explicit warning + normalize to `laneSessionId` in memory, then persist canonical field on next write.
+- `spawn_mode: "tmux"` (orchestrator/task-runner/user preferences): **hard error with fix hint**. Runtime V2 contract is subprocess-only; reject `tmux` deterministically and point to `subprocess`.
 
 ### Step 1: Remove remaining compatibility paths
-**Status:** ⬜ Not Started
+**Status:** 🟨 In Progress
 - [ ] Remove/retire `tmuxPrefix` config alias handling
 - [ ] Remove/retire `tmuxSessionName` persisted-lane ingress handling
 - [ ] Remove/retire `spawnMode: "tmux"` acceptance paths
@@ -47,4 +58,8 @@
 ## Execution Log
 
 | Timestamp | Action | Outcome |
+| 2026-04-02 21:32 | Task started | Runtime V2 lane-runner execution |
+| 2026-04-02 21:32 | Step 0 started | Removal plan and migration contract |
+| 2026-04-02 21:45 | Step 0 completed | Legacy inputs + migration policy documented in STATUS.md |
+| 2026-04-02 21:45 | Step 1 started | Remove remaining compatibility paths |
 |-----------|--------|---------|
