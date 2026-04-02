@@ -1,10 +1,10 @@
 # TP-126: Final TMUX Compatibility Removal and Migration — Status
 
-**Current Step:** Step 2: Update schema/types/docs/templates
+**Current Step:** Step 1: Remove remaining compatibility paths
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-02
 **Review Level:** 3
-**Review Counter:** 2
+**Review Counter:** 3
 **Iteration:** 1
 **Size:** L
 
@@ -28,15 +28,16 @@
 - `spawn_mode: "tmux"` (orchestrator/task-runner/user preferences): **hard error with fix hint**. Runtime V2 contract is subprocess-only; reject `tmux` deterministically and point to `subprocess`.
 
 ### Step 1: Remove remaining compatibility paths
-**Status:** ✅ Complete
+**Status:** 🟨 In Progress
 - [x] Remove/retire `tmuxPrefix` config alias handling
 - [x] Remove/retire `tmuxSessionName` persisted-lane ingress handling
 - [x] [R001] Preserve one-release migration-only handling for `lanes[].tmuxSessionName` (warn + normalize to `laneSessionId` + canonical rewrite on save)
 - [x] Remove/retire `spawnMode: "tmux"` acceptance paths
 - [x] Keep explicit migration guidance in errors/warnings
+- [ ] [R003] Enforce hard failure in `/task` config loading for `CONFIG_LEGACY_FIELD` (no silent fallback to defaults) and add regression tests
 
 ### Step 2: Update schema/types/docs/templates
-**Status:** 🟨 In Progress
+**Status:** ⬜ Not Started
 - [ ] Update schema/types to canonical non-TMUX contract
 - [ ] Update templates/config docs to canonical keys
 - [ ] Update command/doctor docs to final no-TMUX contract
@@ -59,6 +60,7 @@
 ## Notes
 
 - R001 suggestion: keep Step 1 operator guidance consistent by ensuring hard failures include concrete fix hints (`tmuxPrefix` → `sessionPrefix`, `spawn_mode: tmux` → `subprocess`).
+- R003 suggestion: in Step 2, align settings/UI metadata that still advertises TMUX options so users are not encouraged to set invalid values.
 
 ## Execution Log
 
@@ -70,6 +72,8 @@
 | 2026-04-02 22:31 | Step 1 tests | Targeted suite passed (`project-config-loader`, `user-preferences`, `monorepo-compat-regression`) |
 | 2026-04-02 22:32 | Step 1 completed | Legacy tmuxPrefix/spawn_mode ingress now hard-fails with migration hints; lane tmuxSessionName kept migration-only with warning |
 | 2026-04-02 22:32 | Step 2 started | Update schema/types/docs/templates |
+| 2026-04-02 22:34 | ⚠️ Review R003 (code, Step 1) | REVISE: `/task` loadConfig swallows CONFIG_LEGACY_FIELD via silent defaults fallback |
 |-----------|--------|---------|
 | 2026-04-02 21:35 | Review R001 | plan Step 1: REVISE |
 | 2026-04-02 21:35 | Review R002 | plan Step 1: APPROVE |
+| 2026-04-02 21:46 | Review R003 | code Step 1: REVISE |
