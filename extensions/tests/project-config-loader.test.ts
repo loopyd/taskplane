@@ -606,7 +606,7 @@ describe("key preservation and adapter regression", () => {
 			"  worktree_prefix: my-wt",
 			"  batch_id_format: sequential",
 			"  spawn_mode: tmux",
-			"  tmux_prefix: myorch",
+			"  session_prefix: myorch",
 			"  operator_id: testuser",
 			"  integration: auto",
 			"dependencies:",

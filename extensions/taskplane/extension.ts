@@ -4348,8 +4348,8 @@ export default function (pi: ExtensionAPI) {
 		name: "list_active_agents",
 		label: "List Active Agents",
 		description:
-			"List all tmux sessions with their role, lane, task, context %, and elapsed time.",
-		promptSnippet: "list_active_agents() — show all tmux sessions with role, lane, task, context %, elapsed",
+			"List all active Runtime V2 agents with their role, lane, task, status, and elapsed time.",
+		promptSnippet: "list_active_agents() — show active Runtime V2 agents with role, lane, task, status, elapsed",
 		promptGuidelines: [
 			"Call list_active_agents to see all running agent sessions.",
 			"Shows: session name, role (worker/reviewer/merger/supervisor), lane, task, context %, elapsed.",
@@ -4369,7 +4369,7 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	/**
-	 * List all active tmux sessions with agent metadata.
+	 * List all active Runtime V2 agents using the persisted registry.
 	 * @since TP-096
 	 */
 	function doListActiveAgents(ctx: ExtensionContext): string {
@@ -4384,99 +4384,7 @@ export default function (pi: ExtensionAPI) {
 			}
 		}
 
-		// Fall back to TMUX-based discovery for legacy batches
-		let sessions: string[] = [];
-		try {
-			const output = execSync('tmux list-sessions -F "#{session_name}"', {
-				encoding: "utf-8",
-				timeout: 5000,
-				stdio: ["ignore", "pipe", "ignore"],
-			}).trim();
-			sessions = output ? output.split("\n").map(s => s.trim()).filter(Boolean) : [];
-		} catch {
-			return "❌ No active agents found (no registry and no tmux sessions).";
-		}
-
-		if (sessions.length === 0) return "❌ No active agents found.";
-
-		// state already loaded above for registry check (may be null)
-
-		// Build a map of session name → lane-state data
-		const laneStates: Record<string, any> = {};
-		try {
-			const piDir = join(stateRoot, ".pi");
-			if (existsSync(piDir)) {
-				const files = readdirSync(piDir).filter(f => f.startsWith("lane-state-") && f.endsWith(".json"));
-				for (const file of files) {
-					try {
-						const data = JSON.parse(readFileSync(join(piDir, file), "utf-8"));
-						if (data.prefix) laneStates[data.prefix] = data;
-					} catch { continue; }
-				}
-			}
-		} catch { /* .pi dir missing */ }
-
-		const lines: string[] = [];
-		lines.push(`👥 **Active Agents** (${sessions.length} sessions)\n`);
-
-		// Parse each session name to extract role, lane, etc.
-		for (const sess of sessions) {
-			let role = "unknown";
-			let laneNum = "";
-			let taskId = "";
-			let contextPct = "";
-			let elapsed = "";
-			let costStr = "";
-
-			// Parse session name pattern:
-			// Workers/reviewers: orch-{opId}-lane-{N} (or -worker/-reviewer suffix)
-			// Mergers: orch-{opId}-merge-{N}
-			// Supervisor: pi-supervisor-{...}
-			const laneMatch = sess.match(/-lane-(\d+)/);
-			const mergeMatch = sess.match(/-merge-(\d+)/);
-
-			if (mergeMatch) {
-				role = "merger";
-				laneNum = mergeMatch[1];
-			} else if (laneMatch) {
-				if (sess.includes("-reviewer")) {
-					role = "reviewer";
-				} else {
-					role = "worker";
-				}
-				laneNum = laneMatch[1];
-			} else if (sess.includes("supervisor")) {
-				role = "supervisor";
-			}
-
-			// Find matching task and lane-state
-			if (state && laneNum) {
-				const ln = parseInt(laneNum);
-				const task = state.tasks.find(t => t.laneNumber === ln && t.status === "running");
-				if (task) taskId = task.taskId;
-
-				// Find lane-state prefix (may be the session name or a prefix of it)
-				const laneRec = state.lanes.find(l => l.laneNumber === ln);
-				const prefix = laneRec?.laneSessionId || sess;
-				const ls = laneStates[prefix];
-				if (ls) {
-					if (ls.workerContextPct) contextPct = `${Math.round(ls.workerContextPct)}%`;
-					if (ls.workerElapsed) elapsed = `${Math.round(ls.workerElapsed / 1000)}s`;
-					if (ls.workerCostUsd) costStr = `$${ls.workerCostUsd.toFixed(3)}`;
-				}
-			}
-
-			const parts: string[] = [`**${sess}**`];
-			parts.push(`role: ${role}`);
-			if (laneNum) parts.push(`lane: ${laneNum}`);
-			if (taskId) parts.push(`task: ${taskId}`);
-			if (contextPct) parts.push(`ctx: ${contextPct}`);
-			if (elapsed) parts.push(`elapsed: ${elapsed}`);
-			if (costStr) parts.push(`cost: ${costStr}`);
-			lines.push(`- ${parts.join(" · ")}`);
-		}
-
-		return lines.join("\n");
+		return "❌ No active agents found (Runtime V2 registry is empty).";
 	}
 
 

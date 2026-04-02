@@ -1,11 +1,11 @@
 # TP-120: TMUX Removal Remediation — Status
 
-**Current Step:** Step 4: Config rename — tmux_prefix → sessionPrefix
+**Current Step:** Step 5: Tests
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-02
 **Review Level:** 2
-**Review Counter:** 10
-**Iteration:** 2
+**Review Counter:** 11
+**Iteration:** 3
 **Size:** M
 
 ---
@@ -62,11 +62,11 @@
 - [x] Update dashboard
 
 ### Step 5: Tests
-**Status:** ⬜ Not Started
-- [ ] Update test references
-- [ ] Run full suite
-- [ ] Fix all failures
-- [ ] Verify zero functional TMUX code
+**Status:** 🟨 In Progress
+- [x] Update test references
+- [x] Run full suite
+- [x] Fix all failures
+- [x] Verify zero functional TMUX code
 
 ### Step 6: Documentation & Delivery
 **Status:** ⬜ Not Started
@@ -120,3 +120,6 @@
 | 2026-04-02 14:22 | Review R008 | plan Step 3: APPROVE |
 | 2026-04-02 14:30 | Review R009 | code Step 3: APPROVE |
 | 2026-04-02 14:32 | Review R010 | plan Step 4: APPROVE |
+| 2026-04-02 14:48 | Worker iter 2 | killed (wall-clock timeout) in 1800s, tools: 179 |
+| 2026-04-02 14:48 | Step 5 started | Tests |
+| 2026-04-02 14:50 | Review R011 | plan Step 5: APPROVE |
