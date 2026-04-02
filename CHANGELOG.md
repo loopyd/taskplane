@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.23.13] - 2026-04-02
+
+### New
+- **Outcome-embedded telemetry (TP-116)** — `LaneTaskOutcome` now carries `laneNumber` and `telemetry` fields populated by the lane-runner at task completion. Batch history reads telemetry directly from outcomes instead of reconstructing it via fragile lane-snapshot key lookups. Legacy snapshot fallback preserved for pre-V2 batches.
+
 ## [0.23.12] - 2026-04-01
 
 ### Fixed
