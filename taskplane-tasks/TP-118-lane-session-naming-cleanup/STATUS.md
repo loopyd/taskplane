@@ -106,6 +106,8 @@
 | 2026-04-02 06:31 | Dashboard ingress fix | `loadBatchState()` now normalizes tmux-only lane records to canonical `laneSessionId`; added dashboard telemetry source regression checks |
 | 2026-04-02 06:33 | Review R013 | code Step 4: APPROVE |
 | 2026-04-02 06:34 | Rename count | `tmuxSessionName` refs reduced from 193 → 87 total (prod taskplane: 18, dashboard ingress: 3, tests: 20, task docs/history: 64) |
+| 2026-04-02 06:03 | Worker iter 2 | done in 1264s, tools: 172 |
+| 2026-04-02 06:03 | Task complete | .DONE created |
 
 ## Notes
 - Allowed Step 2 leftovers: compatibility alias fields in `types.ts` plus normalization/dual-write handling in `persistence.ts` and resume comment context.
