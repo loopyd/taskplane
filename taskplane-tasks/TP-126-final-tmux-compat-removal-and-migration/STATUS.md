@@ -5,7 +5,7 @@
 **Last Updated:** 2026-04-02
 **Review Level:** 3
 **Review Counter:** 6
-**Iteration:** 1
+**Iteration:** 2
 **Size:** L
 
 ---
@@ -37,12 +37,12 @@
 - [x] [R003] Enforce hard failure in `/task` config loading for `CONFIG_LEGACY_FIELD` (no silent fallback to defaults) and add regression tests
 
 ### Step 2: Update schema/types/docs/templates
-**Status:** 🟨 In Progress
+**Status:** ✅ Complete
 - [x] Update schema/types to canonical non-TMUX contract
 - [x] Align settings/UI metadata with no-TMUX schema values
 - [x] Update templates/config docs to canonical keys
 - [x] Update command/doctor docs to final no-TMUX contract
-- [ ] [R006] Update `taskplane init` scaffolding to emit canonical subprocess/session-prefix fields only and add CLI regression coverage
+- [x] [R006] Update `taskplane init` scaffolding to emit canonical subprocess/session-prefix fields only and add CLI regression coverage
 
 ### Step 3: Tests and migration coverage
 **Status:** ⬜ Not Started
@@ -83,6 +83,7 @@
 | 2026-04-02 22:50 | Step 2 completed | Schema/types/settings metadata and config/command docs updated to subprocess-only contract |
 | 2026-04-02 22:50 | Step 3 started | Tests and migration coverage |
 | 2026-04-02 22:52 | ⚠️ Review R006 (code, Step 2) | REVISE: init scaffolding still emits TMUX-era keys/values inconsistent with no-TMUX contract |
+| 2026-04-02 23:26 | R006 fix + tests | Updated `taskplane init` scaffolding to canonical `session_prefix`/`sessionPrefix` + subprocess-only defaults; targeted `init-mode-detection.integration` suite passed |
 |-----------|--------|---------|
 | 2026-04-02 21:35 | Review R001 | plan Step 1: REVISE |
 | 2026-04-02 21:35 | Review R002 | plan Step 1: APPROVE |
@@ -90,3 +91,4 @@
 | 2026-04-02 21:49 | Review R004 | code Step 1: APPROVE |
 | 2026-04-02 21:50 | Review R005 | plan Step 2: APPROVE |
 | 2026-04-02 22:01 | Review R006 | code Step 2: REVISE |
+| 2026-04-02 22:02 | Worker iter 1 | killed (wall-clock timeout) in 1800s, tools: 224 |
