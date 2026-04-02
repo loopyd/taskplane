@@ -1,17 +1,17 @@
 # TP-117: TMUX Deprecation Messaging and Dead Code Removal — Status
 
-**Current Step:** Step 4: Tests
+**Current Step:** Step 5: Documentation & Delivery
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-02
 **Review Level:** 2
-**Review Counter:** 5
-**Iteration:** 1
+**Review Counter:** 7
+**Iteration:** 2
 **Size:** M
 
 ---
 
 ### Step 0: Preflight — Inventory dead code
-**Status:** 🟩 Complete
+**Status:** ✅ Complete
 - [x] Read PROMPT.md and STATUS.md
 - [x] Identify dead TMUX execution functions
 - [x] Identify dead TMUX merge functions
@@ -19,13 +19,13 @@
 - [x] Log inventory in STATUS.md
 
 ### Step 1: Config deprecation messaging
-**Status:** 🟩 Complete
+**Status:** ✅ Complete
 - [x] Mark spawn_mode: "tmux" as deprecated in config-schema
 - [x] Emit deprecation warning in config-loader
 - [x] V2-first doctor/preflight messaging
 
 ### Step 2: Remove dead execution functions
-**Status:** 🟩 Complete
+**Status:** ✅ Complete
 - [x] Remove executeLane()
 - [x] Remove spawnLaneSession() and TMUX spawn helpers
 - [x] Remove buildTmuxSpawnArgs() if dead
@@ -34,18 +34,18 @@
 - [x] Update other import sites
 
 ### Step 3: Remove dead session helpers
-**Status:** 🟩 Complete
+**Status:** ✅ Complete
 - [x] Review sessions.ts for dead functions
 - [x] Remove dead, keep abort-related
 
 ### Step 4: Tests
-**Status:** 🟨 In Progress
-- [ ] Update tests for removed functions
-- [ ] Run full suite
-- [ ] Fix all failures
+**Status:** ✅ Complete
+- [x] Update tests for removed functions
+- [x] Run full suite
+- [x] Fix all failures
 
 ### Step 5: Documentation & Delivery
-**Status:** ⬜ Not Started
+**Status:** 🟨 In Progress
 - [ ] Update STATUS.md with summary
 - [ ] Log discoveries
 
@@ -84,9 +84,16 @@
 | 2026-04-02 05:20 | Step 3 validation | Targeted test pass: tests/engine-runtime-v2-routing.test.ts |
 | 2026-04-02 05:20 | Step 3 completed | sessions.ts dead import cleanup applied |
 | 2026-04-02 05:20 | Step 4 started | Tests |
+| 2026-04-02 05:58 | Step 4 validation | Targeted test pass: orch-rpc-telemetry, runtime-model-fallback, supervisor-merge-monitoring, workspace-config.integration, crash-recovery-spawn-reliability |
+| 2026-04-02 06:00 | Step 4 validation | Full suite pass: 3398 tests, 0 failures |
+| 2026-04-02 06:00 | Step 4 completed | Updated/deleted stale legacy TMUX structural tests for Runtime V2-only codepaths |
+| 2026-04-02 06:00 | Step 5 started | Documentation & Delivery |
 |-----------|--------|---------|
 | 2026-04-02 04:28 | Review R001 | plan Step 1: APPROVE |
 | 2026-04-02 04:33 | Review R002 | code Step 1: APPROVE |
 | 2026-04-02 04:35 | Review R003 | plan Step 2: APPROVE |
 | 2026-04-02 04:45 | Review R004 | code Step 2: APPROVE |
 | 2026-04-02 04:46 | Review R005 | plan Step 3: APPROVE |
+| 2026-04-02 04:48 | Review R006 | code Step 3: APPROVE |
+| 2026-04-02 04:51 | Review R007 | plan Step 4: APPROVE |
+| 2026-04-02 04:52 | Worker iter 1 | killed (wall-clock timeout) in 1800s, tools: 178 |
