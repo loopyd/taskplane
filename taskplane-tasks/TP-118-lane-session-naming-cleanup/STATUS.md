@@ -1,10 +1,10 @@
 # TP-118: Lane Session Naming Cleanup — Status
 
-**Current Step:** Step 2: Rename in production code
+**Current Step:** Step 3: Rename in tests
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-02
 **Review Level:** 2
-**Review Counter:** 5
+**Review Counter:** 7
 **Iteration:** 1
 **Size:** M
 
@@ -24,7 +24,7 @@
 - [x] Backward-compat state reading
 
 ### Step 2: Rename in production code
-**Status:** 🟨 In Progress
+**Status:** ✅ Complete
 - [x] execution.ts
 - [x] engine.ts, merge.ts, extension.ts, persistence.ts, resume.ts
 - [x] Dashboard server.cjs and app.js
@@ -35,8 +35,10 @@
 - [x] Add regression coverage for compatibility-shaped lanes (tmux-only field) in runtime execution tests
 
 ### Step 3: Rename in tests
-**Status:** ⬜ Not Started
-- [ ] Update all test references
+**Status:** 🟨 In Progress
+- [ ] Update non-compat test references to `laneSessionId` naming
+- [ ] Preserve/add explicit compatibility tests for tmux-only persisted lane inputs
+- [ ] Verify remaining test `tmuxSessionName` references are compatibility-scoped
 - [ ] Run full suite
 - [ ] Fix all failures
 
@@ -81,9 +83,12 @@
 | 2026-04-02 05:47 | Fixed review blocker | `laneSessionIdOf()` now correctly falls back to `lane.tmuxSessionName` without recursion |
 | 2026-04-02 05:48 | Added regression test | `engine-runtime-v2-routing.test.ts` now asserts tmux-only compatibility fallback is non-recursive |
 | 2026-04-02 05:48 | Targeted tests | `engine-runtime-v2-routing` passed after R005 fixes |
+| 2026-04-02 05:49 | Review R006 | code Step 2: APPROVE |
+| 2026-04-02 05:49 | Review R007 | plan Step 3: REVISE |
 
 ## Notes
 - Allowed Step 2 leftovers: compatibility alias fields in `types.ts` plus normalization/dual-write handling in `persistence.ts` and resume comment context.
 - Reviewer suggestion: define allowed leftovers in Step 2 (compat normalization only) to avoid over/under-renaming.
 - Reviewer suggestion: log post-step grep counts split by production/tests/docs for measurable progress.
 - Reviewer suggestion: run resume-path/runtime test coverage for tmux-only compatibility lane objects after fixing helper recursion.
+- Reviewer suggestion: where tests are not compatibility-focused, rename assertion text/test names to `laneSessionId` for long-term clarity.
