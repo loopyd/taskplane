@@ -1,10 +1,10 @@
 # TP-126: Final TMUX Compatibility Removal and Migration — Status
 
-**Current Step:** Step 3: Tests and migration coverage
+**Current Step:** Step 2: Update schema/types/docs/templates
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-02
 **Review Level:** 3
-**Review Counter:** 5
+**Review Counter:** 6
 **Iteration:** 1
 **Size:** L
 
@@ -37,14 +37,15 @@
 - [x] [R003] Enforce hard failure in `/task` config loading for `CONFIG_LEGACY_FIELD` (no silent fallback to defaults) and add regression tests
 
 ### Step 2: Update schema/types/docs/templates
-**Status:** ✅ Complete
+**Status:** 🟨 In Progress
 - [x] Update schema/types to canonical non-TMUX contract
 - [x] Align settings/UI metadata with no-TMUX schema values
 - [x] Update templates/config docs to canonical keys
 - [x] Update command/doctor docs to final no-TMUX contract
+- [ ] [R006] Update `taskplane init` scaffolding to emit canonical subprocess/session-prefix fields only and add CLI regression coverage
 
 ### Step 3: Tests and migration coverage
-**Status:** 🟨 In Progress
+**Status:** ⬜ Not Started
 - [ ] Update fixtures using TMUX-era fields
 - [ ] Add migration/failure tests for legacy input detection and guidance
 - [ ] Run full extension suite
@@ -62,6 +63,7 @@
 
 - R001 suggestion: keep Step 1 operator guidance consistent by ensuring hard failures include concrete fix hints (`tmuxPrefix` → `sessionPrefix`, `spawn_mode: tmux` → `subprocess`).
 - R003 suggestion: in Step 2, align settings/UI metadata that still advertises TMUX options so users are not encouraged to set invalid values.
+- R006 suggestion: docs `commands.md` settings-section wording should reflect Worker-level spawn mode control (not Orchestrator-level).
 
 ## Execution Log
 
@@ -80,9 +82,11 @@
 | 2026-04-02 22:50 | Step 2 tests | Targeted suites passed (`settings-tui`, `project-config-loader`, `user-preferences`, `tmux-compat`, `monorepo-compat-regression`) |
 | 2026-04-02 22:50 | Step 2 completed | Schema/types/settings metadata and config/command docs updated to subprocess-only contract |
 | 2026-04-02 22:50 | Step 3 started | Tests and migration coverage |
+| 2026-04-02 22:52 | ⚠️ Review R006 (code, Step 2) | REVISE: init scaffolding still emits TMUX-era keys/values inconsistent with no-TMUX contract |
 |-----------|--------|---------|
 | 2026-04-02 21:35 | Review R001 | plan Step 1: REVISE |
 | 2026-04-02 21:35 | Review R002 | plan Step 1: APPROVE |
 | 2026-04-02 21:46 | Review R003 | code Step 1: REVISE |
 | 2026-04-02 21:49 | Review R004 | code Step 1: APPROVE |
 | 2026-04-02 21:50 | Review R005 | plan Step 2: APPROVE |
+| 2026-04-02 22:01 | Review R006 | code Step 2: REVISE |
