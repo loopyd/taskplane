@@ -1,10 +1,10 @@
 # TP-125: Centralize Legacy TMUX Compatibility Shim — Status
 
-**Current Step:** Step 0: Inventory compatibility call sites
+**Current Step:** Step 2: Replace scattered compatibility logic
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-02
 **Review Level:** 2
-**Review Counter:** 0
+**Review Counter:** 1
 **Iteration:** 1
 **Size:** M
 
@@ -17,14 +17,14 @@
 - [x] Log list in STATUS.md
 
 ### Step 1: Introduce compatibility shim module
-**Status:** ⬜ Not Started
-- [ ] Create `extensions/taskplane/tmux-compat.ts`
-- [ ] Add config alias normalization helpers
-- [ ] Add persisted lane alias normalization helpers
-- [ ] Add spawnMode legacy classification/deprecation helper
+**Status:** ✅ Complete
+- [x] Create `extensions/taskplane/tmux-compat.ts`
+- [x] Add config alias normalization helpers
+- [x] Add persisted lane alias normalization helpers
+- [x] Add spawnMode legacy classification/deprecation helper
 
 ### Step 2: Replace scattered compatibility logic
-**Status:** ⬜ Not Started
+**Status:** 🟨 In Progress
 - [ ] Update `config-loader.ts` to use shim helpers
 - [ ] Update `persistence.ts` normalization to use shim helpers
 - [ ] Update other ingress paths to use shim helpers
@@ -68,3 +68,4 @@ Ingress-only confirmation: all identified sites are config/state compatibility n
 | 2026-04-02 21:13 | Task started | Runtime V2 lane-runner execution |
 | 2026-04-02 21:13 | Step 0 started | Inventory compatibility call sites |
 |-----------|--------|---------|
+| 2026-04-02 21:15 | Review R001 | plan Step 1: APPROVE |
