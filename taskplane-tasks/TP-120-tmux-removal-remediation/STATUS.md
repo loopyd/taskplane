@@ -4,7 +4,7 @@
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-02
 **Review Level:** 2
-**Review Counter:** 0
+**Review Counter:** 1
 **Iteration:** 1
 **Size:** M
 
@@ -21,14 +21,14 @@
 
 ### Step 1: Remove TMUX helper functions from execution.ts
 **Status:** ⬜ Not Started
-- [ ] Remove tmuxHasSessionAsync()
-- [ ] Remove tmuxKillSessionAsync()
-- [ ] Remove captureTmuxPaneTailAsync()
-- [ ] Remove captureTmuxPaneTail()
-- [ ] Remove toTmuxPath()
-- [ ] Remove other TMUX-only helpers
-- [ ] Update imports — remove TMUX references
-- [ ] Remove fallback branches, keep V2-only paths
+- [x] Remove tmuxHasSessionAsync()
+- [x] Remove tmuxKillSessionAsync()
+- [x] Remove captureTmuxPaneTailAsync()
+- [x] Remove captureTmuxPaneTail()
+- [x] Remove toTmuxPath()
+- [x] Remove other TMUX-only helpers
+- [x] Update imports — remove TMUX references
+- [x] Remove fallback branches, keep V2-only paths
 
 ### Step 2: Remove merge health monitor TMUX polling
 **Status:** ⬜ Not Started
@@ -92,3 +92,4 @@
 | 2026-04-02 13:48 | Task started | Runtime V2 lane-runner execution |
 | 2026-04-02 13:48 | Step 0 started | Preflight — Inventory remaining TMUX code |
 |-----------|--------|---------|
+| 2026-04-02 13:51 | Review R001 | plan Step 1: APPROVE |

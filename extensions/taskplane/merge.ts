@@ -7,7 +7,7 @@ import { readFile as fsReadFile } from "fs/promises";
 import { execSync, spawnSync, spawn } from "child_process";
 import { join, dirname, resolve, relative } from "path";
 
-import { execLog, tmuxHasSessionAsync } from "./execution.ts";
+import { execLog, isV2AgentAlive } from "./execution.ts";
 import { resolveOperatorId } from "./naming.ts";
 import { MERGE_POLL_INTERVAL_MS, MERGE_RESULT_GRACE_MS, MERGE_RESULT_READ_RETRIES, MERGE_RESULT_READ_RETRY_DELAY_MS, MERGE_SPAWN_RETRY_MAX, MERGE_TIMEOUT_MAX_RETRIES, MERGE_TIMEOUT_MS, MERGE_HEALTH_POLL_INTERVAL_MS, MERGE_HEALTH_WARNING_THRESHOLD_MS, MERGE_HEALTH_STUCK_THRESHOLD_MS, MERGE_HEALTH_CAPTURE_LINES, MergeError, VALID_MERGE_STATUSES, buildEngineEventBase } from "./types.ts";
 import type { AllocatedLane, LaneExecutionResult, MergeLaneResult, MergeResult, MergeResultStatus, MergeWaveResult, OrchestratorConfig, RepoMergeOutcome, TaskRunnerConfig, TransactionRecord, TransactionStatus, VerificationBaselineResult, WaveExecutionResult, WorkspaceConfig, MergeHealthStatus, MergeHealthEventType, MergeSessionSnapshot, MergeSessionHealthState, EngineEvent, OrchBatchPhase } from "./types.ts";
@@ -2807,7 +2807,7 @@ export class MergeHealthMonitor {
 		const now = Date.now();
 
 		for (const [sessionName, state] of this.sessions) {
-			const sessionAlive = await tmuxHasSessionAsync(sessionName);
+			const sessionAlive = isV2AgentAlive(sessionName, "v2");
 			const resultPath = this._resultPaths.get(sessionName) ?? "";
 			const hasResultFile = resultPath ? existsSync(resultPath) : false;
 
