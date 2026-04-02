@@ -1,10 +1,10 @@
 # TP-117: TMUX Deprecation Messaging and Dead Code Removal — Status
 
-**Current Step:** Step 2: Remove dead execution functions
+**Current Step:** Step 3: Remove dead session helpers
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-02
 **Review Level:** 2
-**Review Counter:** 1
+**Review Counter:** 3
 **Iteration:** 1
 **Size:** M
 
@@ -25,16 +25,16 @@
 - [x] V2-first doctor/preflight messaging
 
 ### Step 2: Remove dead execution functions
-**Status:** 🟨 In Progress
-- [ ] Remove executeLane()
-- [ ] Remove spawnLaneSession() and TMUX spawn helpers
-- [ ] Remove buildTmuxSpawnArgs() if dead
-- [ ] Remove legacy spawnMergeAgent() (TMUX version)
-- [ ] Update engine.ts imports
-- [ ] Update other import sites
+**Status:** 🟩 Complete
+- [x] Remove executeLane()
+- [x] Remove spawnLaneSession() and TMUX spawn helpers
+- [x] Remove buildTmuxSpawnArgs() if dead
+- [x] Remove legacy spawnMergeAgent() (TMUX version)
+- [x] Update engine.ts imports
+- [x] Update other import sites
 
 ### Step 3: Remove dead session helpers
-**Status:** ⬜ Not Started
+**Status:** 🟨 In Progress
 - [ ] Review sessions.ts for dead functions
 - [ ] Remove dead, keep abort-related
 
@@ -78,5 +78,10 @@
 | 2026-04-02 04:47 | Step 1 validation | Targeted test pass: tests/project-config-loader.test.ts |
 | 2026-04-02 04:47 | Step 1 completed | Deprecation docs + warnings + V2-first messaging landed |
 | 2026-04-02 04:47 | Step 2 started | Remove dead execution functions |
+| 2026-04-02 05:15 | Step 2 validation | Targeted tests pass: engine-runtime-v2-routing, merge-timeout-resilience, lane-runner-v2 |
+| 2026-04-02 05:15 | Step 2 completed | Removed legacy lane/merge TMUX spawners and updated runtime callsites |
+| 2026-04-02 05:15 | Step 3 started | Remove dead session helpers |
 |-----------|--------|---------|
 | 2026-04-02 04:28 | Review R001 | plan Step 1: APPROVE |
+| 2026-04-02 04:33 | Review R002 | code Step 1: APPROVE |
+| 2026-04-02 04:35 | Review R003 | plan Step 2: APPROVE |
