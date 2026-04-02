@@ -58,6 +58,9 @@
 | 2026-04-02 21:42 | Step 3 completed | No regressions detected |
 | 2026-04-02 21:42 | Step 4 started | Delivery |
 | 2026-04-02 21:45 | Step 4 completed | Delivery summary recorded (before/after + retained literals) |
+| 2026-04-02 21:11 | Agent reply | TP-124 completed. All STATUS.md checkboxes are checked and status is ✅ Complete (Current Step: Step 4: Delivery). Implemented de-TMUX comment/JSDoc/type-description sweep across scoped files, retained |
+| 2026-04-02 21:11 | Worker iter 1 | done in 781s, tools: 141 |
+| 2026-04-02 21:11 | Task complete | .DONE created |
 |-----------|--------|---------|
 
 ## Step 0 Inventory Snapshot
