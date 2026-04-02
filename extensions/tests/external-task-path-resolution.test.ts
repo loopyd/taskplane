@@ -29,6 +29,7 @@ import {
 } from "../taskplane/execution.ts";
 
 import {
+	discoverAbortSessionNames,
 	selectAbortTargetSessions,
 } from "../taskplane/abort.ts";
 
@@ -380,7 +381,7 @@ describe("selectAbortTargetSessions", () => {
 				laneId: "lane-1",
 				laneNumber: 1,
 				worktreePath,
-				tmuxSessionName: "orch-lane-1",
+				laneSessionId: "orch-lane-1",
 				tasks: [{
 					taskId: "TP-060",
 					task: { taskFolder } as any,
@@ -412,7 +413,7 @@ describe("selectAbortTargetSessions", () => {
 				laneId: "lane-1",
 				laneNumber: 1,
 				worktreePath,
-				tmuxSessionName: "orch-lane-1",
+				laneSessionId: "orch-lane-1",
 				tasks: [{
 					taskId: "TP-061-ext",
 					task: { taskFolder } as any,
@@ -445,7 +446,7 @@ describe("selectAbortTargetSessions", () => {
 				laneId: "lane-1",
 				laneNumber: 1,
 				worktreePath,
-				tmuxSessionName: "orch-lane-1",
+				laneSessionId: "orch-lane-1",
 				tasks: [{
 					taskId: "TP-062-ext-archived",
 					task: { taskFolder } as any,
@@ -476,7 +477,7 @@ describe("selectAbortTargetSessions", () => {
 				laneId: "lane-1",
 				laneNumber: 1,
 				worktreePath,
-				tmuxSessionName: "orch-lane-1",
+				laneSessionId: "orch-lane-1",
 				tasks: [{
 					taskId: "TP-063-archived",
 					task: { taskFolder } as any,
@@ -499,7 +500,7 @@ describe("selectAbortTargetSessions", () => {
 				laneId: "lane-1",
 				laneNumber: 1,
 				worktreePath,
-				tmuxSessionName: "orch-lane-1",
+				laneSessionId: "orch-lane-1",
 				tasks: [] as any[],
 			} as any],
 			repoRoot,
@@ -606,7 +607,71 @@ describe("monorepo completion detection regression", () => {
 
 
 // ═══════════════════════════════════════════════════════════════════════
-// 6. selectAbortTargetSessions — workspace-mode session matching (TP-004)
+// 6. discoverAbortSessionNames — Runtime V2 abort discovery
+// ═══════════════════════════════════════════════════════════════════════
+
+describe("discoverAbortSessionNames", () => {
+	it("collects unique session names from runtime and persisted state", () => {
+		const runtimeLanes = [
+			{ laneSessionId: "orch-lane-1" },
+			{ laneSessionId: "orch-lane-2" },
+		] as any;
+
+		const persistedState = {
+			lanes: [
+				{ laneSessionId: "orch-lane-2" }, // duplicate via runtime
+				{ laneSessionId: "orch-lane-3" },
+			],
+			tasks: [
+				{ sessionName: "orch-lane-3" }, // duplicate via persisted lane
+				{ sessionName: "orch-merge-1" },
+			],
+		} as any;
+
+		const names = discoverAbortSessionNames("orch", persistedState, runtimeLanes).sort();
+		expect(names).toEqual([
+			"orch-lane-1",
+			"orch-lane-2",
+			"orch-lane-3",
+			"orch-merge-1",
+		]);
+	});
+
+	it("supports persisted-only abort discovery when runtime lanes are empty", () => {
+		const persistedState = {
+			lanes: [
+				{ laneSessionId: "orch-api-lane-1" },
+			],
+			tasks: [
+				{ sessionName: "orch-api-merge-1" },
+			],
+		} as any;
+
+		const names = discoverAbortSessionNames("orch", persistedState, []).sort();
+		expect(names).toEqual([
+			"orch-api-lane-1",
+			"orch-api-merge-1",
+		]);
+	});
+
+	it("filters out sessions that do not match the configured prefix", () => {
+		const runtimeLanes = [
+			{ laneSessionId: "other-lane-1" },
+			{ laneSessionId: "orch-lane-1" },
+		] as any;
+		const persistedState = {
+			lanes: [{ laneSessionId: "other-lane-2" }],
+			tasks: [{ sessionName: "orch-merge-1" }],
+		} as any;
+
+		const names = discoverAbortSessionNames("orch", persistedState, runtimeLanes).sort();
+		expect(names).toEqual(["orch-lane-1", "orch-merge-1"]);
+	});
+});
+
+
+// ═══════════════════════════════════════════════════════════════════════
+// 7. selectAbortTargetSessions — workspace-mode session matching (TP-004)
 // ═══════════════════════════════════════════════════════════════════════
 
 describe("selectAbortTargetSessions workspace-mode", () => {
@@ -674,7 +739,7 @@ describe("selectAbortTargetSessions workspace-mode", () => {
 			lanes: [{
 				laneNumber: 1,
 				laneId: "api/lane-1",
-				tmuxSessionName: "orch-api-lane-1",
+				laneSessionId: "orch-api-lane-1",
 				worktreePath: "/tmp/wt/lane-1",
 				branch: "orch-lane-1",
 				taskIds: ["TP-080"],
@@ -751,7 +816,7 @@ describe("selectAbortTargetSessions workspace-mode", () => {
 				{
 					laneNumber: 1,
 					laneId: "lane-1",
-					tmuxSessionName: "orch-lane-1",
+					laneSessionId: "orch-lane-1",
 					worktreePath: "/tmp/wt/lane-1",
 					branch: "orch-lane-1",
 					taskIds: ["TP-082"],
@@ -759,7 +824,7 @@ describe("selectAbortTargetSessions workspace-mode", () => {
 				{
 					laneNumber: 2,
 					laneId: "lane-2",
-					tmuxSessionName: "orch-lane-2",
+					laneSessionId: "orch-lane-2",
 					worktreePath: "/tmp/wt/lane-2",
 					branch: "orch-lane-2",
 					taskIds: ["TP-083"],

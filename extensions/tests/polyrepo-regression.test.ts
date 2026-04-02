@@ -40,7 +40,7 @@ import {
 	computeWaves,
 	groupTasksByRepo,
 	generateLaneId,
-	generateTmuxSessionName,
+	generateLaneSessionId,
 	resolveRepoRoot,
 	resolveBaseBranch,
 	assignTasksToLanes,
@@ -131,14 +131,14 @@ function makeAllocatedLane(
 		repoId?: string;
 		branch?: string;
 		worktreePath?: string;
-		tmuxSessionName?: string;
+		laneSessionId?: string;
 		laneId?: string;
 	} = {},
 ): AllocatedLane {
 	return {
 		laneNumber,
 		laneId: opts.laneId ?? (opts.repoId ? `${opts.repoId}/lane-${laneNumber}` : `lane-${laneNumber}`),
-		tmuxSessionName: opts.tmuxSessionName ?? (opts.repoId ? `orch-op-${opts.repoId}-lane-${laneNumber}` : `orch-op-lane-${laneNumber}`),
+		laneSessionId: opts.laneSessionId ?? (opts.repoId ? `orch-op-${opts.repoId}-lane-${laneNumber}` : `orch-op-lane-${laneNumber}`),
 		worktreePath: opts.worktreePath ?? `/worktrees/wt-${laneNumber}`,
 		branch: opts.branch ?? `task/op-lane-${laneNumber}-20260316T120000`,
 		tasks,
@@ -166,19 +166,19 @@ function buildFixtureAllocatedLanes(pending: Map<string, ParsedTask>): Allocated
 		makeAllocatedLane(1, [makeAllocatedTask("SH-001", 0, docsTask)], {
 			repoId: "docs",
 			laneId: "docs/lane-1",
-			tmuxSessionName: `orch-${opId}-docs-lane-1`,
+			laneSessionId: `orch-${opId}-docs-lane-1`,
 			branch: `task/${opId}-docs-lane-1-${batchId}`,
 		}),
 		makeAllocatedLane(2, [makeAllocatedTask("AP-001", 0, apiTask)], {
 			repoId: "api",
 			laneId: "api/lane-1",
-			tmuxSessionName: `orch-${opId}-api-lane-1`,
+			laneSessionId: `orch-${opId}-api-lane-1`,
 			branch: `task/${opId}-api-lane-1-${batchId}`,
 		}),
 		makeAllocatedLane(3, [makeAllocatedTask("UI-001", 0, frontendTask)], {
 			repoId: "frontend",
 			laneId: "frontend/lane-1",
-			tmuxSessionName: `orch-${opId}-frontend-lane-1`,
+			laneSessionId: `orch-${opId}-frontend-lane-1`,
 			branch: `task/${opId}-frontend-lane-1-${batchId}`,
 		}),
 	];
@@ -878,7 +878,7 @@ describe("6.x: Collision-safe naming — polyrepo artifacts", () => {
 	it("6.1: TMUX session names are unique across repos for same operator+lane", () => {
 		const opId = "testop";
 		const sessions = FIXTURE_REPO_IDS.map(repoId =>
-			generateTmuxSessionName("orch", 1, opId, repoId),
+			generateLaneSessionId("orch", 1, opId, repoId),
 		);
 
 		// All 3 sessions should be distinct
@@ -913,7 +913,7 @@ describe("6.x: Collision-safe naming — polyrepo artifacts", () => {
 	});
 
 	it("6.4: workspace-mode session name contains repoId segment", () => {
-		const session = generateTmuxSessionName("orch", 2, "alice", "api");
+		const session = generateLaneSessionId("orch", 2, "alice", "api");
 		expect(session).toBe("orch-alice-api-lane-2");
 
 		// Verify all segments are parseable
@@ -924,7 +924,7 @@ describe("6.x: Collision-safe naming — polyrepo artifacts", () => {
 	});
 
 	it("6.5: repo-mode session name does NOT contain repoId (backward compat)", () => {
-		const session = generateTmuxSessionName("orch", 1, "alice");
+		const session = generateLaneSessionId("orch", 1, "alice");
 		expect(session).toBe("orch-alice-lane-1");
 		expect(session).not.toContain("undefined");
 	});
@@ -947,8 +947,9 @@ describe("6.x: Collision-safe naming — polyrepo artifacts", () => {
 
 	it("6.8: static fixture session names follow workspace-mode convention", () => {
 		for (const lane of fixtureState.lanes) {
-			expect(lane.tmuxSessionName).toMatch(/^orch-\w+-\w+-lane-\d+$/);
-			expect(lane.tmuxSessionName).toContain(lane.repoId!);
+			const laneSessionId = lane.laneSessionId;
+			expect(laneSessionId).toMatch(/^orch-\w+-\w+-lane-\d+$/);
+			expect(laneSessionId).toContain(lane.repoId!);
 		}
 	});
 });
@@ -987,7 +988,7 @@ describe("7.x: Repo-aware persisted state — validation and upconversion", () =
 				{
 					laneNumber: 1,
 					laneId: "lane-1",
-					tmuxSessionName: "orch-lane-1",
+					laneSessionId: "orch-lane-1",
 					worktreePath: "/wt-1",
 					branch: "task/lane-1",
 					taskIds: ["TP-100"],
@@ -1113,7 +1114,7 @@ describe("7.x: Repo-aware persisted state — validation and upconversion", () =
 				{
 					laneNumber: 1,
 					laneId: "docs/lane-1",
-					tmuxSessionName: "orch-op-docs-lane-1",
+					laneSessionId: "orch-op-docs-lane-1",
 					worktreePath: "/wt-1",
 					branch: "task/op-docs-lane-1-20260316T150000",
 					taskIds: ["SH-001"],

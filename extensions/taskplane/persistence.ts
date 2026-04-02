@@ -3,7 +3,6 @@
  * @module orch/persistence
  */
 import { readFileSync, writeFileSync, existsSync, unlinkSync, renameSync, mkdirSync, appendFileSync } from "fs";
-import { execSync } from "child_process";
 import { join, dirname, basename } from "path";
 
 import { execLog } from "./execution.ts";
@@ -151,7 +150,7 @@ export function seedPendingOutcomesForAllocatedLanes(
 				startTime: null,
 				endTime: null,
 				exitReason: "Pending execution",
-				sessionName: lane.tmuxSessionName,
+				sessionName: lane.laneSessionId,
 				doneFileFound: false,
 				laneNumber: lane.laneNumber,
 			}) || changed;
@@ -689,7 +688,7 @@ export function validatePersistedState(data: unknown): PersistedBatchState {
 				`lanes[${i}] is not an object`,
 			);
 		}
-		for (const field of ["laneId", "tmuxSessionName", "worktreePath", "branch"] as const) {
+		for (const field of ["laneId", "worktreePath", "branch"] as const) {
 			if (typeof l[field] !== "string") {
 				throw new StateFileError(
 					"STATE_SCHEMA_INVALID",
@@ -697,6 +696,37 @@ export function validatePersistedState(data: unknown): PersistedBatchState {
 				);
 			}
 		}
+
+		const laneSessionId = l.laneSessionId;
+		if (laneSessionId !== undefined && typeof laneSessionId !== "string") {
+			throw new StateFileError(
+				"STATE_SCHEMA_INVALID",
+				`lanes[${i}].laneSessionId is not a string (got ${typeof laneSessionId})`,
+			);
+		}
+
+		const tmuxSessionName = l.tmuxSessionName;
+		if (tmuxSessionName !== undefined && typeof tmuxSessionName !== "string") {
+			throw new StateFileError(
+				"STATE_SCHEMA_INVALID",
+				`lanes[${i}].tmuxSessionName is not a string (got ${typeof tmuxSessionName})`,
+			);
+		}
+
+		if (typeof laneSessionId !== "string" && typeof tmuxSessionName !== "string") {
+			throw new StateFileError(
+				"STATE_SCHEMA_INVALID",
+				`lanes[${i}] must include either laneSessionId or tmuxSessionName as a string`,
+			);
+		}
+
+		if (typeof laneSessionId !== "string") {
+			l.laneSessionId = tmuxSessionName;
+		}
+		if ("tmuxSessionName" in l) {
+			delete (l as { tmuxSessionName?: unknown }).tmuxSessionName;
+		}
+
 		if (typeof l.laneNumber !== "number") {
 			throw new StateFileError(
 				"STATE_SCHEMA_INVALID",
@@ -1197,7 +1227,7 @@ export function serializeBatchState(
 			const record: PersistedTaskRecord = {
 				taskId,
 				laneNumber: lane?.laneNumber ?? outcome?.laneNumber ?? 0,
-				sessionName: outcome?.sessionName || lane?.tmuxSessionName || "",
+				sessionName: outcome?.sessionName || lane?.laneSessionId || "",
 				status: outcome?.status ?? "pending",
 				taskFolder: "", // Enriched by caller from discovery
 				startedAt: outcome?.startTime ?? null,
@@ -1249,7 +1279,7 @@ export function serializeBatchState(
 		const record: PersistedLaneRecord = {
 			laneNumber: lane.laneNumber,
 			laneId: lane.laneId,
-			tmuxSessionName: lane.tmuxSessionName,
+			laneSessionId: lane.laneSessionId,
 			worktreePath: lane.worktreePath,
 			branch: lane.branch,
 			taskIds: lane.tasks.map((t) => t.taskId),
@@ -1695,32 +1725,22 @@ export function analyzeOrchestratorStartupState(
 }
 
 /**
- * Detect orphan TMUX sessions and analyze startup state.
+ * Detect orphan orchestrator state and analyze startup recovery action.
  *
- * Combines session discovery (via tmux), state file loading (with typed
- * error handling), and .DONE file checking into a single result.
+ * Runtime V2 no longer relies on TMUX session discovery. Startup decisions
+ * are based on persisted batch state plus task .DONE markers.
  *
- * Non-blocking: detection failures (e.g., tmux not running) are handled
- * gracefully and do NOT crash `/orch` startup.
- *
- * @param prefix   - TMUX session prefix to search for (e.g., "orch")
+ * @param prefix   - Legacy orchestrator session prefix (unused in Runtime V2)
  * @param repoRoot - Absolute path to the repository root
  * @returns OrphanDetectionResult with recommended action
  */
 export function detectOrphanSessions(prefix: string, repoRoot: string): OrphanDetectionResult {
-	// ── 1. Discover TMUX sessions ────────────────────────────────
-	let orphanSessions: string[] = [];
-	try {
-		const stdout = execSync('tmux list-sessions -F "#{session_name}"', {
-			encoding: "utf-8",
-			timeout: 5000,
-		});
-		orphanSessions = parseOrchSessionNames(stdout, prefix);
-	} catch {
-		// tmux not available or no sessions — proceed with empty orphan list
-	}
+	void prefix;
 
-	// ── 2. Load batch state file ─────────────────────────────────
+	// Runtime V2 uses persisted state as the source of truth for orphan analysis.
+	const orphanSessions: string[] = [];
+
+	// ── 1. Load batch state file ─────────────────────────────────
 	let stateStatus: OrphanStateStatus = "missing";
 	let loadedState: PersistedBatchState | null = null;
 	let stateError: string | null = null;
@@ -1747,7 +1767,7 @@ export function detectOrphanSessions(prefix: string, repoRoot: string): OrphanDe
 		}
 	}
 
-	// ── 3. Check .DONE files for stale state detection ───────────
+	// ── 2. Check .DONE files for stale state detection ───────────
 	const doneTaskIds = new Set<string>();
 	if (loadedState && orphanSessions.length === 0) {
 		// Only check .DONE files when we have state but no orphans
@@ -1759,7 +1779,7 @@ export function detectOrphanSessions(prefix: string, repoRoot: string): OrphanDe
 		}
 	}
 
-	// ── 4. Analyze and return ────────────────────────────────────
+	// ── 3. Analyze and return ────────────────────────────────────
 	return analyzeOrchestratorStartupState(
 		orphanSessions,
 		stateStatus,

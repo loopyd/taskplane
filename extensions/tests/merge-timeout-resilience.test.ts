@@ -74,9 +74,9 @@ describe("1.x — Result-exists-at-timeout: accept successful result", () => {
 			mergeSource.indexOf("merge agent slow but succeeded"),
 			mergeSource.indexOf("return lateResult"),
 		);
-		// V2 path uses killMergeAgentV2 with cleanExit, legacy uses tmuxKillSessionAsync
+		// Runtime V2 path cleans up using merge-agent process handles only.
 		expect(acceptSection).toContain("killMergeAgentV2(sessionName, true)");
-		expect(acceptSection).toContain("tmuxKillSessionAsync(sessionName)");
+		expect(acceptSection).not.toContain("tmuxKillSessionAsync(sessionName)");
 	});
 
 	it("1.5: non-success result at timeout falls through to kill and throw", () => {
@@ -92,7 +92,7 @@ describe("1.x — Result-exists-at-timeout: accept successful result", () => {
 		// If parseMergeResult throws, catch it and fall through
 		const timeoutBlock = mergeSource.substring(
 			mergeSource.indexOf("TP-038: Check result file BEFORE killing"),
-			mergeSource.indexOf("merge timeout — killing session"),
+			mergeSource.indexOf("merge timeout — killing agent"),
 		);
 		expect(timeoutBlock).toContain("catch");
 		// The catch is empty — falls through to the kill+throw below
@@ -145,14 +145,15 @@ describe("2.x — Kill-and-retry: timeout triggers retry with 2x timeout", () =>
 		expect(retrySection).toContain("unlinkSync(resultFilePath)");
 	});
 
-	it("2.6: retry re-spawns merge agent", () => {
+	it("2.6: retry re-spawns merge agent via Runtime V2", () => {
 		const mergeSource = readSource("merge.ts");
 
 		const retrySection = mergeSource.substring(
 			mergeSource.indexOf("if (attempt > 0)"),
 			mergeSource.indexOf("// First attempt: spawn merge agent"),
 		);
-		expect(retrySection).toContain("spawnMergeAgent(sessionName");
+		expect(retrySection).toContain("killMergeAgentV2(sessionName)");
+		expect(retrySection).toContain("spawnMergeAgentV2(sessionName");
 	});
 
 	it("2.7: retry logs attempt number and new timeout values", () => {

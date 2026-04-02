@@ -7,12 +7,12 @@ import { readFile as fsReadFile } from "fs/promises";
 import { execSync, spawnSync } from "child_process";
 import { join, dirname, resolve, relative } from "path";
 
-import { buildLaneEnvVars, buildTmuxSpawnArgs, execLog, generateTelemetryPaths, resolveRpcWrapperPath, resolveTelemOpId, tmuxHasSession, tmuxHasSessionAsync, tmuxKillSession, tmuxKillSessionAsync, tmuxAsync, toTmuxPath } from "./execution.ts";
+import { execLog, isV2AgentAlive, setV2LivenessRegistryCache } from "./execution.ts";
 import { resolveOperatorId } from "./naming.ts";
-import { MERGE_POLL_INTERVAL_MS, MERGE_RESULT_GRACE_MS, MERGE_RESULT_READ_RETRIES, MERGE_RESULT_READ_RETRY_DELAY_MS, MERGE_SPAWN_RETRY_MAX, MERGE_TIMEOUT_MAX_RETRIES, MERGE_TIMEOUT_MS, MERGE_HEALTH_POLL_INTERVAL_MS, MERGE_HEALTH_WARNING_THRESHOLD_MS, MERGE_HEALTH_STUCK_THRESHOLD_MS, MERGE_HEALTH_CAPTURE_LINES, MergeError, VALID_MERGE_STATUSES, buildEngineEventBase } from "./types.ts";
+import { MERGE_POLL_INTERVAL_MS, MERGE_RESULT_GRACE_MS, MERGE_RESULT_READ_RETRIES, MERGE_RESULT_READ_RETRY_DELAY_MS, MERGE_SPAWN_RETRY_MAX, MERGE_TIMEOUT_MAX_RETRIES, MERGE_TIMEOUT_MS, MERGE_HEALTH_POLL_INTERVAL_MS, MERGE_HEALTH_WARNING_THRESHOLD_MS, MERGE_HEALTH_STUCK_THRESHOLD_MS, MergeError, VALID_MERGE_STATUSES, buildEngineEventBase } from "./types.ts";
 import type { AllocatedLane, LaneExecutionResult, MergeLaneResult, MergeResult, MergeResultStatus, MergeWaveResult, OrchestratorConfig, RepoMergeOutcome, TaskRunnerConfig, TransactionRecord, TransactionStatus, VerificationBaselineResult, WaveExecutionResult, WorkspaceConfig, MergeHealthStatus, MergeHealthEventType, MergeSessionSnapshot, MergeSessionHealthState, EngineEvent, OrchBatchPhase } from "./types.ts";
 import { resolveBaseBranch, resolveRepoRoot } from "./waves.ts";
-import { readManifest, writeManifest, buildRegistrySnapshot, writeRegistrySnapshot } from "./process-registry.ts";
+import { readManifest, writeManifest, buildRegistrySnapshot, writeRegistrySnapshot, readRegistrySnapshot } from "./process-registry.ts";
 import { generateMergeWorktreePath, sleepAsync, sleepSync } from "./worktree.ts";
 import { getCurrentBranch, runGit } from "./git.ts";
 import { ORCH_MESSAGES } from "./messages.ts";
@@ -24,47 +24,7 @@ import type { AgentHostOptions, AgentHostResult } from "./agent-host.ts";
 import type { RuntimeBackend } from "./execution.ts";
 import type { VerificationBaseline, FingerprintDiff, TestFingerprint } from "./verification.ts";
 
-// ── Merge Telemetry Helpers ───────────────────────────────────────────
 
-/**
- * Generate telemetry file paths for a merge agent session.
- *
- * Uses the shared resolveTelemOpId() from execution.ts to avoid
- * opId resolution divergence.
- *
- * Naming: {opId}-{batchId}-{repoId}[-merge-{N}]-merger.{ext}
- * Role is always "merger" to distinguish from worker/reviewer in the dashboard.
- *
- * @param sessionName  - TMUX session name (e.g., "orch-merge-1")
- * @param sidecarRoot  - Root dir for sidecar files (e.g., <workspace>/.pi)
- * @param batchId      - Actual batch ID from batch state (falls back to timestamp)
- * @param repoId       - Repo ID for workspace mode (falls back to "default")
- * @returns { sidecarPath, exitSummaryPath }
- */
-function generateMergeTelemetryPaths(
-	sessionName: string,
-	sidecarRoot: string,
-	batchId?: string,
-	repoId?: string,
-): { sidecarPath: string; exitSummaryPath: string } {
-	const opId = resolveTelemOpId();
-	const effectiveBatchId = batchId || String(Date.now());
-	const effectiveRepoId = repoId || "default";
-
-	// Extract merge-specific info from sessionName (e.g., "orch-merge-1")
-	const mergeMatch = sessionName.match(/merge-(\d+)/);
-	const mergeSuffix = mergeMatch ? `-merge-${mergeMatch[1]}` : "";
-
-	const role = "merger";
-	const telemetryBasename = `${opId}-${effectiveBatchId}-${effectiveRepoId}${mergeSuffix}-${role}`;
-	const telemetryDir = join(sidecarRoot, "telemetry");
-	if (!existsSync(telemetryDir)) mkdirSync(telemetryDir, { recursive: true });
-
-	return {
-		sidecarPath: join(telemetryDir, `${telemetryBasename}.jsonl`),
-		exitSummaryPath: join(telemetryDir, `${telemetryBasename}-exit.json`),
-	};
-}
 
 // ── Merge Implementation ─────────────────────────────────────────────
 
@@ -562,149 +522,6 @@ export function buildMergeRequest(
 	return lines.join("\n");
 }
 
-/**
- * Spawn a TMUX session for the merge agent.
- *
- * Creates a TMUX session in the main repo directory (not a worktree)
- * that runs pi with the task-merger agent definition and the merge request.
- *
- * Handles:
- * - Stale session cleanup
- * - Retry on transient spawn failures
- * - Structured logging
- *
- * @param sessionName     - TMUX session name (e.g., "orch-merge-1")
- * @param repoRoot        - Main repository root (merge happens here)
- * @param mergeRequestPath - Path to the merge request temp file
- * @param config          - Orchestrator config (for model, tools)
- * @param stateRoot       - Root for state files (batch state, merge results). Stays at workspace root.
- * @param agentRoot       - Root for agent prompts. When pointer is resolved, this is the config repo's agent dir. Falls back to `<stateRoot>/.pi/agents/` or `<repoRoot>/.pi/agents/`.
- * @throws MergeError if spawn fails after retries
- */
-export async function spawnMergeAgent(
-	sessionName: string,
-	repoRoot: string,
-	mergeWorkDir: string,
-	mergeRequestPath: string,
-	config: OrchestratorConfig,
-	stateRoot?: string,
-	agentRoot?: string,
-	batchId?: string,
-): Promise<void> {
-	execLog("merge", sessionName, "preparing to spawn merge agent", {
-		mergeWorkDir,
-		mergeRequestPath,
-	});
-
-	// Clean up stale session if exists
-	if (tmuxHasSession(sessionName)) {
-		execLog("merge", sessionName, "killing stale merge session");
-		tmuxKillSession(sessionName);
-		await sleepAsync(500);
-	}
-
-	// Build the merge agent command.
-	// Uses rpc-wrapper.mjs to produce structured telemetry (sidecar JSONL + exit summary).
-	// The merger agent definition is loaded via --system-prompt-file.
-	// The merge request is passed as the --prompt-file.
-	const shellQuote = (s: string): string => {
-		if (/[\s"'`$\\!&|;()<>{}#*?~]/.test(s)) {
-			return `'${s.replace(/'/g, "'\\''")}'`;
-		}
-		return s;
-	};
-
-	// Generate telemetry paths for this merge session
-	const sidecarRoot = join(stateRoot ?? repoRoot, ".pi");
-	const telemetry = generateMergeTelemetryPaths(sessionName, sidecarRoot);
-	execLog("merge", sessionName, "telemetry paths generated", {
-		sidecar: telemetry.sidecarPath,
-		exitSummary: telemetry.exitSummaryPath,
-	});
-
-	// Resolve paths
-	const rpcWrapperPath = resolveRpcWrapperPath(repoRoot);
-
-	// Resolve merger agent definition — check existence and fall back gracefully.
-	// Fresh projects that haven't run `taskplane init` may not have .pi/agents/task-merger.md.
-	const systemPromptCandidates = [
-		agentRoot ? join(agentRoot, "task-merger.md") : "",
-		join(stateRoot ?? repoRoot, ".pi", "agents", "task-merger.md"),
-	].filter(Boolean);
-	let systemPromptPath = systemPromptCandidates.find(p => existsSync(p)) || "";
-	if (!systemPromptPath) {
-		execLog("merge", sessionName, "WARNING: merger agent definition not found — merge agent will use default system prompt", {
-			candidates: systemPromptCandidates,
-		});
-	}
-
-	// Build RPC wrapper command
-	const wrapperParts = [
-		"TERM=xterm-256color",
-		"node", shellQuote(rpcWrapperPath),
-		"--sidecar-path", shellQuote(telemetry.sidecarPath),
-		"--exit-summary-path", shellQuote(telemetry.exitSummaryPath),
-		"--prompt-file", shellQuote(mergeRequestPath),
-	];
-
-	// Only pass --system-prompt-file when the file exists (fresh projects
-	// may not have .pi/agents/task-merger.md — rpc-wrapper would crash).
-	if (systemPromptPath) {
-		wrapperParts.push("--system-prompt-file", shellQuote(systemPromptPath));
-	}
-
-	// Add model args if specified
-	if (config.merge.model) {
-		wrapperParts.push("--model", shellQuote(config.merge.model));
-	}
-
-	// Add tools override if specified
-	if (config.merge.tools) {
-		wrapperParts.push("--tools", shellQuote(config.merge.tools));
-	}
-
-	// TP-089: Agent mailbox steering — pass --mailbox-dir when batchId is available.
-	if (batchId) {
-		const mailboxDir = join(sidecarRoot, "mailbox", batchId, sessionName);
-		mkdirSync(join(mailboxDir, "inbox"), { recursive: true });
-		wrapperParts.push("--mailbox-dir", shellQuote(mailboxDir));
-		execLog("merge", sessionName, "mailbox enabled", { mailboxDir });
-	}
-
-	const piCommand = wrapperParts.filter(Boolean).join(" ");
-
-	const tmuxMergeDir = toTmuxPath(mergeWorkDir);
-	const wrappedCommand = `cd ${shellQuote(tmuxMergeDir)} && ${piCommand}`;
-	const tmuxArgs = [
-		"new-session", "-d",
-		"-s", sessionName,
-		wrappedCommand,
-	];
-
-	// Attempt to spawn with retry
-	let lastError = "";
-	for (let attempt = 1; attempt <= MERGE_SPAWN_RETRY_MAX + 1; attempt++) {
-		const result = spawnSync("tmux", tmuxArgs);
-
-		if (result.status === 0) {
-			execLog("merge", sessionName, "merge agent session spawned", { attempt });
-			return;
-		}
-
-		lastError = result.stderr?.toString().trim() || "unknown spawn error";
-		execLog("merge", sessionName, `merge spawn attempt ${attempt} failed: ${lastError}`);
-
-		if (attempt <= MERGE_SPAWN_RETRY_MAX) {
-			await sleepAsync(attempt * 1000);
-		}
-	}
-
-	throw new MergeError(
-		"MERGE_SPAWN_FAILED",
-		`Failed to create merge TMUX session '${sessionName}' after ` +
-		`${MERGE_SPAWN_RETRY_MAX + 1} attempts. Last error: ${lastError}`,
-	);
-}
 
 
 /**
@@ -941,11 +758,7 @@ export async function waitForMergeResult(
 							timeoutMs,
 						});
 						// Clean up agent (may still be running post-write)
-						if (isV2) {
-							killMergeAgentV2(sessionName, true);
-						} else if (await tmuxHasSessionAsync(sessionName)) {
-							await tmuxKillSessionAsync(sessionName);
-						}
+						killMergeAgentV2(sessionName, true);
 						return lateResult;
 					}
 					execLog("merge", sessionName, "merge result exists at timeout but non-success — killing", {
@@ -957,11 +770,7 @@ export async function waitForMergeResult(
 			}
 
 			execLog("merge", sessionName, "merge timeout — killing agent", { elapsed, timeoutMs });
-			if (isV2) {
-				killMergeAgentV2(sessionName);
-			} else {
-				await tmuxKillSessionAsync(sessionName);
-			}
+			killMergeAgentV2(sessionName);
 
 			throw new MergeError(
 				"MERGE_TIMEOUT",
@@ -980,11 +789,7 @@ export async function waitForMergeResult(
 					elapsed,
 				});
 				// Clean up agent if still alive
-				if (isV2) {
-					killMergeAgentV2(sessionName, true);
-				} else if (await tmuxHasSessionAsync(sessionName)) {
-					await tmuxKillSessionAsync(sessionName);
-				}
+				killMergeAgentV2(sessionName, true);
 				return result;
 			} catch (err: unknown) {
 				if (err instanceof MergeError && err.code === "MERGE_RESULT_INVALID") {
@@ -997,14 +802,8 @@ export async function waitForMergeResult(
 		}
 
 		// Check agent liveness — backend-aware
-		let agentAlive: boolean;
-		if (isV2) {
-			// V2: check activeMergeAgents map (process handle)
-			agentAlive = activeMergeAgents.has(sessionName);
-		} else {
-			// Legacy: check TMUX session
-			agentAlive = await tmuxHasSessionAsync(sessionName);
-		}
+		// Runtime V2: check active merge agent handle map (process-owned).
+		const agentAlive = activeMergeAgents.has(sessionName);
 
 		if (!agentAlive) {
 			if (sessionDiedAt === null) {
@@ -1370,7 +1169,7 @@ export async function mergeWave(
 	runtimeBackend?: RuntimeBackend,
 ): Promise<MergeWaveResult> {
 	const startTime = Date.now();
-	const tmuxPrefix = config.orchestrator.tmux_prefix;
+	const sessionPrefix = config.orchestrator.sessionPrefix;
 	const opId = resolveOperatorId(config);
 	const targetBranch = baseBranch;
 	const laneResults: MergeLaneResult[] = [];
@@ -1581,7 +1380,7 @@ export async function mergeWave(
 	for (const lane of orderedLanes) {
 		const laneStart = Date.now();
 		const txnStartedAt = new Date().toISOString();
-		const sessionName = `${tmuxPrefix}-${opId}-merge-${lane.laneNumber}`;
+		const sessionName = `${sessionPrefix}-${opId}-merge-${lane.laneNumber}`;
 		const resultFileName = `merge-result-w${waveIndex}-lane${lane.laneNumber}-${opId}-${batchId}.json`;
 		const piDir = stateRoot ?? repoRoot;
 		const resultFilePath = join(piDir, ".pi", resultFileName);
@@ -1675,25 +1474,13 @@ export async function mergeWave(
 							try { unlinkSync(resultFilePath); } catch { /* best effort */ }
 						}
 
-						// Re-spawn merge agent for the retry
-						// TP-108: Kill previous V2 agent to prevent orphan/duplicate
-						if (runtimeBackend === "v2") {
-							killMergeAgentV2(sessionName);
-							await spawnMergeAgentV2(sessionName, repoRoot, mergeWorkDir, requestFilePath, config, stateRoot, agentRoot, batchId);
-						} else {
-							await spawnMergeAgent(sessionName, repoRoot, mergeWorkDir, requestFilePath, config, stateRoot, agentRoot, batchId);
-						}
-						// TP-056: Re-register with health monitor after respawn (legacy only)
-						if (healthMonitor && runtimeBackend !== "v2") healthMonitor.addSession(sessionName, lane.laneNumber, resultFilePath);
+						// Re-spawn merge agent for the retry.
+						// Kill previous V2 agent handle to prevent orphan/duplicate.
+						killMergeAgentV2(sessionName);
+						await spawnMergeAgentV2(sessionName, repoRoot, mergeWorkDir, requestFilePath, config, stateRoot, agentRoot, batchId);
 					} else {
-						// First attempt: spawn merge agent
-						if (runtimeBackend === "v2") {
-							await spawnMergeAgentV2(sessionName, repoRoot, mergeWorkDir, requestFilePath, config, stateRoot, agentRoot, batchId);
-						} else {
-							await spawnMergeAgent(sessionName, repoRoot, mergeWorkDir, requestFilePath, config, stateRoot, agentRoot, batchId);
-						}
-						// TP-056: Register session with health monitor (legacy only — V2 uses process handle)
-						if (healthMonitor && runtimeBackend !== "v2") healthMonitor.addSession(sessionName, lane.laneNumber, resultFilePath);
+						// First attempt: spawn merge agent (Runtime V2)
+						await spawnMergeAgentV2(sessionName, repoRoot, mergeWorkDir, requestFilePath, config, stateRoot, agentRoot, batchId);
 					}
 
 					try {
@@ -1956,12 +1743,8 @@ export async function mergeWave(
 				// Best effort
 			}
 
-			// Kill merge agent if still alive (backend-aware)
-			if (runtimeBackend === "v2") {
-				killMergeAgentV2(sessionName);
-			} else if (tmuxHasSession(sessionName)) {
-				tmuxKillSession(sessionName);
-			}
+			// Kill merge agent if still alive.
+			killMergeAgentV2(sessionName);
 
 			const errMsg = err instanceof Error ? err.message : String(err);
 			const errCode = err instanceof MergeError ? err.code : "UNKNOWN";
@@ -2735,81 +2518,13 @@ export function attemptAutoIntegration(
 // ── Merge Health Monitor (TP-056) ────────────────────────────────────
 
 /**
- * Capture the last N lines of a tmux pane for activity detection.
+ * Classify merge-session health from Runtime V2 liveness and result-file state.
  *
- * Uses `tmux capture-pane` with `-p` (stdout) and `-S -N` (last N lines).
- * Returns null if the session doesn't exist or capture fails.
+ * Without TMUX pane capture, warning/stuck are time-based heuristics from
+ * the session registration timestamp (`lastActivityAt`).
  *
- * @param sessionName - TMUX session name
- * @param lines       - Number of lines to capture from the bottom
- * @returns Captured text, or null on failure
- *
- * @since TP-056
- */
-export function captureMergePaneOutput(
-	sessionName: string,
-	lines: number = MERGE_HEALTH_CAPTURE_LINES,
-): string | null {
-	try {
-		const result = spawnSync("tmux", [
-			"capture-pane",
-			"-t", sessionName,
-			"-p",           // print to stdout
-			"-S", `-${lines}`, // last N lines
-		], { encoding: "utf-8", timeout: 5_000 });
-
-		if (result.status !== 0) {
-			return null;
-		}
-
-		return result.stdout ?? null;
-	} catch {
-		return null;
-	}
-}
-
-/**
- * Async version of captureMergePaneOutput — captures pane output
- * without blocking the event loop.
- *
- * @param sessionName - TMUX session name
- * @param lines - Number of lines to capture from the bottom
- * @returns Promise resolving to captured text, or null on failure
- *
- * @since TP-070
- */
-export async function captureMergePaneOutputAsync(
-	sessionName: string,
-	lines: number = MERGE_HEALTH_CAPTURE_LINES,
-): Promise<string | null> {
-	try {
-		const result = await tmuxAsync([
-			"capture-pane",
-			"-t", sessionName,
-			"-p",
-			"-S", `-${lines}`,
-		], 5_000);
-
-		if (result.status !== 0) {
-			return null;
-		}
-
-		return result.stdout || null;
-	} catch {
-		return null;
-	}
-}
-
-/**
- * Classify the health of a merge session based on session liveness
- * and pane output activity.
- *
- * Pure function — no side effects. Takes the current state and produces
- * a health classification.
- *
- * @param sessionAlive   - Whether the tmux session is alive
+ * @param sessionAlive   - Whether the Runtime V2 merge agent is alive
  * @param hasResultFile  - Whether the merge result file exists
- * @param currentOutput  - Current pane capture (null if session dead or capture failed)
  * @param healthState    - Tracked health state for this session
  * @param now            - Current epoch ms
  * @returns Updated health status
@@ -2819,40 +2534,24 @@ export async function captureMergePaneOutputAsync(
 export function classifyMergeHealth(
 	sessionAlive: boolean,
 	hasResultFile: boolean,
-	currentOutput: string | null,
 	healthState: MergeSessionHealthState,
 	now: number,
 ): MergeHealthStatus {
-	// Dead session with no result file → immediate detection
 	if (!sessionAlive && !hasResultFile) {
 		return "dead";
 	}
 
-	// Session dead but result file exists → merge completed, healthy
 	if (!sessionAlive && hasResultFile) {
 		return "healthy";
 	}
 
-	// Session alive — check activity
-	const lastContent = healthState.lastSnapshot?.content ?? null;
-	const outputChanged = currentOutput !== null
-		&& (lastContent === null || currentOutput !== lastContent);
-
-	if (outputChanged) {
-		return "healthy";
-	}
-
-	// No output change — compute stale duration
-	const staleDuration = now - healthState.lastActivityAt;
-
-	if (staleDuration >= MERGE_HEALTH_STUCK_THRESHOLD_MS) {
+	const elapsedMs = now - healthState.lastActivityAt;
+	if (elapsedMs >= MERGE_HEALTH_STUCK_THRESHOLD_MS) {
 		return "stuck";
 	}
-
-	if (staleDuration >= MERGE_HEALTH_WARNING_THRESHOLD_MS) {
+	if (elapsedMs >= MERGE_HEALTH_WARNING_THRESHOLD_MS) {
 		return "warning";
 	}
-
 	return "healthy";
 }
 
@@ -2998,51 +2697,44 @@ export class MergeHealthMonitor {
 	 * Run a single poll cycle across all monitored sessions.
 	 *
 	 * Exposed as public for testing — normally called by the interval timer.
-	 * Async (TP-070) — uses non-blocking tmux calls to avoid event loop stalls.
 	 */
 	async poll(): Promise<void> {
 		const now = Date.now();
 
-		for (const [sessionName, state] of this.sessions) {
-			const sessionAlive = await tmuxHasSessionAsync(sessionName);
-			const resultPath = this._resultPaths.get(sessionName) ?? "";
-			const hasResultFile = resultPath ? existsSync(resultPath) : false;
+		try {
+			setV2LivenessRegistryCache(readRegistrySnapshot(this.stateRoot, this.batchId));
+		} catch {
+			setV2LivenessRegistryCache(null);
+		}
 
-			// Capture pane output for activity detection — async to avoid blocking
-			const currentOutput = sessionAlive
-				? await captureMergePaneOutputAsync(sessionName)
-				: null;
+		try {
+			for (const [sessionName, state] of this.sessions) {
+				const sessionAlive = isV2AgentAlive(sessionName, "v2");
+				const resultPath = this._resultPaths.get(sessionName) ?? "";
+				const hasResultFile = resultPath ? existsSync(resultPath) : false;
 
-			// Classify health
-			const newStatus = classifyMergeHealth(
-				sessionAlive,
-				hasResultFile,
-				currentOutput,
-				state,
-				now,
-			);
+				const newStatus = classifyMergeHealth(
+					sessionAlive,
+					hasResultFile,
+					state,
+					now,
+				);
 
-			// Update snapshot if output changed
-			if (currentOutput !== null && (
-				state.lastSnapshot === null || currentOutput !== state.lastSnapshot.content
-			)) {
-				state.lastSnapshot = { content: currentOutput, capturedAt: now };
-				state.lastActivityAt = now;
-			}
+				state.status = newStatus;
 
-			const prevStatus = state.status;
-			state.status = newStatus;
+				// Emit events based on status transitions
+				this._emitHealthEvents(state, now);
 
-			// Emit events based on status transitions
-			this._emitHealthEvents(state, now);
-
-			// Signal dead session for early exit
-			if (newStatus === "dead" && !state.deadEmitted) {
-				state.deadEmitted = true;
-				if (this._onDeadSession) {
-					this._onDeadSession(sessionName, state.laneNumber);
+				// Signal dead session for early exit
+				if (newStatus === "dead" && !state.deadEmitted) {
+					state.deadEmitted = true;
+					if (this._onDeadSession) {
+						this._onDeadSession(sessionName, state.laneNumber);
+					}
 				}
 			}
+		} finally {
+			setV2LivenessRegistryCache(null);
 		}
 	}
 
@@ -3061,7 +2753,7 @@ export class MergeHealthMonitor {
 				sessionName: state.sessionName,
 				healthStatus: "warning",
 				stalledMinutes,
-				reason: `Merge agent on lane ${state.laneNumber} may be stalled (no output for ${stalledMinutes} min)`,
+				reason: `Merge agent on lane ${state.laneNumber} may be stalled (${stalledMinutes} min without completion)`,
 			};
 			emitEngineEvent(this.stateRoot, event);
 			execLog("merge-health", state.sessionName, `⚠️ merge session possibly stalled`, {
@@ -3093,7 +2785,7 @@ export class MergeHealthMonitor {
 				sessionName: state.sessionName,
 				healthStatus: "stuck",
 				stalledMinutes,
-				reason: `Merge agent on lane ${state.laneNumber} appears stuck (no output for ${stalledMinutes} min). Consider killing and retrying.`,
+				reason: `Merge agent on lane ${state.laneNumber} appears stuck (${stalledMinutes} min without completion). Consider killing and retrying.`,
 			};
 			emitEngineEvent(this.stateRoot, event);
 			execLog("merge-health", state.sessionName, `🔒 merge session stuck`, {

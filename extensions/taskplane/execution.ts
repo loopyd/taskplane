@@ -4,7 +4,7 @@
  */
 import { readFileSync, existsSync, statSync, unlinkSync, mkdirSync, writeFileSync, copyFileSync } from "fs";
 import { access as fsAccess, readFile as fsReadFile, stat as fsStat } from "fs/promises";
-import { spawnSync, spawn } from "child_process";
+import { spawnSync } from "child_process";
 import { join, dirname, basename, resolve, relative, delimiter as pathDelimiter } from "path";
 import { userInfo } from "os";
 
@@ -117,81 +117,15 @@ function resolveTaskRunnerExtensionPath(repoRoot: string): string {
  * Find the rpc-wrapper.mjs path for lane sessions.
  * @see resolveTaskplanePackageFile for resolution order
  */
-export function resolveRpcWrapperPath(repoRoot: string): string {
-	return resolveTaskplanePackageFile(repoRoot, join("bin", "rpc-wrapper.mjs"));
-}
+// resolveRpcWrapperPath removed (TP-120 remediation: legacy TMUX dead code)
 
 // ── Telemetry Helpers ────────────────────────────────────────────────
 
-/**
- * Resolve the operator ID for telemetry filenames.
- *
- * Priority: TASKPLANE_OPERATOR_ID env → OS username → "op" fallback.
- * Shared by lane and merge telemetry path generators to avoid divergence.
- */
-export function resolveTelemOpId(): string {
-	const envOpId = process.env.TASKPLANE_OPERATOR_ID;
-	if (envOpId?.trim()) {
-		return envOpId.trim().toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-+|-+$/g, "").slice(0, 12) || "op";
-	}
-	try {
-		const username = userInfo().username;
-		if (username?.trim()) {
-			return username.trim().toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-+|-+$/g, "").slice(0, 12) || "op";
-		}
-	} catch { /* userInfo() can throw on some platforms */ }
-	return "op";
-}
+// resolveTelemOpId removed (TP-120 remediation: only consumer was generateTelemetryPaths)
 
-/**
- * Sanitize a string for use in telemetry filenames.
- */
-function sanitizeForFilename(s: string, maxLen: number = 30): string {
-	return s.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-+|-+$/g, "").slice(0, maxLen);
-}
+// sanitizeForFilename + generateTelemetryPaths removed (TP-120 remediation: legacy telemetry dead code)
 
-// ── Telemetry Path Generation ────────────────────────────────────────
-
-/**
- * Generate telemetry file paths for a lane session.
- *
- * Naming contract from resilience roadmap:
- *   .pi/telemetry/{opId}-{batchId}-{repoId}[-{taskId}][-lane-{N}]-{role}.{ext}
- *
- * @param sessionName  - TMUX session name (e.g., "orch-lane-1")
- * @param sidecarRoot  - Root dir for sidecar files (e.g., <workspace>/.pi or <repo>/.pi)
- * @param taskId       - Task identifier (e.g., "TP-049")
- * @param batchId      - Actual batch ID from batch state (falls back to timestamp)
- * @param repoId       - Repo ID for workspace mode (falls back to "default")
- * @returns { sidecarPath, exitSummaryPath, telemetryDir }
- */
-export function generateTelemetryPaths(
-	sessionName: string,
-	sidecarRoot: string,
-	taskId?: string,
-	batchId?: string,
-	repoId?: string,
-): { sidecarPath: string; exitSummaryPath: string; telemetryDir: string } {
-	const opId = resolveTelemOpId();
-	const effectiveBatchId = batchId || String(Date.now());
-	const effectiveRepoId = repoId || "default";
-
-	// Lane sessions are the task-runner orchestration layer, NOT the worker agent.
-	// Use "lane" role to avoid filename collisions with worker sidecar files.
-	const role = "lane";
-	const laneMatch = sessionName.match(/lane-(\d+)/);
-	const laneSuffix = laneMatch ? `-lane-${laneMatch[1]}` : "";
-
-	// Include taskId when available
-	const taskIdSegment = taskId ? `-${sanitizeForFilename(taskId)}` : "";
-	const telemetryBasename = `${opId}-${effectiveBatchId}-${effectiveRepoId}${taskIdSegment}${laneSuffix}-${role}`;
-	const telemetryDir = join(sidecarRoot, "telemetry");
-	if (!existsSync(telemetryDir)) mkdirSync(telemetryDir, { recursive: true });
-	const sidecarPath = join(telemetryDir, `${telemetryBasename}.jsonl`);
-	const exitSummaryPath = join(telemetryDir, `${telemetryBasename}-exit.json`);
-
-	return { sidecarPath, exitSummaryPath, telemetryDir };
-}
+// generateTelemetryPaths removed (TP-120 remediation: legacy telemetry sidecar dead code)
 
 // ── Execution Helpers ────────────────────────────────────────────────
 
@@ -218,55 +152,6 @@ export function execLog(
 	} else {
 		console.error(`${prefix}: ${message}`);
 	}
-}
-
-/**
- * Check if a TMUX session exists (is alive).
- *
- * @param sessionName - TMUX session name to check
- * @returns true if session exists
- */
-export function tmuxHasSession(sessionName: string): boolean {
-	const result = spawnSync("tmux", ["has-session", "-t", sessionName]);
-	return result.status === 0;
-}
-
-/**
- * Kill a TMUX session if it exists.
- *
- * Idempotent: returns true if session was killed or was already absent.
- *
- * @param sessionName - TMUX session name to kill
- * @returns true if session is now absent
- */
-export function tmuxKillSession(sessionName: string): boolean {
-	// Check liveness first so we can distinguish "already gone" from "kill failed".
-	const wasAlive = tmuxHasSession(sessionName);
-	if (!wasAlive) {
-		return true; // Already absent
-	}
-
-	spawnSync("tmux", ["kill-session", "-t", sessionName]);
-
-	// Consider success only if the session is now absent.
-	return !tmuxHasSession(sessionName);
-}
-
-/**
- * Kill a lane session and its child sessions (worker, reviewer).
- *
- * Child session names follow the convention:
- *   - `{sessionName}-worker`
- *   - `{sessionName}-reviewer`
- *
- * @param sessionName - Base lane session name (e.g., "orch-lane-1")
- */
-export function killLaneAndChildren(sessionName: string): void {
-	// Kill children first (they depend on the parent context)
-	tmuxKillSession(`${sessionName}-worker`);
-	tmuxKillSession(`${sessionName}-reviewer`);
-	// Then kill the parent lane session
-	tmuxKillSession(sessionName);
 }
 
 /**
@@ -308,120 +193,39 @@ export function setV2LivenessRegistryCache(registry: import("./process-registry.
 
 /**
  * TP-112: Kill V2 lane agents (worker + reviewer) by PID from the registry.
- * Used for stall termination on the V2 path.
+ *
+ * Uses the monitor cache when available for hot-path polling, and can
+ * optionally read a fresh registry snapshot for cleanup flows outside monitor.
+ *
  * @since TP-112
  */
-export function killV2LaneAgents(sessionName: string): void {
-	if (!_v2LivenessRegistryCache) return;
-	const agents = _v2LivenessRegistryCache.agents;
+export function killV2LaneAgents(
+	sessionName: string,
+	options?: { stateRoot?: string; batchId?: string; logContext?: string },
+): void {
+	const registry = _v2LivenessRegistryCache ?? (
+		options?.stateRoot && options?.batchId
+			? readRegistrySnapshot(options.stateRoot, options.batchId)
+			: null
+	);
+	if (!registry) return;
+
+	const agents = registry.agents;
+	const logContext = options?.logContext ?? "monitor";
 	for (const suffix of ["-worker", "-reviewer", ""]) {
 		const key = `${sessionName}${suffix}`;
 		const manifest = agents[key];
 		if (manifest && !isTerminalStatus(manifest.status) && isProcessAlive(manifest.pid)) {
 			try {
 				process.kill(manifest.pid, "SIGTERM");
-				execLog("monitor", key, `killed V2 agent (PID ${manifest.pid}) on stall`);
+				execLog(logContext, key, `killed V2 agent (PID ${manifest.pid})`);
 			} catch { /* already dead */ }
 		}
 	}
 }
 
-// ── Async TMUX Helpers (TP-070) ──────────────────────────────────────
+// ── Async File/Status Helpers (TP-070) ───────────────────────────────
 
-/**
- * Run a tmux command asynchronously, without blocking the event loop.
- *
- * Wraps `child_process.spawn` in a promise. The process is spawned and
- * stdout is collected incrementally; the promise resolves when the process
- * exits.
- *
- * @param args - Arguments to pass to the `tmux` command
- * @param timeoutMs - Optional timeout in milliseconds (default: 5000)
- * @returns Promise resolving to `{ status, stdout }` where status is the exit code (0 = success)
- *
- * @since TP-070
- */
-export function tmuxAsync(args: string[], timeoutMs: number = 5_000): Promise<{ status: number; stdout: string }> {
-	return new Promise((resolve) => {
-		const proc = spawn("tmux", args, {
-			stdio: ["ignore", "pipe", "pipe"],
-			timeout: timeoutMs,
-		});
-
-		let stdout = "";
-
-		proc.stdout.on("data", (chunk: Buffer) => {
-			stdout += chunk.toString("utf-8");
-		});
-
-		proc.on("error", () => {
-			// Spawn failure — treat as non-zero exit
-			resolve({ status: 1, stdout: "" });
-		});
-
-		proc.on("close", (code) => {
-			resolve({ status: code ?? 1, stdout });
-		});
-	});
-}
-
-/**
- * Async version of tmuxHasSession — checks if a TMUX session exists
- * without blocking the event loop.
- *
- * @param sessionName - TMUX session name to check
- * @returns Promise resolving to true if session exists
- *
- * @since TP-070
- */
-export async function tmuxHasSessionAsync(sessionName: string): Promise<boolean> {
-	const result = await tmuxAsync(["has-session", "-t", sessionName]);
-	return result.status === 0;
-}
-
-/**
- * Async version of tmuxKillSession — kills a TMUX session without
- * blocking the event loop.
- *
- * Idempotent: resolves to true if session was killed or was already absent.
- *
- * @param sessionName - TMUX session name to kill
- * @returns Promise resolving to true if session is now absent
- *
- * @since TP-070
- */
-export async function tmuxKillSessionAsync(sessionName: string): Promise<boolean> {
-	const wasAlive = await tmuxHasSessionAsync(sessionName);
-	if (!wasAlive) return true;
-
-	await tmuxAsync(["kill-session", "-t", sessionName]);
-	return !(await tmuxHasSessionAsync(sessionName));
-}
-
-/**
- * Async version of captureTmuxPaneTail — captures tail output from a live
- * TMUX pane without blocking the event loop.
- *
- * @param sessionName - TMUX session name
- * @param maxLines - Maximum number of lines to return
- * @param maxChars - Maximum character count
- * @returns Promise resolving to captured text (empty string on failure)
- *
- * @since TP-070
- */
-export async function captureTmuxPaneTailAsync(
-	sessionName: string,
-	maxLines: number = 40,
-	maxChars: number = 1200,
-): Promise<string> {
-	const result = await tmuxAsync(["capture-pane", "-p", "-t", sessionName], 3000);
-	if (result.status !== 0) return "";
-	const raw = (result.stdout || "").replace(/\r\n/g, "\n").trim();
-	if (!raw) return "";
-	const tail = raw.split("\n").slice(-maxLines).join("\n").trim();
-	if (!tail) return "";
-	return tail.length > maxChars ? tail.slice(-maxChars) : tail;
-}
 
 /**
  * Async version of readTaskStatusTail — reads STATUS.md tail without
@@ -470,225 +274,10 @@ export async function readTaskStatusTailAsync(
  * @param repoRoot  - Absolute path to the main repository root
  * @returns Map of env var name → value
  */
-export function buildLaneEnvVars(
-	lane: AllocatedLane,
-	promptPath: string,
-	repoRoot: string,
-	workspaceRoot?: string,
-): Record<string, string> {
-	// TASK_AUTOSTART: resolve the prompt path for the lane session.
-	//
-	// In workspace mode, tasks may live in a different repo than the lane's
-	// worktree (e.g., task PROMPT.md in shared-libs, worker runs in api-service).
-	// Always use the absolute path — task-runner's resolve(cwd, autoPath) handles
-	// absolute paths correctly, and this avoids broken relative paths when the
-	// task folder is outside the lane's repo.
-	//
-	// In repo mode (no workspace), we still use relative paths from repoRoot
-	// because the worktree mirrors the repo structure and the task folder is
-	// inside the repo.
-	const repoRootNorm = resolve(repoRoot).replace(/\\/g, "/");
-	const promptNorm = resolve(promptPath).replace(/\\/g, "/");
+// buildLaneEnvVars removed (TP-120 remediation: legacy TMUX lane-session env vars, dead code)
 
-	let relativePath: string;
-	if (workspaceRoot) {
-		// Workspace mode: use worktree-relative path when the task folder is
-		// inside the lane's repo. This ensures STATUS.md, .DONE, and git commits
-		// all operate in the worktree (not the original source directory).
-		if (promptNorm.startsWith(repoRootNorm + "/")) {
-			relativePath = promptNorm.slice(repoRootNorm.length + 1);
-		} else {
-			// Cross-repo: task files live in a different repo than the worker's
-			// worktree. Copy the task folder into the worktree so STATUS.md,
-			// .DONE, and git commits all happen locally.
-			const taskFolder = dirname(resolve(promptPath));
-			const taskDirName = basename(taskFolder);
-			const localTaskDir = join(lane.worktreePath, ".taskplane-tasks", taskDirName);
-			mkdirSync(localTaskDir, { recursive: true });
-			// Copy PROMPT.md and STATUS.md into the local task dir
-			for (const file of ["PROMPT.md", "STATUS.md"]) {
-				const src = join(taskFolder, file);
-				const dst = join(localTaskDir, file);
-				if (existsSync(src) && !existsSync(dst)) {
-					copyFileSync(src, dst);
-				}
-			}
-			// Create .reviews dir if it exists in source
-			const reviewsDir = join(taskFolder, ".reviews");
-			if (existsSync(reviewsDir)) {
-				mkdirSync(join(localTaskDir, ".reviews"), { recursive: true });
-			}
-			relativePath = join(".taskplane-tasks", taskDirName, "PROMPT.md");
-		}
-	} else if (promptNorm.startsWith(repoRootNorm + "/")) {
-		// Repo mode: relative path from repo root (mirrors into worktree)
-		relativePath = promptNorm.slice(repoRootNorm.length + 1);
-	} else {
-		// Fallback: absolute path
-		relativePath = resolve(promptPath);
-	}
-
-	const nodePathEntries: string[] = [join(repoRoot, "node_modules")];
-	if (process.env.NODE_PATH) {
-		nodePathEntries.push(...process.env.NODE_PATH.split(pathDelimiter).filter(Boolean));
-	}
-	const nodePath = [...new Set(nodePathEntries)].join(pathDelimiter);
-
-	const vars: Record<string, string> = {
-		TASK_AUTOSTART: relativePath,
-		TASK_RUNNER_SPAWN_MODE: "tmux",
-		TASK_RUNNER_TMUX_PREFIX: lane.tmuxSessionName,
-		ORCH_SIDECAR_DIR: join(workspaceRoot || repoRoot, ".pi"),
-		NODE_PATH: nodePath,
-		// Pi's TUI (ink/react) hangs silently with TERM=tmux-256color (tmux default).
-		// Force xterm-256color so pi can render and start execution.
-		TERM: "xterm-256color",
-	};
-
-	// In workspace mode, the worktree cwd is inside a repo — not the workspace root.
-	// The task-runner needs TASKPLANE_WORKSPACE_ROOT to find .pi/ config
-	// and resolve task area paths from the correct base directory.
-	// Always set when workspaceRoot is provided (workspace mode), regardless of
-	// whether it equals repoRoot (it often does — cwd is the workspace root).
-	if (workspaceRoot) {
-		vars.TASKPLANE_WORKSPACE_ROOT = workspaceRoot;
-	}
-
-	return vars;
-}
-
-/**
- * Convert a Windows absolute path to a tmux-friendly POSIX-style path.
- *
- * tmux `-c` expects POSIX paths when running under Git Bash/MSYS.
- * Passing `C:\...` can silently fall back to HOME, causing TASK_AUTOSTART
- * path resolution failures.
- */
-export function toTmuxPath(pathValue: string): string {
-	const normalized = resolve(pathValue).replace(/\\/g, "/");
-	const driveMatch = normalized.match(/^([A-Za-z]):\/(.*)$/);
-	if (driveMatch) {
-		return `/${driveMatch[1].toLowerCase()}/${driveMatch[2]}`;
-	}
-	return normalized;
-}
-
-/**
- * Build the tmux new-session command for spawning a lane.
- *
- * Constructs a properly escaped command that:
- * 1. Sets env vars (TASK_AUTOSTART, TASK_RUNNER_SPAWN_MODE, TASK_RUNNER_TMUX_PREFIX)
- * 2. Runs `node rpc-wrapper.mjs` to spawn pi with the task-runner extension,
- *    producing structured telemetry (sidecar JSONL + exit summary JSON).
- *
- * The RPC wrapper spawns pi in RPC mode with the task-runner extension loaded.
- * The extension's TASK_AUTOSTART env var triggers task execution on init.
- * A minimal prompt file is created to satisfy the wrapper's --prompt-file requirement.
- *
- * Shell escaping: env var values are single-quoted to prevent expansion.
- * Path args are single-quoted to handle spaces and special characters.
- *
- * @param sessionName  - TMUX session name (e.g., "orch-lane-1")
- * @param worktreePath - Absolute path to the lane worktree
- * @param repoRoot     - Absolute path to main repo (for extension absolute path)
- * @param envVars      - Environment variables to set
- * @param laneLogPath  - Optional path to write lane session stdout/stderr
- * @param sidecarPath  - Path for RPC telemetry sidecar JSONL file
- * @param exitSummaryPath - Path for RPC telemetry exit summary JSON file
- * @returns Array of arguments for spawnSync("tmux", args)
- */
-export function buildTmuxSpawnArgs(
-	sessionName: string,
-	worktreePath: string,
-	repoRoot: string,
-	envVars: Record<string, string>,
-	laneLogPath?: string,
-	sidecarPath?: string,
-	exitSummaryPath?: string,
-): string[] {
-	// Shell-quote a value for safe embedding in a command string.
-	// Wraps in single quotes, escaping any internal single quotes.
-	const shellQuote = (s: string): string => {
-		if (/[\s"'`$\\!&|;()<>{}#*?~]/.test(s)) {
-			return `'${s.replace(/'/g, "'\\''")}'`;
-		}
-		return s;
-	};
-
-	// Build the command string that runs inside the TMUX session.
-	const envParts = Object.entries(envVars)
-		.map(([key, val]) => `${key}=${shellQuote(val)}`)
-		.join(" ");
-
-	const taskRunnerExtPath = resolveTaskRunnerExtensionPath(repoRoot);
-
-	let piCommand: string;
-
-	if (sidecarPath && exitSummaryPath) {
-		// ── RPC Wrapper mode: structured telemetry ──────────────
-		// Spawn `node rpc-wrapper.mjs` instead of `pi` directly.
-		// The wrapper runs pi in RPC mode, captures telemetry to
-		// sidecar JSONL, and writes exit summary on process exit.
-		const rpcWrapperPath = resolveRpcWrapperPath(repoRoot);
-
-		// Create a minimal prompt file for the RPC wrapper.
-		// The task-runner extension handles execution via TASK_AUTOSTART;
-		// this prompt satisfies the wrapper's --prompt-file requirement.
-		// Written to the sidecar dir (not tmpdir) so it's co-located with
-		// telemetry artifacts and cleaned up with them after the batch.
-		const promptId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-		const promptDir = dirname(sidecarPath);
-		if (!existsSync(promptDir)) mkdirSync(promptDir, { recursive: true });
-		const promptTmpFile = join(promptDir, `lane-prompt-${promptId}.txt`);
-		writeFileSync(promptTmpFile, "Execute the task as configured by the task-runner extension.");
-
-		piCommand = [
-			envParts,
-			"node", shellQuote(rpcWrapperPath),
-			"--sidecar-path", shellQuote(sidecarPath),
-			"--exit-summary-path", shellQuote(exitSummaryPath),
-			"--prompt-file", shellQuote(promptTmpFile),
-			"--extensions", shellQuote(taskRunnerExtPath),
-			// Prevent pi from auto-discovering extensions from the worktree CWD.
-			// Without this, pi loads BOTH the explicit -e extension AND any
-			// extensions/ in the worktree, causing duplicate tool registration
-			// and unpredictable behavior (two copies of task-runner compete).
-			"--", "--no-extensions",
-		].filter(Boolean).join(" ");
-	} else {
-		// ── Legacy mode: direct pi spawn (no telemetry) ─────────
-		piCommand = `${envParts} pi --no-session -e ${shellQuote(taskRunnerExtPath)}`;
-	}
-
-	// TP-095: Capture lane session stderr to a log file (#339).
-	// When the lane session (rpc-wrapper → pi → task-runner) dies, stderr is
-	// lost to tmux scrollback. Redirect stderr to a persistent log file
-	// co-located with telemetry so the supervisor can diagnose lane deaths.
-	//
-	// We append stderr to a file using `2>>`. This captures all stderr output
-	// from rpc-wrapper (which includes pi stderr forwarding, progress display,
-	// and crash diagnostics). The tmux pane loses live stderr visibility, but
-	// the dashboard provides live monitoring and the file preserves everything
-	// for post-mortem analysis.
-	//
-	// Appended to piCommand (not the tmux shell wrapper) to target the
-	// node/rpc-wrapper process specifically. This avoids the fragile shell
-	// redirection issues that previously caused spawn failures on Windows.
-	if (sidecarPath) {
-		// Derive stderr log path from sidecar path:
-		// .pi/telemetry/{basename}.jsonl → .pi/telemetry/{basename}-stderr.log
-		const stderrLogPath = sidecarPath.replace(/\.jsonl$/, "-stderr.log");
-		piCommand = `${piCommand} 2>> ${shellQuote(stderrLogPath)}`;
-	}
-
-	const tmuxWorktreePath = toTmuxPath(worktreePath);
-	const wrappedCommand = `cd ${shellQuote(tmuxWorktreePath)} && ${piCommand}`;
-
-	return [
-		"new-session", "-d",
-		"-s", sessionName,
-		wrappedCommand,
-	];
+function laneSessionIdOf(lane: Pick<AllocatedLane, "laneSessionId">): string {
+	return lane.laneSessionId;
 }
 
 /**
@@ -701,7 +290,7 @@ export function resolveLaneLogPath(
 	lane: AllocatedLane,
 	task: AllocatedTask,
 ): string {
-	return join(lane.worktreePath, ".pi", "orch-logs", `${lane.tmuxSessionName}-${task.taskId}.log`);
+	return join(lane.worktreePath, ".pi", "orch-logs", `${laneSessionIdOf(lane)}-${task.taskId}.log`);
 }
 
 /**
@@ -713,7 +302,7 @@ export function resolveLaneLogRelativePath(
 	lane: AllocatedLane,
 	task: AllocatedTask,
 ): string {
-	return join(".pi", "orch-logs", `${lane.tmuxSessionName}-${task.taskId}.log`).replace(/\\/g, "/");
+	return join(".pi", "orch-logs", `${laneSessionIdOf(lane)}-${task.taskId}.log`).replace(/\\/g, "/");
 }
 
 /**
@@ -777,28 +366,6 @@ export async function fileExistsAsync(filePath: string): Promise<boolean> {
 	} catch {
 		return false;
 	}
-}
-
-/**
- * Capture tail output from a live TMUX pane for diagnostics.
- *
- * Works even when lane log redirection is disabled (Windows-safe fallback).
- */
-export function captureTmuxPaneTail(
-	sessionName: string,
-	maxLines: number = 40,
-	maxChars: number = 1200,
-): string {
-	const result = spawnSync("tmux", ["capture-pane", "-p", "-t", sessionName], {
-		encoding: "utf-8",
-		timeout: 3000,
-	});
-	if (result.status !== 0) return "";
-	const raw = (result.stdout || "").replace(/\r\n/g, "\n").trim();
-	if (!raw) return "";
-	const tail = raw.split("\n").slice(-maxLines).join("\n").trim();
-	if (!tail) return "";
-	return tail.length > maxChars ? tail.slice(-maxChars) : tail;
 }
 
 /**
@@ -954,122 +521,12 @@ export function resolveTaskDonePath(
 	return resolveCanonicalTaskPaths(taskFolder, worktreePath, repoRoot, isWorkspaceMode).donePath;
 }
 
-/**
- * Spawn a TMUX session for a task in a lane.
- *
- * Handles:
- * - Stale session cleanup (kill if session name already exists)
- * - Retry on transient spawn failures (up to SESSION_SPAWN_RETRY_MAX)
- * - Structured logging
- *
- * @param lane     - Allocated lane with worktree and session info
- * @param task     - Task to execute
- * @param config   - Orchestrator configuration
- * @param repoRoot - Main repository root
- * @throws ExecutionError if spawn fails after retries
- */
-export function spawnLaneSession(
-	lane: AllocatedLane,
-	task: AllocatedTask,
-	config: OrchestratorConfig,
-	repoRoot: string,
-	workspaceRoot?: string,
-	extraEnvVars?: Record<string, string>,
-): void {
-	const sessionName = lane.tmuxSessionName;
-	const laneId = lane.laneId;
 
-	execLog(laneId, task.taskId, "preparing to spawn TMUX session", {
-		session: sessionName,
-		worktree: lane.worktreePath,
-		worktreeTmuxPath: toTmuxPath(lane.worktreePath),
-		logPath: resolveLaneLogPath(lane, task),
-	});
-
-	// Pre-check: worktree exists
-	if (!existsSync(lane.worktreePath)) {
-		throw new ExecutionError(
-			"EXEC_WORKTREE_MISSING",
-			`Worktree path does not exist: ${lane.worktreePath}`,
-			laneId,
-			task.taskId,
-		);
-	}
-
-	// Build env vars
-	const envVars = buildLaneEnvVars(lane, task.task.promptPath, repoRoot, workspaceRoot);
-	// ORCH_BATCH_ID is passed via extraEnvVars from executeWave → executeLane → spawnLaneSession.
-	// The task-runner reads it to include batchId in lane-state JSON for dashboard filtering.
-	if (extraEnvVars) {
-		Object.assign(envVars, extraEnvVars);
-	}
-
-	// Prepare per-task lane log path for post-mortem diagnostics
-	const laneLogPath = resolveLaneLogPath(lane, task);
-	const laneLogRelativePath = resolveLaneLogRelativePath(lane, task);
-	try {
-		mkdirSync(dirname(laneLogPath), { recursive: true });
-		if (existsSync(laneLogPath)) {
-			unlinkSync(laneLogPath); // fresh log per task attempt
-		}
-	} catch {
-		// Best effort — session can still run without log file setup
-	}
-
-	// Generate telemetry file paths for RPC wrapper sidecar
-	const sidecarRoot = join(workspaceRoot || repoRoot, ".pi");
-	const telemetry = generateTelemetryPaths(sessionName, sidecarRoot, task.taskId, config.orchestrator?.batchId, lane.repoId);
-	execLog(laneId, task.taskId, "telemetry paths generated", {
-		sidecar: telemetry.sidecarPath,
-		exitSummary: telemetry.exitSummaryPath,
-	});
-
-	// Build tmux args (with RPC wrapper telemetry)
-	const tmuxArgs = buildTmuxSpawnArgs(sessionName, lane.worktreePath, repoRoot, envVars, laneLogRelativePath, telemetry.sidecarPath, telemetry.exitSummaryPath);
-
-	// Clean up stale session if exists
-	if (tmuxHasSession(sessionName)) {
-		execLog(laneId, task.taskId, "killing stale TMUX session", { session: sessionName });
-		killLaneAndChildren(sessionName);
-		// Brief pause to let tmux clean up
-		spawnSync("sleep", ["0.5"], { shell: true, timeout: 3000 });
-	}
-
-	// Attempt to spawn with retry
-	let lastError = "";
-	for (let attempt = 1; attempt <= SESSION_SPAWN_RETRY_MAX + 1; attempt++) {
-		const result = spawnSync("tmux", tmuxArgs);
-
-		if (result.status === 0) {
-			execLog(laneId, task.taskId, "TMUX session spawned successfully", {
-				session: sessionName,
-				attempt,
-			});
-			return;
-		}
-
-		lastError = result.stderr?.toString().trim() || "unknown spawn error";
-		execLog(laneId, task.taskId, `spawn attempt ${attempt} failed: ${lastError}`, {
-			session: sessionName,
-		});
-
-		if (attempt <= SESSION_SPAWN_RETRY_MAX) {
-			// Wait before retry (1s, 2s)
-			const delayMs = attempt * 1000;
-			spawnSync("sleep", [`${delayMs / 1000}`], { shell: true, timeout: delayMs + 2000 });
-		}
-	}
-
-	throw new ExecutionError(
-		"EXEC_SPAWN_FAILED",
-		`Failed to create TMUX session '${sessionName}' after ${SESSION_SPAWN_RETRY_MAX + 1} attempts. Last error: ${lastError}`,
-		laneId,
-		task.taskId,
-	);
-}
-
-/**
- * Poll until a task completes (or fails).
+/*
+ * REMOVED during TMUX extrication (TP-120 remediation):
+ * - resolveRpcWrapperPath, sanitizeForFilename, generateTelemetryPaths
+ * - buildLaneEnvVars, pollUntilTaskComplete
+ * V2 equivalents: lane-runner.ts (executeTaskV2) and agent-host.ts (spawnAgent).
  *
  * Completion detection logic:
  * 1. Check for .DONE file → task succeeded (highest priority)
@@ -1087,172 +544,18 @@ export function spawnLaneSession(
  * @param pauseSignal - Checked each poll cycle; if true, returns early with "skipped"
  * @returns LaneTaskStatus indicating the final state
  */
+// pollUntilTaskComplete function body removed — was ~170 lines of legacy .DONE polling.
+// @ts-ignore — export kept as stub for test compatibility
 export async function pollUntilTaskComplete(
-	lane: AllocatedLane,
-	task: AllocatedTask,
-	config: OrchestratorConfig,
-	repoRoot: string,
-	pauseSignal: { paused: boolean },
-	isWorkspaceMode?: boolean,
+	_lane: AllocatedLane,
+	_task: AllocatedTask,
+	_config: OrchestratorConfig,
+	_repoRoot: string,
+	_pauseSignal: { paused: boolean },
+	_isWorkspaceMode?: boolean,
 ): Promise<{ status: LaneTaskStatus; exitReason: string; doneFileFound: boolean }> {
-	const sessionName = lane.tmuxSessionName;
-	const laneId = lane.laneId;
-	const resolved = resolveCanonicalTaskPaths(task.task.taskFolder, lane.worktreePath, repoRoot, isWorkspaceMode);
-	const donePath = resolved.donePath;
-	const statusPath = resolved.statusPath;
-	const laneLogPath = resolveLaneLogPath(lane, task);
-
-	execLog(laneId, task.taskId, "polling for completion", {
-		session: sessionName,
-		donePath,
-		statusPath,
-		logPath: laneLogPath,
-	});
-
-	let lastPaneTail = "";
-
-	// Abort signal file path — checked each poll cycle.
-	// Any process can create this file to trigger abort (belt-and-suspenders
-	// alongside the in-memory pauseSignal, since /orch-abort may not be able
-	// to run concurrently with the /orch command handler).
-	const abortSignalFile = join(repoRoot, ".pi", "orch-abort-signal");
-
-	// Main polling loop
-	while (true) {
-		// Check pause signal
-		if (pauseSignal.paused) {
-			execLog(laneId, task.taskId, "pause signal detected during poll");
-			// Don't kill the session — let the current task-runner checkpoint
-			// The calling code will handle marking as skipped
-			return {
-				status: "skipped",
-				exitReason: "Paused by user (/orch-pause)",
-				doneFileFound: false,
-			};
-		}
-
-		// Check file-based abort signal (TP-070: async)
-		if (await fileExistsAsync(abortSignalFile)) {
-			execLog(laneId, task.taskId, "abort signal file detected — killing session and aborting");
-			await tmuxKillSessionAsync(sessionName);
-			// Also kill child sessions (worker, reviewer)
-			await tmuxKillSessionAsync(`${sessionName}-worker`);
-			await tmuxKillSessionAsync(`${sessionName}-reviewer`);
-			return {
-				status: "failed",
-				exitReason: "Aborted by signal file (.pi/orch-abort-signal)",
-				doneFileFound: false,
-			};
-		}
-
-		// Capture live pane output for diagnostics (best effort) — async to avoid blocking.
-		const paneTail = await captureTmuxPaneTailAsync(sessionName);
-		if (paneTail) {
-			lastPaneTail = paneTail;
-		}
-
-		// Priority 1: Check for .DONE file (TP-070: async)
-		if (await fileExistsAsync(donePath)) {
-			execLog(laneId, task.taskId, ".DONE file found — task succeeded", {
-				session: sessionName,
-			});
-			return {
-				status: "succeeded",
-				exitReason: ".DONE file created by task-runner",
-				doneFileFound: true,
-			};
-		}
-
-		// Priority 2: Check if TMUX session is still alive — async to avoid blocking
-		if (!(await tmuxHasSessionAsync(sessionName))) {
-			// Session exited — start grace period for .DONE file
-			execLog(laneId, task.taskId, "TMUX session exited, entering grace period", {
-				session: sessionName,
-				graceMs: DONE_GRACE_MS,
-			});
-
-			// Grace period: poll .DONE file at short intervals
-			const graceStart = Date.now();
-			while (Date.now() - graceStart < DONE_GRACE_MS) {
-				await new Promise((r) => setTimeout(r, 500));
-
-				if (await fileExistsAsync(donePath)) {
-					execLog(laneId, task.taskId, ".DONE file found during grace period — task succeeded", {
-						session: sessionName,
-					});
-					return {
-						status: "succeeded",
-						exitReason: ".DONE file created (found during grace period)",
-						doneFileFound: true,
-					};
-				}
-			}
-
-			// Grace period expired — last resort: check the lane BRANCH for .DONE.
-			// The worker may have committed .DONE before the session exited, but
-			// the worktree filesystem doesn't reflect it (stale checkout, race).
-			// This handles the common case where the worker completes all work,
-			// commits .DONE, and then the session exits before the poll detects it.
-			{
-				const relDonePath = donePath.startsWith(lane.worktreePath)
-					? donePath.slice(lane.worktreePath.length).replace(/^[\\/]+/, "").replace(/\\/g, "/")
-					: null;
-				if (relDonePath) {
-					const gitResult = runGit(
-						["show", `${lane.branch}:${relDonePath}`],
-						lane.worktreePath,
-					);
-					if (gitResult.ok) {
-						execLog(laneId, task.taskId, ".DONE found on lane branch (not in worktree) — task succeeded", {
-							session: sessionName,
-							branch: lane.branch,
-						});
-						return {
-							status: "succeeded",
-							exitReason: ".DONE committed to lane branch (found via git show after grace period)",
-							doneFileFound: true,
-						};
-					}
-				}
-			}
-
-			// Truly failed — no .DONE on filesystem or branch
-			const logTail = await readLaneLogTailAsync(laneLogPath);
-			execLog(laneId, task.taskId, "grace period expired, no .DONE on filesystem or branch — task failed", {
-				session: sessionName,
-				logPath: laneLogPath,
-			});
-			if (logTail) {
-				execLog(laneId, task.taskId, `lane session output (tail):\n${logTail}`);
-			}
-			const statusTail = await readTaskStatusTailAsync(statusPath);
-			const hasLogFile = await fileExistsAsync(laneLogPath);
-			const outputForHint = logTail || lastPaneTail || statusTail;
-			const logHint = outputForHint
-				? ` Last output: ${outputForHint.replace(/\s+/g, " ").slice(-300)}`
-				: "";
-			const logLocation = hasLogFile ? ` Lane log: ${laneLogPath}.` : "";
-			if (!logTail && lastPaneTail) {
-				execLog(laneId, task.taskId, `lane session output from TMUX pane (tail):\n${lastPaneTail}`);
-			}
-			if (statusTail) {
-				execLog(laneId, task.taskId, `task STATUS tail:\n${statusTail}`);
-			}
-			return {
-				status: "failed",
-				exitReason:
-					`TMUX session '${sessionName}' exited without creating .DONE file ` +
-					`(grace period ${DONE_GRACE_MS}ms expired).` +
-					`${logLocation}${logHint}`,
-				doneFileFound: false,
-			};
-		}
-
-		// Session alive, no .DONE yet — keep polling
-		await new Promise((r) => setTimeout(r, EXECUTION_POLL_INTERVAL_MS));
-	}
+	return { status: "failed", exitReason: "Legacy pollUntilTaskComplete removed — use V2 lane-runner", doneFileFound: false };
 }
-
 
 // ── Post-Task Commit ─────────────────────────────────────────────────
 
@@ -1310,189 +613,6 @@ function commitTaskArtifacts(
 }
 
 
-/**
- * Execute all tasks in a lane sequentially.
- *
- * For each task in the lane (in order):
- * 1. Spawn a TMUX session with TASK_AUTOSTART pointing to the task's PROMPT.md
- * 2. Poll until the task completes (or fails)
- * 3. Commit any uncommitted task artifacts (.DONE, STATUS.md) to the lane branch
- * 4. Record the outcome
- * 5. If the task failed, skip remaining tasks in the lane
- *
- * The lane reuses the same worktree and TMUX session name across tasks.
- * Each new task gets a fresh TMUX session (the previous one has exited).
- *
- * Cleanup policy:
- * - On success: session exits naturally, no cleanup needed
- * - On failure: session may have exited already; if alive, leave for debugging
- * - On pause: stop after current task, mark remaining as skipped
- * - On stall: handled by Step 3 (monitoring) — this function just polls
- *
- * @param lane        - Fully allocated lane from Step 1
- * @param config      - Orchestrator configuration
- * @param repoRoot    - Main repository root
- * @param pauseSignal - Shared signal for pause/abort (checked between tasks)
- * @returns LaneExecutionResult with per-task outcomes
- */
-export async function executeLane(
-	lane: AllocatedLane,
-	config: OrchestratorConfig,
-	repoRoot: string,
-	pauseSignal: { paused: boolean },
-	workspaceRoot?: string,
-	isWorkspaceMode?: boolean,
-	extraEnvVars?: Record<string, string>,
-): Promise<LaneExecutionResult> {
-	const laneId = lane.laneId;
-	const laneStartTime = Date.now();
-	const outcomes: LaneTaskOutcome[] = [];
-	let shouldSkipRemaining = false;
-
-	execLog(laneId, "LANE", `starting execution of ${lane.tasks.length} task(s)`, {
-		worktree: lane.worktreePath,
-		session: lane.tmuxSessionName,
-	});
-
-	for (const task of lane.tasks) {
-		// Check if remaining tasks should be skipped (prior failure or pause)
-		if (shouldSkipRemaining || pauseSignal.paused) {
-			const reason = pauseSignal.paused
-				? "Skipped due to pause signal"
-				: "Skipped due to prior task failure in lane";
-			execLog(laneId, task.taskId, reason);
-			outcomes.push({
-				taskId: task.taskId,
-				status: "skipped",
-				startTime: null,
-				endTime: null,
-				exitReason: reason,
-				sessionName: lane.tmuxSessionName,
-				doneFileFound: false,
-				laneNumber: lane.laneNumber,
-			});
-			continue;
-		}
-
-		// Execute this task
-		const taskStartTime = Date.now();
-		let taskOutcome: LaneTaskOutcome;
-
-		try {
-			// Spawn TMUX session
-			spawnLaneSession(lane, task, config, repoRoot, workspaceRoot, extraEnvVars);
-
-			// Poll until completion
-			const pollResult = await pollUntilTaskComplete(
-				lane,
-				task,
-				config,
-				repoRoot,
-				pauseSignal,
-				isWorkspaceMode,
-			);
-
-			taskOutcome = {
-				taskId: task.taskId,
-				status: pollResult.status,
-				startTime: taskStartTime,
-				endTime: Date.now(),
-				exitReason: pollResult.exitReason,
-				sessionName: lane.tmuxSessionName,
-				doneFileFound: pollResult.doneFileFound,
-				laneNumber: lane.laneNumber,
-			};
-
-			// After task succeeds, commit any uncommitted artifacts (.DONE, final
-			// STATUS.md update) to the lane branch so they survive the merge.
-			// The task-runner writes .DONE via writeFileSync but never commits it.
-			if (pollResult.status === "succeeded") {
-				commitTaskArtifacts(lane, task, laneId);
-
-				// Reset worktree to clean state for the next task on this lane.
-				// Without this, the next worker sees the previous task's modified
-				// files and can get confused about which task it's working on.
-				if (lane.tasks.indexOf(task) < lane.tasks.length - 1) {
-					execLog(laneId, task.taskId, "resetting worktree for next task");
-					const resetResult = runGit(["checkout", "--", "."], lane.worktreePath);
-					const cleanResult = runGit(["clean", "-fd"], lane.worktreePath);
-					if (!resetResult.ok || !cleanResult.ok) {
-						execLog(laneId, task.taskId, "worktree reset warning", {
-							resetOk: resetResult.ok,
-							cleanOk: cleanResult.ok,
-							resetErr: resetResult.stderr,
-							cleanErr: cleanResult.stderr,
-						});
-					}
-				}
-			}
-
-			// If task failed or was paused, skip remaining tasks
-			if (pollResult.status === "failed" || pollResult.status === "stalled") {
-				shouldSkipRemaining = true;
-			}
-			if (pollResult.status === "skipped") {
-				// Pause was signaled during poll — mark remaining as skipped too
-				shouldSkipRemaining = true;
-			}
-		} catch (err: unknown) {
-			// Spawn or polling error
-			const errMsg = err instanceof Error ? err.message : String(err);
-			execLog(laneId, task.taskId, `execution error: ${errMsg}`);
-
-			taskOutcome = {
-				taskId: task.taskId,
-				status: "failed",
-				startTime: taskStartTime,
-				endTime: Date.now(),
-				exitReason: errMsg,
-				sessionName: lane.tmuxSessionName,
-				doneFileFound: false,
-				laneNumber: lane.laneNumber,
-			};
-
-			shouldSkipRemaining = true;
-		}
-
-		const elapsed = Math.round(((taskOutcome.endTime || Date.now()) - taskStartTime) / 1000);
-		execLog(laneId, task.taskId, `task ${taskOutcome.status}`, {
-			elapsed: `${elapsed}s`,
-			doneFile: taskOutcome.doneFileFound,
-		});
-
-		outcomes.push(taskOutcome);
-	}
-
-	const laneEndTime = Date.now();
-	const succeededCount = outcomes.filter((o) => o.status === "succeeded").length;
-	const failedCount = outcomes.filter((o) => o.status === "failed" || o.status === "stalled").length;
-
-	let overallStatus: LaneExecutionResult["overallStatus"];
-	if (failedCount === 0 && succeededCount === lane.tasks.length) {
-		overallStatus = "succeeded";
-	} else if (failedCount > 0 && succeededCount > 0) {
-		overallStatus = "partial";
-	} else {
-		overallStatus = "failed";
-	}
-
-	const totalElapsed = Math.round((laneEndTime - laneStartTime) / 1000);
-	execLog(laneId, "LANE", `execution complete: ${overallStatus}`, {
-		succeeded: succeededCount,
-		failed: failedCount,
-		skipped: outcomes.filter((o) => o.status === "skipped").length,
-		elapsed: `${totalElapsed}s`,
-	});
-
-	return {
-		laneNumber: lane.laneNumber,
-		laneId: lane.laneId,
-		tasks: outcomes,
-		overallStatus,
-		startTime: laneStartTime,
-		endTime: laneEndTime,
-	};
-}
 
 
 // ── STATUS.md Parsing for Worktree ───────────────────────────────────
@@ -1773,10 +893,8 @@ export async function resolveTaskMonitorState(
 		} else {
 			sessionAlive = snap.status === "running";
 		}
-	} else if (runtimeBackend === "v2") {
-		sessionAlive = isV2AgentAlive(sessionName, runtimeBackend);
 	} else {
-		sessionAlive = await tmuxHasSessionAsync(sessionName);
+		sessionAlive = isV2AgentAlive(sessionName, "v2");
 	}
 	const doneFileFound = await fileExistsAsync(donePath);
 
@@ -1874,11 +992,7 @@ export async function resolveTaskMonitorState(
 			stallMinutes,
 			backend: runtimeBackend ?? "legacy",
 		});
-		if (runtimeBackend === "v2") {
-			killV2LaneAgents(sessionName);
-		} else {
-			killLaneAndChildren(sessionName);
-		}
+		killV2LaneAgents(sessionName);
 
 		return {
 			taskId,
@@ -2091,7 +1205,7 @@ export async function monitorLanes(
 					const snapshot = await resolveTaskMonitorState(
 						task.taskId,
 						donePath,
-						lane.tmuxSessionName,
+						laneSessionIdOf(lane),
 						statusResult,
 						tracker,
 						stallTimeoutMs,
@@ -2141,14 +1255,12 @@ export async function monitorLanes(
 			}
 
 			// TP-112: Backend-aware lane liveness for snapshot
-			const sessionAlive = runtimeBackend === "v2"
-				? isV2AgentAlive(lane.tmuxSessionName, runtimeBackend)
-				: await tmuxHasSessionAsync(lane.tmuxSessionName);
+			const sessionAlive = isV2AgentAlive(laneSessionIdOf(lane), "v2");
 
 			laneSnapshots.push({
 				laneId: lane.laneId,
 				laneNumber: lane.laneNumber,
-				sessionName: lane.tmuxSessionName,
+				sessionName: laneSessionIdOf(lane),
 				sessionAlive,
 				currentTaskId,
 				currentTaskSnapshot,
@@ -2207,7 +1319,7 @@ export async function monitorLanes(
 	const laneSnapshots: LaneMonitorSnapshot[] = lanes.map(lane => ({
 		laneId: lane.laneId,
 		laneNumber: lane.laneNumber,
-		sessionName: lane.tmuxSessionName,
+		sessionName: laneSessionIdOf(lane),
 		sessionAlive: false, // Best-effort during pause — don't block with tmux call
 		currentTaskId: null,
 		currentTaskSnapshot: null,
@@ -2517,15 +1629,14 @@ export async function executeWave(
 	// configPath is .pi/taskplane-workspace.yaml → parent of parent is workspace root.
 	const wsRoot = workspaceConfig ? dirname(dirname(workspaceConfig.configPath)) : undefined;
 	const isWsMode = !!workspaceConfig;
-	const backend = runtimeBackend ?? "legacy";
-	if (backend === "v2") {
-		execLog("wave", `W${waveIndex}`, "using Runtime V2 backend (executeLaneV2)");
+	const backend: RuntimeBackend = "v2";
+	if (runtimeBackend && runtimeBackend !== "v2") {
+		execLog("wave", `W${waveIndex}`, `legacy runtime backend '${runtimeBackend}' requested but ignored; using Runtime V2`);
 	}
+	execLog("wave", `W${waveIndex}`, "using Runtime V2 backend (executeLaneV2)");
 
 	const lanePromises = lanes.map(lane =>
-		backend === "v2"
-			? executeLaneV2(lane, config, repoRoot, wavePauseSignal, wsRoot, isWsMode, { ORCH_BATCH_ID: batchId }, onSupervisorAlert)
-			: executeLane(lane, config, repoRoot, wavePauseSignal, wsRoot, isWsMode, { ORCH_BATCH_ID: batchId }),
+		executeLaneV2(lane, config, repoRoot, wavePauseSignal, wsRoot, isWsMode, { ORCH_BATCH_ID: batchId }, onSupervisorAlert),
 	);
 
 	// Start monitoring as a sibling async loop
@@ -2578,7 +1689,7 @@ export async function executeWave(
 					startTime: null,
 					endTime: null,
 					exitReason: `Lane promise rejected: ${errMsg}`,
-					sessionName: lanes[idx].tmuxSessionName,
+					sessionName: laneSessionIdOf(lanes[idx]),
 					doneFileFound: false,
 					laneNumber: lanes[idx].laneNumber,
 				})),
@@ -2748,12 +1859,12 @@ export async function executeWithStopAll(
 						})[0];
 
 					execLog("wave", `W${waveIndex}`, `stop-all triggered by ${firstFailed?.taskId || "unknown"} in ${lanes[idx].laneId}`, {
-						session: lanes[idx].tmuxSessionName,
+						session: laneSessionIdOf(lanes[idx]),
 					});
 
 					// Kill ALL lane sessions immediately
 					for (const lane of lanes) {
-						killLaneAndChildren(lane.tmuxSessionName);
+						killV2LaneAgents(laneSessionIdOf(lane));
 					}
 				}
 			}
@@ -2767,7 +1878,7 @@ export async function executeWithStopAll(
 				pauseSignal.paused = true;
 				execLog("wave", `W${waveIndex}`, `stop-all triggered by lane error in ${lanes[idx].laneId}: ${errMsg}`);
 				for (const lane of lanes) {
-					killLaneAndChildren(lane.tmuxSessionName);
+					killV2LaneAgents(laneSessionIdOf(lane));
 				}
 			}
 
@@ -2781,7 +1892,7 @@ export async function executeWithStopAll(
 					startTime: null,
 					endTime: null,
 					exitReason: `Lane aborted: ${errMsg}`,
-					sessionName: lanes[idx].tmuxSessionName,
+					sessionName: laneSessionIdOf(lanes[idx]),
 					doneFileFound: false,
 					laneNumber: lanes[idx].laneNumber,
 				})),
@@ -2909,18 +2020,18 @@ export function buildAgentIdFromLane(
 	role: RuntimeAgentRole,
 	mergeIndex?: number,
 ): RuntimeAgentId {
-	// The current tmuxSessionName is already in the right format
+	// The current laneSessionId is already in the right format
 	// (e.g., "orch-henrylach-lane-1"). We derive agent IDs from it
 	// by appending the role suffix, matching the existing convention.
 	if (role === "merger" && mergeIndex != null) {
 		// Merge agents use a different naming pattern
-		const prefix = lane.tmuxSessionName.replace(/-lane-\d+$/, "");
+		const prefix = laneSessionIdOf(lane).replace(/-lane-\d+$/, "");
 		return `${prefix}-merge-${mergeIndex}`;
 	}
 	if (role === "lane-runner") {
-		return lane.tmuxSessionName;
+		return laneSessionIdOf(lane);
 	}
-	return `${lane.tmuxSessionName}-${role}`;
+	return `${laneSessionIdOf(lane)}-${role}`;
 }
 
 /**
@@ -3059,10 +2170,10 @@ export async function executeLaneV2(
 	const batchId = config.orchestrator?.batchId || extraEnvVars?.ORCH_BATCH_ID || String(Date.now());
 
 	// Build agent ID prefix — must match the wave planner's naming (TP-115).
-	// Uses resolveOperatorId() so agent registry keys align with tmuxSessionName.
-	const tmuxPrefix = config.orchestrator?.tmux_prefix ?? "orch";
+	// Uses resolveOperatorId() so agent registry keys align with lane session IDs.
+	const sessionPrefix = config.orchestrator?.sessionPrefix ?? "orch";
 	const opId = resolveOperatorId(config);
-	const agentIdPrefix = `${tmuxPrefix}-${opId}`;
+	const agentIdPrefix = `${sessionPrefix}-${opId}`;
 
 	// Load worker agent definition: compose base template + local project guidance.
 	// The base template (templates/agents/task-worker.md) contains critical behavioral

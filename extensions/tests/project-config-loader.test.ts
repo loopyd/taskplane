@@ -597,7 +597,7 @@ describe("key preservation and adapter regression", () => {
 		expect((taskConfig.task_areas.main as any).repo_id).toBe("main-repo");
 	});
 
-	it("3.12: toOrchestratorConfig adapter produces correct full snake_case shape", () => {
+	it("3.12: toOrchestratorConfig adapter produces correct full runtime shape", () => {
 		const dir = makeTestDir("orch-adapter-full");
 		writeOrchestratorYaml(dir, [
 			"orchestrator:",
@@ -606,7 +606,7 @@ describe("key preservation and adapter regression", () => {
 			"  worktree_prefix: my-wt",
 			"  batch_id_format: sequential",
 			"  spawn_mode: tmux",
-			"  tmux_prefix: myorch",
+			"  session_prefix: myorch",
 			"  operator_id: testuser",
 			"  integration: auto",
 			"dependencies:",
@@ -642,7 +642,7 @@ describe("key preservation and adapter regression", () => {
 		expect(legacy.orchestrator.worktree_prefix).toBe("my-wt");
 		expect(legacy.orchestrator.batch_id_format).toBe("sequential");
 		expect(legacy.orchestrator.spawn_mode).toBe("tmux");
-		expect(legacy.orchestrator.tmux_prefix).toBe("myorch");
+		expect(legacy.orchestrator.sessionPrefix).toBe("myorch");
 		expect(legacy.orchestrator.operator_id).toBe("testuser");
 		expect(legacy.orchestrator.integration).toBe("auto");
 		expect(legacy.dependencies.source).toBe("agent");
@@ -674,6 +674,56 @@ describe("key preservation and adapter regression", () => {
 		// Adapter should carry it through
 		const legacy = toOrchestratorConfig(config);
 		expect(legacy.orchestrator.integration).toBe("manual");
+	});
+
+	it("3.14: logs deprecation warning when orchestrator spawn_mode is tmux", () => {
+		const dir = makeTestDir("spawn-mode-tmux-orch-warning");
+		const agentDir = makeTestDir("spawn-mode-tmux-orch-agent-dir");
+		const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+		process.env.PI_CODING_AGENT_DIR = agentDir;
+		const consoleErrorSpy = mock.method(console, "error", () => {});
+		try {
+			writeOrchestratorYaml(dir, "orchestrator:\n  spawn_mode: tmux\n");
+			loadProjectConfig(dir);
+
+			const deprecations = consoleErrorSpy.mock.calls
+				.map((call: any) => String(call.arguments[0] ?? ""))
+				.filter((line: string) => line.includes("[taskplane] deprecation: spawn_mode \"tmux\""));
+			expect(deprecations.length).toBeGreaterThan(0);
+			expect(deprecations[0]).toContain("orchestrator.orchestrator.spawnMode");
+		} finally {
+			consoleErrorSpy.mock.restore();
+			if (previousAgentDir === undefined) {
+				delete process.env.PI_CODING_AGENT_DIR;
+			} else {
+				process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+			}
+		}
+	});
+
+	it("3.15: logs deprecation warning when worker spawn_mode is tmux", () => {
+		const dir = makeTestDir("spawn-mode-tmux-worker-warning");
+		const agentDir = makeTestDir("spawn-mode-tmux-worker-agent-dir");
+		const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+		process.env.PI_CODING_AGENT_DIR = agentDir;
+		const consoleErrorSpy = mock.method(console, "error", () => {});
+		try {
+			writeTaskRunnerYaml(dir, "worker:\n  spawn_mode: tmux\n");
+			loadProjectConfig(dir);
+
+			const deprecations = consoleErrorSpy.mock.calls
+				.map((call: any) => String(call.arguments[0] ?? ""))
+				.filter((line: string) => line.includes("[taskplane] deprecation: spawn_mode \"tmux\""));
+			expect(deprecations.length).toBeGreaterThan(0);
+			expect(deprecations[0]).toContain("taskRunner.worker.spawnMode");
+		} finally {
+			consoleErrorSpy.mock.restore();
+			if (previousAgentDir === undefined) {
+				delete process.env.PI_CODING_AGENT_DIR;
+			} else {
+				process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+			}
+		}
 	});
 });
 

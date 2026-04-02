@@ -68,13 +68,14 @@ describe("2.x: executeWave backend parameter", () => {
 		expect(executionSrc).toContain("runtimeBackend?: RuntimeBackend,");
 	});
 
-	it("2.3: executeWave routes to executeLaneV2 when v2", () => {
-		expect(executionSrc).toContain('backend === "v2"');
+	it("2.3: executeWave routes lanes directly to executeLaneV2", () => {
+		expect(executionSrc).toContain("const lanePromises = lanes.map(lane =>");
 		expect(executionSrc).toContain("executeLaneV2(lane, config");
 	});
 
-	it("2.4: executeWave defaults to legacy when no backend specified", () => {
-		expect(executionSrc).toContain('const backend = runtimeBackend ?? "legacy"');
+	it("2.4: executeWave forces Runtime V2 even when backend is omitted", () => {
+		expect(executionSrc).toContain('const backend: RuntimeBackend = "v2"');
+		expect(executionSrc).toContain("legacy runtime backend");
 	});
 
 	it("2.5: executeWave logs when using V2 backend", () => {
@@ -89,8 +90,9 @@ describe("3.x: Retry paths preserve backend choice", () => {
 		expect(engineSrc).toContain("runtimeBackend?: RuntimeBackend,");
 	});
 
-	it("3.2: worker crash retry uses backend-aware executor", () => {
-		expect(engineSrc).toContain('(runtimeBackend === "v2") ? executeLaneV2 : executeLane');
+	it("3.2: worker crash retry executes via executeLaneV2", () => {
+		expect(engineSrc).toContain("const retryResult = await executeLaneV2(");
+		expect(engineSrc).not.toContain('(runtimeBackend === "v2") ? executeLaneV2 : executeLane');
 	});
 
 	it("3.3: model fallback retry accepts runtimeBackend", () => {
@@ -349,6 +351,7 @@ describe("10.x: Packet-home authority (TP-109)", () => {
 describe("11.x: Merge V2 liveness + abort correctness", () => {
 	const mergeSrc = readFileSync(join(__dirname, "..", "taskplane", "merge.ts"), "utf-8");
 	const abortSrc = readFileSync(join(__dirname, "..", "taskplane", "abort.ts"), "utf-8");
+	const extensionSrc = readFileSync(join(__dirname, "..", "taskplane", "extension.ts"), "utf-8");
 
 	it("11.1: waitForMergeResult is backend-aware (no TMUX for V2)", () => {
 		const fnIdx = mergeSrc.indexOf("function waitForMergeResult(");
@@ -373,13 +376,12 @@ describe("11.x: Merge V2 liveness + abort correctness", () => {
 		expect(killIdx).toBeLessThan(spawnIdx); // kill BEFORE spawn
 	});
 
-	it("11.3: V2 merge error cleanup path uses backend-aware kill", () => {
-		// Error path must check backend and kill V2 agent
+	it("11.3: V2 merge error cleanup path kills via Runtime V2 handle", () => {
 		const errIdx = mergeSrc.indexOf("Kill merge agent if still alive");
 		expect(errIdx).toBeGreaterThan(-1);
 		const block = mergeSrc.slice(errIdx, errIdx + 300);
-		expect(block).toContain('runtimeBackend === "v2"');
 		expect(block).toContain("killMergeAgentV2(sessionName)");
+		expect(block).not.toContain("tmux");
 	});
 
 	it("11.4: abort kills all V2 merge agents (not just TMUX sessions)", () => {
@@ -390,17 +392,25 @@ describe("11.x: Merge V2 liveness + abort correctness", () => {
 		expect(mergeSrc).toContain("export function killAllMergeAgentsV2");
 	});
 
-	it("11.6: V2 health monitor is skipped for V2 merge path", () => {
-		// healthMonitor.addSession should not be called for V2 merges
+	it("11.6: merge path has no TMUX health-monitor registration", () => {
 		const fnIdx = mergeSrc.indexOf("export async function mergeWave(");
 		const block = mergeSrc.slice(fnIdx, fnIdx + 16000);
-		// All healthMonitor.addSession calls should be guarded with runtimeBackend !== "v2"
-		const addCalls = block.match(/healthMonitor.*addSession/g) || [];
-		for (const call of addCalls) {
-			// Each call should be preceded by V2 guard in its context
-		}
-		// At least verify guard strings exist
-		expect(block).toContain('runtimeBackend !== "v2"');
+		expect(block).not.toContain("addSession");
+	});
+
+	it("11.7: abort discovery uses Runtime V2 state sources (no tmux list-sessions)", () => {
+		expect(abortSrc).toContain("discoverAbortSessionNames(");
+		expect(abortSrc).not.toContain('execSync(\'tmux list-sessions');
+	});
+
+	it("11.8: /orch-abort helper delegates to executeAbort without tmux kill-session", () => {
+		const fnIdx = extensionSrc.indexOf("function doOrchAbort(");
+		expect(fnIdx).toBeGreaterThan(-1);
+		const block = extensionSrc.slice(fnIdx, fnIdx + 2600);
+		expect(block).toContain("await executeAbort(");
+		expect(block).toContain("ORCH_MESSAGES.abortNoBatch()");
+		expect(block).not.toContain("tmux list-sessions");
+		expect(block).not.toContain("tmux kill-session");
 	});
 });
 
@@ -430,12 +440,12 @@ describe("12.x: Resume TDZ safety", () => {
 describe("13.x: Resume de-TMUX for V2 (TP-112)", () => {
 	const resumeSrc = readFileSync(join(__dirname, "..", "taskplane", "resume.ts"), "utf-8");
 
-	it("13.1: resume uses process registry for V2 liveness (not tmuxHasSession)", () => {
+	it("13.1: resume uses process registry for liveness (not tmuxHasSession)", () => {
 		const section3Idx = resumeSrc.indexOf("Discover live signals");
 		const block = resumeSrc.slice(section3Idx, section3Idx + 1200);
-		expect(block).toContain('resumeBackend === "v2"');
 		expect(block).toContain("readRegistrySnapshot");
 		expect(block).toContain("isProcessAlive");
+		expect(block).not.toContain("tmuxHasSession");
 	});
 
 	it("13.2: V2 reconnect terminates then re-executes (detect+terminate+rehydrate)", () => {
@@ -451,10 +461,9 @@ describe("13.x: Resume de-TMUX for V2 (TP-112)", () => {
 	});
 
 	it("13.3: V2 re-execute terminates then uses executeLaneV2", () => {
-		const reexecIdx = resumeSrc.indexOf("Backend-aware re-execution");
+		const reexecIdx = resumeSrc.indexOf("Runtime V2 re-execution");
 		expect(reexecIdx).toBeGreaterThan(-1);
 		const block = resumeSrc.slice(reexecIdx, reexecIdx + 1000);
-		// Must terminate before re-execute
 		const termIdx = block.indexOf("terminateAliveV2Agents");
 		const execIdx = block.indexOf("executeLaneV2");
 		expect(termIdx).toBeGreaterThan(-1);
@@ -478,9 +487,10 @@ describe("13.x: Resume de-TMUX for V2 (TP-112)", () => {
 		expect(block).toContain("isProcessAlive");
 	});
 
-	it("13.6: legacy paths preserved (pollUntilTaskComplete + spawnLaneSession)", () => {
-		expect(resumeSrc).toContain("pollUntilTaskComplete");
-		expect(resumeSrc).toContain("spawnLaneSession");
+	it("13.6: legacy reconnect/re-exec helpers removed from resume path", () => {
+		expect(resumeSrc).not.toContain("pollUntilTaskComplete");
+		expect(resumeSrc).not.toContain("spawnLaneSession");
+		expect(resumeSrc).toContain("executeLaneV2");
 	});
 });
 
@@ -519,27 +529,35 @@ describe("14.x: Monitor de-TMUX for V2 (TP-112)", () => {
 		const fnIdx = execSrc.indexOf("function monitorLanes");
 		const block = execSrc.slice(fnIdx, fnIdx + 20000);
 		// Lane snapshot sessionAlive must branch on V2
-		expect(block).toContain("isV2AgentAlive(lane.tmuxSessionName");
+		expect(block).toContain("isV2AgentAlive(laneSessionIdOf(lane)");
 	});
 
-	it("14.5: stall kill is backend-aware (V2 kills by PID, not TMUX)", () => {
+	it("14.4b: laneSessionIdOf uses canonical laneSessionId", () => {
+		const fnIdx = execSrc.indexOf("function laneSessionIdOf");
+		expect(fnIdx).toBeGreaterThan(-1);
+		const block = execSrc.slice(fnIdx, fnIdx + 160);
+		expect(block).toContain("return lane.laneSessionId;");
+	});
+
+	it("14.5: stall kill uses Runtime V2 PID termination (no TMUX fallback)", () => {
 		const fnIdx = execSrc.indexOf("function resolveTaskMonitorState");
 		const block = execSrc.slice(fnIdx, fnIdx + 5000);
-		// Stall path must check backend
 		const stallIdx = block.indexOf("stall detected");
 		expect(stallIdx).toBeGreaterThan(-1);
 		const stallBlock = block.slice(stallIdx, stallIdx + 500);
-		expect(stallBlock).toContain('runtimeBackend === "v2"');
 		expect(stallBlock).toContain("killV2LaneAgents");
+		expect(stallBlock).not.toContain("killLaneAndChildren");
+		expect(stallBlock).not.toContain("tmux");
 	});
 
 	it("14.6: killV2LaneAgents terminates by PID from registry", () => {
 		const fnIdx = execSrc.indexOf("function killV2LaneAgents");
 		expect(fnIdx).toBeGreaterThan(-1);
-		const block = execSrc.slice(fnIdx, fnIdx + 600);
+		const nextSectionIdx = execSrc.indexOf("// ── Async TMUX Helpers", fnIdx);
+		const block = execSrc.slice(fnIdx, nextSectionIdx > fnIdx ? nextSectionIdx : fnIdx + 1200);
 		expect(block).toContain("process.kill");
 		expect(block).toContain("SIGTERM");
-		expect(block).not.toContain("tmux");
+		expect(block).not.toContain("spawn(\"tmux\"");
 	});
 
 	it("14.7: executeWave passes batchId and resolved state root to monitorLanes", () => {
@@ -550,5 +568,17 @@ describe("14.x: Monitor de-TMUX for V2 (TP-112)", () => {
 		const block = waveBlock.slice(callIdx, callIdx + 420);
 		expect(block).toContain("batchId");
 		expect(block).toContain("monitorStateRoot");
+	});
+
+	it("14.8: final cleanup kills lingering Runtime V2 agents without TMUX fallbacks", () => {
+		const cleanupIdx = engineSrc.indexOf("Kill lingering Runtime V2 agents BEFORE removing worktrees.");
+		expect(cleanupIdx).toBeGreaterThan(-1);
+		const cleanupBlock = engineSrc.slice(cleanupIdx, cleanupIdx + 1600);
+		expect(cleanupBlock).toContain("readRegistrySnapshot(stateRoot, batchState.batchId)");
+		expect(cleanupBlock).toContain("lingeringLaneSessions.add(manifest.agentId.replace(/-(worker|reviewer)$/");
+		expect(cleanupBlock).toContain("killV2LaneAgents(sessionName");
+		expect(cleanupBlock).toContain("killAllMergeAgentsV2()");
+		expect(cleanupBlock).not.toContain("tmuxHasSession");
+		expect(cleanupBlock).not.toContain("tmuxKillSession");
 	});
 });

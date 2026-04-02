@@ -15,7 +15,7 @@ export interface OrchestratorConfig {
 		worktree_prefix: string;
 		batch_id_format: "timestamp" | "sequential";
 		spawn_mode: "tmux" | "subprocess";
-		tmux_prefix: string;
+		sessionPrefix: string;
 		/** Optional operator identifier. Auto-detected from OS username if empty. */
 		operator_id: string;
 		/** How completed batches are integrated. manual = user runs /orch-integrate. supervised = supervisor proposes plan, asks confirmation. auto = supervisor executes without asking. */
@@ -260,7 +260,7 @@ export const DEFAULT_ORCHESTRATOR_CONFIG: OrchestratorConfig = {
 		worktree_prefix: "taskplane-wt",
 		batch_id_format: "timestamp",
 		spawn_mode: "subprocess",
-		tmux_prefix: "orch",
+		sessionPrefix: "orch",
 		operator_id: "",
 		integration: "manual",
 	},
@@ -617,8 +617,8 @@ export interface AllocatedLane {
 	laneNumber: number;
 	/** Lane identifier for display and logging (e.g., "lane-1") */
 	laneId: string;
-	/** TMUX session naming seed (e.g., "orch-lane-1") — used by Step 2 */
-	tmuxSessionName: string;
+	/** Lane session identifier (e.g., "orch-lane-1") — used by Step 2 */
+	laneSessionId: string;
 	/** Absolute path to the lane's worktree directory */
 	worktreePath: string;
 	/** Git branch name checked out in the worktree */
@@ -2627,8 +2627,8 @@ export interface PersistedLaneRecord {
 	laneNumber: number;
 	/** Lane identifier (e.g., "lane-1") */
 	laneId: string;
-	/** TMUX session name (e.g., "orch-lane-1") */
-	tmuxSessionName: string;
+	/** Lane session identifier (e.g., "orch-lane-1") */
+	laneSessionId: string;
 	/** Absolute path to the lane's worktree directory */
 	worktreePath: string;
 	/** Git branch name checked out in the worktree */

@@ -8,7 +8,7 @@ import { join } from "path";
 import { assembleDiagnosticInput, emitDiagnosticReports } from "./diagnostic-reports.ts";
 import { runDiscovery } from "./discovery.ts";
 import { executeOrchBatch } from "./engine.ts";
-import { computeTransitiveDependents, execLog, executeLaneV2, executeWave, pollUntilTaskComplete, resolveCanonicalTaskPaths, spawnLaneSession, tmuxHasSession } from "./execution.ts";
+import { computeTransitiveDependents, execLog, executeLaneV2, executeWave, resolveCanonicalTaskPaths } from "./execution.ts";
 import type { MonitorUpdateCallback, RuntimeBackend } from "./execution.ts";
 import { selectRuntimeBackend } from "./engine.ts";
 import { readRegistrySnapshot, isTerminalStatus, isProcessAlive } from "./process-registry.ts";
@@ -143,7 +143,7 @@ export function reconstructAllocatedLanes(
 	return persistedLanes.map((lr) => ({
 		laneNumber: lr.laneNumber,
 		laneId: lr.laneId,
-		tmuxSessionName: lr.tmuxSessionName,
+		laneSessionId: lr.laneSessionId,
 		worktreePath: lr.worktreePath,
 		branch: lr.branch,
 		tasks: lr.taskIds.map((taskId) => {
@@ -777,7 +777,6 @@ export async function resumeOrchBatch(
 	// State files (.pi/batch-state.json, lane-state, etc.) belong in the workspace root,
 	// which is where .pi/ config lives. In repo mode, stateRoot === repoRoot.
 	const stateRoot = workspaceRoot ?? cwd;
-	const prefix = orchConfig.orchestrator.tmux_prefix;
 
 	// ── TP-076: Supervisor alert emission helper ─────────────────
 	const emitAlert = (alert: import("./types.ts").SupervisorAlert): void => {
@@ -883,27 +882,19 @@ export async function resumeOrchBatch(
 	execLog("resume", batchState.batchId, `runtime backend for resumed execution: ${resumeBackend}`);
 
 	// ── 3. Discover live signals ─────────────────────────────────
-	// TP-112: Backend-aware session liveness check.
-	// V2: check process registry (pid + status). Legacy: check TMUX.
+	// TP-112/119: Runtime V2 session liveness check only.
+	// Alive sessions are discovered from the process registry.
 	const aliveSessions = new Set<string>();
-	if (resumeBackend === "v2") {
-		const registry = readRegistrySnapshot(stateRoot, persistedState.batchId);
-		if (registry) {
-			for (const manifest of Object.values(registry.agents)) {
-				if (!isTerminalStatus(manifest.status) && isProcessAlive(manifest.pid)) {
-					aliveSessions.add(manifest.agentId);
-					// TP-112: Also add the lane session name (without role suffix)
-					// so reconciliation matches persisted task.sessionName.
-					// e.g., "orch-op-lane-1-worker" -> also add "orch-op-lane-1"
-					const laneSession = manifest.agentId.replace(/-(worker|reviewer)$/, "");
-					if (laneSession !== manifest.agentId) aliveSessions.add(laneSession);
-				}
-			}
-		}
-	} else {
-		for (const task of persistedState.tasks) {
-			if (task.sessionName && tmuxHasSession(task.sessionName)) {
-				aliveSessions.add(task.sessionName);
+	const registry = readRegistrySnapshot(stateRoot, persistedState.batchId);
+	if (registry) {
+		for (const manifest of Object.values(registry.agents)) {
+			if (!isTerminalStatus(manifest.status) && isProcessAlive(manifest.pid)) {
+				aliveSessions.add(manifest.agentId);
+				// Also add lane session name (without role suffix) so reconciliation
+				// matches persisted task.sessionName.
+				// e.g., "orch-op-lane-1-worker" -> also add "orch-op-lane-1"
+				const laneSession = manifest.agentId.replace(/-(worker|reviewer)$/, "");
+				if (laneSession !== manifest.agentId) aliveSessions.add(laneSession);
 			}
 		}
 	}
@@ -951,8 +942,8 @@ export async function resumeOrchBatch(
 	// failed resume but were never actually started need their allocation
 	// metadata cleared so they can be freshly assigned to new lanes.
 	// We also prune these tasks from persisted lane records so that
-	// serializeBatchState() doesn't reintroduce stale sessionName via the
-	// `outcome?.sessionName || lane?.tmuxSessionName` fallback path.
+	// serializeBatchState() doesn't reintroduce stale sessionName via lane
+	// fallback paths when outcome.sessionName is absent.
 	const stalePendingTaskIds = new Set<string>();
 	for (const reconciled of reconciledTasks) {
 		if (reconciled.action === "pending") {
@@ -1130,7 +1121,7 @@ export async function resumeOrchBatch(
 			const lane: AllocatedLane = {
 				laneNumber: laneRecord.laneNumber,
 				laneId: laneRecord.laneId,
-				tmuxSessionName: laneRecord.tmuxSessionName,
+				laneSessionId: laneRecord.laneSessionId,
 				worktreePath: laneRecord.worktreePath,
 				branch: laneRecord.branch,
 				tasks: [allocatedTask],
@@ -1143,82 +1134,41 @@ export async function resumeOrchBatch(
 			// Resolve per-lane repo root for workspace mode (v1/repo mode: falls back to repoRoot)
 			const laneRepoRoot = resolveRepoRoot(laneRecord.repoId, repoRoot, workspaceConfig);
 
-			// TP-112: Backend-aware reconnect.
-			// V2: re-execute via executeLaneV2 (agent-host doesn't survive restart).
-			// Per spec §7.3: "detect + terminate + rehydrate".
-			// Legacy: poll the still-alive TMUX session.
-			if (resumeBackend === "v2") {
-				execLog("resume", task.taskId, "V2 reconnect: terminate + rehydrate via lane-runner", {
-					repoId: laneRecord.repoId ?? "(default)",
-				});
-				// TP-112 §7.3: detect + terminate + rehydrate.
-				// Kill any alive V2 agent before re-executing to prevent duplicates.
-				terminateAliveV2Agents(stateRoot, persistedState.batchId, laneRecord.tmuxSessionName);
-				try {
-					const laneResult = await executeLaneV2(
-						lane, orchConfig, laneRepoRoot, batchState.pauseSignal,
-						workspaceRoot, !!workspaceConfig,
-						{ ORCH_BATCH_ID: batchState.batchId },
-						emitAlert,
-					);
-					const taskResult = laneResult.tasks.find(t => t.taskId === task.taskId);
-					if (taskResult?.status === "succeeded") {
-						reconnectFinalStatus.set(task.taskId, "succeeded");
-						completedTaskSet.add(task.taskId);
-						failedTaskSet.delete(task.taskId);
-						reconnectTaskSet.delete(task.taskId);
-						batchState.succeededTasks++;
-					} else {
-						reconnectFinalStatus.set(task.taskId, "failed");
-						failedTaskSet.add(task.taskId);
-						completedTaskSet.delete(task.taskId);
-						reconnectTaskSet.delete(task.taskId);
-						batchState.failedTasks++;
-					}
-				} catch (err: unknown) {
+			// TP-112: Runtime V2 reconnect.
+			// Agent-host processes do not survive supervisor restart, so reconnect
+			// uses terminate + rehydrate via executeLaneV2.
+			execLog("resume", task.taskId, "V2 reconnect: terminate + rehydrate via lane-runner", {
+				repoId: laneRecord.repoId ?? "(default)",
+			});
+			terminateAliveV2Agents(stateRoot, persistedState.batchId, laneRecord.laneSessionId);
+			try {
+				const laneResult = await executeLaneV2(
+					lane, orchConfig, laneRepoRoot, batchState.pauseSignal,
+					workspaceRoot, !!workspaceConfig,
+					{ ORCH_BATCH_ID: batchState.batchId },
+					emitAlert,
+				);
+				const taskResult = laneResult.tasks.find(t => t.taskId === task.taskId);
+				if (taskResult?.status === "succeeded") {
+					reconnectFinalStatus.set(task.taskId, "succeeded");
+					completedTaskSet.add(task.taskId);
+					failedTaskSet.delete(task.taskId);
+					reconnectTaskSet.delete(task.taskId);
+					batchState.succeededTasks++;
+				} else {
 					reconnectFinalStatus.set(task.taskId, "failed");
 					failedTaskSet.add(task.taskId);
 					completedTaskSet.delete(task.taskId);
 					reconnectTaskSet.delete(task.taskId);
 					batchState.failedTasks++;
-					execLog("resume", task.taskId, `V2 reconnect error: ${err instanceof Error ? err.message : String(err)}`);
 				}
-			} else {
-				execLog("resume", task.taskId, "reconnecting to alive session", {
-					session: laneRecord.tmuxSessionName,
-					repoId: laneRecord.repoId ?? "(default)",
-				});
-
-				try {
-					const pollResult = await pollUntilTaskComplete(
-						lane,
-						allocatedTask,
-						orchConfig,
-						laneRepoRoot,
-						batchState.pauseSignal,
-					);
-
-					if (pollResult.status === "succeeded") {
-						reconnectFinalStatus.set(task.taskId, "succeeded");
-						completedTaskSet.add(task.taskId);
-						failedTaskSet.delete(task.taskId);
-						reconnectTaskSet.delete(task.taskId);
-						batchState.succeededTasks++;
-					} else {
-						reconnectFinalStatus.set(task.taskId, "failed");
-						failedTaskSet.add(task.taskId);
-						completedTaskSet.delete(task.taskId);
-						reconnectTaskSet.delete(task.taskId);
-						batchState.failedTasks++;
-					}
-				} catch (err: unknown) {
-					reconnectFinalStatus.set(task.taskId, "failed");
-					failedTaskSet.add(task.taskId);
-					completedTaskSet.delete(task.taskId);
-					reconnectTaskSet.delete(task.taskId);
-					batchState.failedTasks++;
-					execLog("resume", task.taskId, `reconnection error: ${err instanceof Error ? err.message : String(err)}`);
-				}
+			} catch (err: unknown) {
+				reconnectFinalStatus.set(task.taskId, "failed");
+				failedTaskSet.add(task.taskId);
+				completedTaskSet.delete(task.taskId);
+				reconnectTaskSet.delete(task.taskId);
+				batchState.failedTasks++;
+				execLog("resume", task.taskId, `V2 reconnect error: ${err instanceof Error ? err.message : String(err)}`);
 			}
 		}
 	}
@@ -1252,7 +1202,7 @@ export async function resumeOrchBatch(
 			const lane: AllocatedLane = {
 				laneNumber: laneRecord.laneNumber,
 				laneId: laneRecord.laneId,
-				tmuxSessionName: laneRecord.tmuxSessionName,
+				laneSessionId: laneRecord.laneSessionId,
 				worktreePath: laneRecord.worktreePath,
 				branch: laneRecord.branch,
 				tasks: [allocatedTask],
@@ -1266,41 +1216,26 @@ export async function resumeOrchBatch(
 			const reExecRepoRoot = resolveRepoRoot(laneRecord.repoId, repoRoot, workspaceConfig);
 
 			execLog("resume", task.taskId, "re-executing interrupted task in existing worktree", {
-				session: laneRecord.tmuxSessionName,
+				session: laneRecord.laneSessionId,
 				worktree: laneRecord.worktreePath,
 				repoId: laneRecord.repoId ?? "(default)",
 			});
 
 			try {
-				// TP-112: Backend-aware re-execution.
-				let pollResult: { status: LaneTaskStatus; exitReason: string; doneFileFound: boolean };
-				if (resumeBackend === "v2") {
-					// TP-112: terminate any alive V2 agent before re-execute
-					terminateAliveV2Agents(stateRoot, batchState.batchId, laneRecord.tmuxSessionName);
-					const laneResult = await executeLaneV2(
-						lane, orchConfig, reExecRepoRoot, batchState.pauseSignal,
-						workspaceRoot, !!workspaceConfig,
-						{ ORCH_BATCH_ID: batchState.batchId },
-						emitAlert,
-					);
-					const taskResult = laneResult.tasks.find(t => t.taskId === task.taskId);
-					pollResult = {
-						status: taskResult?.status ?? "failed",
-						exitReason: taskResult?.exitReason ?? "V2 re-execution completed",
-						doneFileFound: taskResult?.doneFileFound ?? false,
-					};
-				} else {
-					spawnLaneSession(lane, allocatedTask, orchConfig, reExecRepoRoot, undefined, {
-						ORCH_BATCH_ID: batchState.batchId,
-					});
-					pollResult = await pollUntilTaskComplete(
-						lane,
-						allocatedTask,
-						orchConfig,
-						reExecRepoRoot,
-						batchState.pauseSignal,
-					);
-				}
+				// TP-112: Runtime V2 re-execution.
+				terminateAliveV2Agents(stateRoot, batchState.batchId, laneRecord.laneSessionId);
+				const laneResult = await executeLaneV2(
+					lane, orchConfig, reExecRepoRoot, batchState.pauseSignal,
+					workspaceRoot, !!workspaceConfig,
+					{ ORCH_BATCH_ID: batchState.batchId },
+					emitAlert,
+				);
+				const taskResult = laneResult.tasks.find(t => t.taskId === task.taskId);
+				const pollResult: { status: LaneTaskStatus; exitReason: string; doneFileFound: boolean } = {
+					status: taskResult?.status ?? "failed",
+					exitReason: taskResult?.exitReason ?? "V2 re-execution completed",
+					doneFileFound: taskResult?.doneFileFound ?? false,
+				};
 
 				if (pollResult.status === "succeeded") {
 					reExecuteFinalStatus.set(task.taskId, "succeeded");
@@ -1354,7 +1289,7 @@ export async function resumeOrchBatch(
 					startTime: Date.now(),
 					endTime: Date.now(),
 					exitReason: "Re-executed task completed successfully",
-					sessionName: lane.tmuxSessionName,
+					sessionName: lane.laneSessionId,
 					doneFileFound: true,
 					laneNumber: lane.laneNumber,
 				})),
@@ -1604,7 +1539,7 @@ export async function resumeOrchBatch(
 									: status === "skipped" ? "Task skipped (merge retry)"
 									: status === "stalled" ? "Task stalled (merge retry)"
 									: "Task failed (merge retry)",
-							sessionName: lane.tmuxSessionName,
+							sessionName: lane.laneSessionId,
 							doneFileFound: status === "succeeded",
 							laneNumber: lane.laneNumber,
 						};

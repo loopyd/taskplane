@@ -401,7 +401,7 @@ export function buildDashboardViewModel(
 			laneCards.push({
 				laneNumber: lane.laneNumber,
 				laneId: lane.laneId,
-				sessionName: lane.tmuxSessionName,
+				sessionName: lane.laneSessionId,
 				sessionAlive: true, // assumed alive during allocation
 				currentTaskId: lane.tasks.length > 0 ? lane.tasks[0].taskId : null,
 				currentStepName: null,
@@ -545,12 +545,12 @@ export function renderLaneCard(card: OrchLaneCardData, colWidth: number, theme: 
  *
  * @param getBatchState   - Getter for current batch state
  * @param getMonitorState - Getter for current monitor state (may be null)
- * @param tmuxPrefix      - TMUX session prefix for attach hints
+ * @param sessionPrefix   - Session prefix for lane identification
  */
 export function createOrchWidget(
 	getBatchState: () => OrchBatchRuntimeState,
 	getMonitorState: () => MonitorState | null,
-	tmuxPrefix: string,
+	sessionPrefix: string,
 ): (_tui: any, theme: any) => { render(width: number): string[]; invalidate(): void } {
 	return (_tui: any, theme: any) => {
 		return {

@@ -3,12 +3,11 @@
  * @module orch/abort
  */
 import { writeFileSync, existsSync } from "fs";
-import { execSync } from "child_process";
 import { join } from "path";
 
-import { execLog, resolveCanonicalTaskPaths, tmuxHasSession, tmuxKillSession } from "./execution.ts";
+import { execLog, killV2LaneAgents, resolveCanonicalTaskPaths } from "./execution.ts";
 import { killMergeAgentV2, killAllMergeAgentsV2 } from "./merge.ts";
-import { deleteBatchState, parseOrchSessionNames, persistRuntimeState } from "./persistence.ts";
+import { deleteBatchState, persistRuntimeState } from "./persistence.ts";
 import type { AbortActionStep, AbortErrorCode, AbortLaneResult, AbortMode, AbortResult, AbortTargetSession, AllocatedLane, OrchBatchRuntimeState, PersistedBatchState, PersistedLaneRecord } from "./types.ts";
 
 // ── Abort Pure Functions ─────────────────────────────────────────────
@@ -51,11 +50,11 @@ export function selectAbortTargetSessions(
 	});
 
 	// Build lookup from persisted lane records for workspace-aware laneId resolution.
-	// Keyed by tmuxSessionName for direct session-to-lane mapping.
+	// Keyed by lane session ID for direct session-to-lane mapping.
 	const persistedLaneLookup = new Map<string, PersistedLaneRecord>();
 	if (persistedState?.lanes) {
 		for (const lane of persistedState.lanes) {
-			persistedLaneLookup.set(lane.tmuxSessionName, lane);
+			persistedLaneLookup.set(lane.laneSessionId, lane);
 		}
 	}
 
@@ -82,7 +81,7 @@ export function selectAbortTargetSessions(
 	const runtimeLookup = new Map<string, { laneId: string; taskId: string | null; worktreePath: string; taskFolder: string | null }>();
 	for (const lane of runtimeLanes) {
 		const currentTask = lane.tasks.length > 0 ? lane.tasks[0] : null;
-		runtimeLookup.set(lane.tmuxSessionName, {
+		runtimeLookup.set(lane.laneSessionId, {
 			laneId: lane.laneId,
 			taskId: currentTask?.taskId || null,
 			worktreePath: lane.worktreePath,
@@ -143,6 +142,47 @@ export function planAbortActions(
 	];
 }
 
+/**
+ * Discover abort target session names from Runtime V2 state sources.
+ *
+ * Sources (deduped):
+ * - in-memory runtime lanes (`batchState.currentLanes`)
+ * - persisted lane records (`persistedState.lanes`)
+ * - persisted task records (`persistedState.tasks[].sessionName`)
+ */
+export function discoverAbortSessionNames(
+	prefix: string,
+	persistedState: PersistedBatchState | null,
+	runtimeLanes: AllocatedLane[],
+): string[] {
+	const names = new Set<string>();
+	const prefixWithDash = `${prefix}-`;
+	const add = (name: string | null | undefined) => {
+		if (!name) return;
+		const trimmed = name.trim();
+		if (!trimmed || !trimmed.startsWith(prefixWithDash)) return;
+		names.add(trimmed);
+	};
+
+	for (const lane of runtimeLanes) {
+		add(lane.laneSessionId);
+	}
+
+	if (persistedState?.lanes) {
+		for (const lane of persistedState.lanes) {
+			add(lane.laneSessionId);
+		}
+	}
+
+	if (persistedState?.tasks) {
+		for (const task of persistedState.tasks) {
+			add(task.sessionName);
+		}
+	}
+
+	return [...names];
+}
+
 
 // ── Abort Orchestration Functions ────────────────────────────────────
 
@@ -198,14 +238,15 @@ export function writeWrapUpFiles(
 }
 
 /**
- * Wait for TMUX sessions to exit gracefully.
+ * Wait for graceful shutdown window to elapse.
  *
- * Polls every `pollIntervalMs` until all sessions have exited or the
- * grace period expires.
+ * Runtime V2 no longer relies on TMUX session liveness as an abort signal.
+ * We keep this grace window so workers can observe `.task-wrap-up` and exit
+ * naturally before forced cleanup.
  *
- * @param sessionNames     - Session names to monitor
+ * @param sessionNames     - Session names being tracked for abort
  * @param gracePeriodMs    - Maximum time to wait
- * @param pollIntervalMs   - Polling interval
+ * @param pollIntervalMs   - Polling cadence for the grace wait loop
  * @returns Object with exited and remaining session names
  */
 export async function waitForSessionExit(
@@ -213,69 +254,52 @@ export async function waitForSessionExit(
 	gracePeriodMs: number,
 	pollIntervalMs: number,
 ): Promise<{ exited: string[]; remaining: string[] }> {
-	const deadline = Date.now() + gracePeriodMs;
-	const exited: string[] = [];
-	const remaining = new Set(sessionNames);
-
-	while (Date.now() < deadline && remaining.size > 0) {
-		for (const name of [...remaining]) {
-			if (!tmuxHasSession(name)) {
-				remaining.delete(name);
-				exited.push(name);
-			}
-		}
-		if (remaining.size === 0) break;
-		await new Promise(r => setTimeout(r, pollIntervalMs));
+	if (sessionNames.length === 0 || gracePeriodMs <= 0) {
+		return { exited: [], remaining: [...sessionNames] };
 	}
 
-	return { exited, remaining: [...remaining] };
+	const deadline = Date.now() + gracePeriodMs;
+	while (Date.now() < deadline) {
+		const sleepMs = Math.max(1, Math.min(pollIntervalMs, deadline - Date.now()));
+		await new Promise(r => setTimeout(r, sleepMs));
+	}
+
+	return { exited: [], remaining: [...sessionNames] };
 }
 
 /**
- * Kill orchestrator TMUX sessions.
+ * Kill orchestrator Runtime V2 agents.
  *
- * Kills each session and its children (worker, reviewer).
- * Returns per-session kill results.
+ * Kills lane worker/reviewer agents and merge agents by process handle.
+ * Session names are normalized to base lane/merge IDs so child suffixes do
+ * not trigger duplicate cleanup attempts.
  *
  * @param sessionNames - Session names to kill
  * @returns Per-session kill results
  */
 export function killOrchSessions(
 	sessionNames: string[],
+	options?: { stateRoot?: string; batchId?: string },
 ): Array<{ sessionName: string; killed: boolean; error: string | null }> {
 	const results: Array<{ sessionName: string; killed: boolean; error: string | null }> = [];
+	const killedBaseSessions = new Set<string>();
 
-	// Group into base sessions (lane/merge) and child sessions
-	const baseSessionNames = sessionNames.filter(name =>
-		!name.endsWith("-worker") && !name.endsWith("-reviewer"),
-	);
-	const childSessionNames = sessionNames.filter(name =>
-		name.endsWith("-worker") || name.endsWith("-reviewer"),
-	);
+	for (const name of sessionNames) {
+		const baseSessionName = name.replace(/-(worker|reviewer)$/, "");
+		if (!killedBaseSessions.has(baseSessionName)) {
+			killV2LaneAgents(baseSessionName, {
+				stateRoot: options?.stateRoot,
+				batchId: options?.batchId,
+				logContext: "abort",
+			});
+			killMergeAgentV2(baseSessionName);
+			killedBaseSessions.add(baseSessionName);
+		}
 
-	// Kill explicitly-targeted child sessions first.
-	for (const name of childSessionNames) {
-		const killed = tmuxKillSession(name);
 		results.push({
 			sessionName: name,
-			killed,
-			error: killed ? null : `Session '${name}' still alive after kill attempt`,
-		});
-	}
-
-	// Then kill base sessions (and defensively kill their children).
-	for (const name of baseSessionNames) {
-		// Best-effort child cleanup even if not explicitly targeted.
-		tmuxKillSession(`${name}-worker`);
-		tmuxKillSession(`${name}-reviewer`);
-		// TP-108: Also kill V2 merge agents (no-op if not V2)
-		killMergeAgentV2(name);
-
-		const killed = tmuxKillSession(name);
-		results.push({
-			sessionName: name,
-			killed,
-			error: killed ? null : `Session '${name}' still alive after kill attempt`,
+			killed: true,
+			error: null,
 		});
 	}
 
@@ -296,7 +320,7 @@ export function killOrchSessions(
  * Non-goal: does NOT delete worktrees/branches (preserved for inspection).
  *
  * @param mode           - Abort mode (graceful or hard)
- * @param prefix         - TMUX session prefix (e.g., "orch")
+ * @param prefix         - orchestrator session prefix (e.g., "orch")
  * @param repoRoot       - Repository root path
  * @param batchState     - Current batch runtime state (mutated: phase set to stopped)
  * @param persistedState - Loaded persisted state (for session enrichment)
@@ -342,28 +366,10 @@ export async function executeAbort(
 		execLog("abort", batchState.batchId, `killed ${v2MergeKilled} V2 merge agent(s)`);
 	}
 
-	// Step 3: List all orch sessions (TMUX — legacy + fallback)
-	let allSessionNames: string[];
-	try {
-		allSessionNames = parseOrchSessionNames(
-			(() => {
-				try {
-					return execSync('tmux list-sessions -F "#{session_name}"', {
-						encoding: "utf-8",
-						timeout: 5000,
-					});
-				} catch {
-					return "";
-				}
-			})(),
-			prefix,
-		);
-	} catch (err) {
-		errors.push({
-			code: "ABORT_TMUX_LIST_FAILED",
-			message: err instanceof Error ? err.message : String(err),
-		});
-		allSessionNames = [];
+	// Step 3: Discover target sessions from Runtime V2 state sources.
+	const allSessionNames = discoverAbortSessionNames(prefix, persistedState, batchState.currentLanes);
+	if (allSessionNames.length === 0) {
+		execLog("abort", batchState.batchId, `No abort targets discovered for prefix "${prefix}" from runtime/persisted state.`);
 	}
 
 	// Step 4: Select and enrich target sessions
@@ -400,7 +406,10 @@ export async function executeAbort(
 		// Step 5c: Force-kill remaining sessions
 		const killResultBySession = new Map<string, { killed: boolean; error: string | null }>();
 		if (waitResult.remaining.length > 0) {
-			const killResults = killOrchSessions(waitResult.remaining);
+			const killResults = killOrchSessions(waitResult.remaining, {
+				stateRoot: repoRoot,
+				batchId: batchState.batchId,
+			});
 			for (const kr of killResults) {
 				killResultBySession.set(kr.sessionName, { killed: kr.killed, error: kr.error });
 			}
@@ -434,7 +443,10 @@ export async function executeAbort(
 	} else {
 		// Hard mode: kill all immediately
 		const allTargetNames = targets.map(t => t.sessionName);
-		const killResults = killOrchSessions(allTargetNames);
+		const killResults = killOrchSessions(allTargetNames, {
+			stateRoot: repoRoot,
+			batchId: batchState.batchId,
+		});
 		const killResultBySession = new Map<string, { killed: boolean; error: string | null }>();
 		for (const kr of killResults) {
 			killResultBySession.set(kr.sessionName, { killed: kr.killed, error: kr.error });

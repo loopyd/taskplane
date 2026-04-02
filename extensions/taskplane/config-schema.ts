@@ -109,7 +109,10 @@ export interface WorkerConfig {
 	tools: string;
 	/** Thinking mode setting passed to worker agent */
 	thinking: string;
-	/** Optional spawn mode override for task-runner */
+	/**
+	 * Optional spawn mode override for task-runner.
+	 * @deprecated `"tmux"` is legacy-only; Runtime V2 execution is direct-child.
+	 */
 	spawnMode?: "subprocess" | "tmux";
 }
 
@@ -260,10 +263,13 @@ export interface OrchestratorCoreConfig {
 	worktreePrefix: string;
 	/** Batch ID format used in logs/branch naming */
 	batchIdFormat: "timestamp" | "sequential";
-	/** How lane sessions are spawned */
+	/**
+	 * How lane sessions are spawned.
+	 * @deprecated `"tmux"` is legacy-only; Runtime V2 is the active backend.
+	 */
 	spawnMode: "tmux" | "subprocess";
-	/** Prefix for orchestrator tmux sessions (tmux mode) */
-	tmuxPrefix: string;
+	/** Prefix for orchestrator session naming */
+	sessionPrefix: string;
 	/** Operator identifier. Auto-detected from OS username if empty */
 	operatorId: string;
 	/** How completed batches are integrated. manual = user runs /orch-integrate. supervised = supervisor proposes plan, asks confirmation. auto = supervisor executes without asking. */
@@ -498,7 +504,7 @@ export interface TaskplaneConfig {
  * | Preference field   | Config path                          | Type    |
  * |--------------------|--------------------------------------|---------|
  * | operatorId         | orchestrator.orchestrator.operatorId | string  |
- * | tmuxPrefix         | orchestrator.orchestrator.tmuxPrefix | string  |
+ * | sessionPrefix      | orchestrator.orchestrator.sessionPrefix | string  |
  * | spawnMode          | orchestrator.orchestrator.spawnMode  | string  |
  * | workerModel        | taskRunner.worker.model              | string  |
  * | reviewerModel      | taskRunner.reviewer.model            | string  |
@@ -509,9 +515,12 @@ export interface TaskplaneConfig {
 export interface UserPreferences {
 	/** Operator identifier (overrides orchestrator.orchestrator.operatorId) */
 	operatorId?: string;
-	/** TMUX session prefix (overrides orchestrator.orchestrator.tmuxPrefix) */
-	tmuxPrefix?: string;
-	/** Spawn mode override (overrides orchestrator.orchestrator.spawnMode) */
+	/** Orchestrator session prefix (overrides orchestrator.orchestrator.sessionPrefix) */
+	sessionPrefix?: string;
+	/**
+	 * Spawn mode override (overrides orchestrator.orchestrator.spawnMode).
+	 * @deprecated `"tmux"` is legacy-only; prefer `"subprocess"`.
+	 */
 	spawnMode?: "tmux" | "subprocess";
 	/** Worker model override (overrides taskRunner.worker.model) */
 	workerModel?: string;
@@ -582,7 +591,7 @@ export const DEFAULT_ORCHESTRATOR_SECTION: OrchestratorSection = {
 		worktreePrefix: "taskplane-wt",
 		batchIdFormat: "timestamp",
 		spawnMode: "subprocess",
-		tmuxPrefix: "orch",
+		sessionPrefix: "orch",
 		operatorId: "",
 		integration: "manual",
 	},

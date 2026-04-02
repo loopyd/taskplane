@@ -68,10 +68,31 @@ Options:
 
 // ─── Data Loading (ported from orch-dashboard.cjs) ──────────────────────────
 
+function normalizeBatchStateIngress(state) {
+  if (!state || typeof state !== "object" || !Array.isArray(state.lanes)) {
+    return state;
+  }
+
+  for (const lane of state.lanes) {
+    if (!lane || typeof lane !== "object") continue;
+    const laneSessionId = typeof lane.laneSessionId === "string"
+      ? lane.laneSessionId
+      : (typeof lane.tmuxSessionName === "string" ? lane.tmuxSessionName : undefined);
+    if (laneSessionId) {
+      lane.laneSessionId = laneSessionId;
+    }
+    if ("tmuxSessionName" in lane) {
+      delete lane.tmuxSessionName;
+    }
+  }
+
+  return state;
+}
+
 function loadBatchState() {
   try {
     const raw = fs.readFileSync(BATCH_STATE_PATH, "utf-8");
-    return JSON.parse(raw);
+    return normalizeBatchStateIngress(JSON.parse(raw));
   } catch {
     return null;
   }
@@ -344,13 +365,13 @@ function tailJsonlFile(filePath) {
 
 /**
  * Load and accumulate telemetry from .pi/telemetry/*.jsonl files.
- * Returns telemetry keyed by tmux session prefix (e.g., "orch-lane-1").
+ * Returns telemetry keyed by session prefix (e.g., "orch-lane-1").
  *
- * Uses batch-state lanes to map lane numbers → tmux prefixes.
+ * Uses batch-state lanes to map lane numbers → session prefixes.
  * For standalone /task mode (no lane number in filename), data is keyed as "standalone".
  *
  * @param {object|null} batchState - The batch state from batch-state.json
- * @returns {object} Map of tmuxPrefix → accumulated telemetry
+ * @returns {object} Map of sessionPrefix → accumulated telemetry
  */
 
 // ── Runtime V2 Data Loaders (TP-107) ─────────────────────────────
@@ -521,8 +542,9 @@ function loadTelemetryData(batchState) {
   const laneToPrefix = {};
   if (batchState && batchState.lanes) {
     for (const lane of batchState.lanes) {
-      if (lane.laneNumber != null && lane.tmuxSessionName) {
-        laneToPrefix[lane.laneNumber] = lane.tmuxSessionName;
+      const laneSessionId = lane.laneSessionId;
+      if (lane.laneNumber != null && laneSessionId) {
+        laneToPrefix[lane.laneNumber] = laneSessionId;
       }
     }
   }
@@ -1022,7 +1044,7 @@ function buildDashboardState() {
     for (const [laneNum, snap] of Object.entries(runtimeLaneSnapshots)) {
       // Find the matching lane record to get the session name key
       const laneRec = (state.lanes || []).find(l => l.laneNumber === Number(laneNum));
-      const key = laneRec ? laneRec.tmuxSessionName : `lane-${laneNum}`;
+      const key = laneRec ? (laneRec.laneSessionId) : `lane-${laneNum}`;
       if (!laneStates[key] || (snap.updatedAt && snap.updatedAt > (laneStates[key].timestamp || 0))) {
         const w = snap.worker || {};
         const statusMap = { running: "running", spawning: "running", exited: "done", crashed: "error", killed: "error", timed_out: "error", wrapping_up: "running" };
