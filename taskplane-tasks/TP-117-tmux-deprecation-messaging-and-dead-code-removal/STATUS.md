@@ -1,25 +1,25 @@
 # TP-117: TMUX Deprecation Messaging and Dead Code Removal — Status
 
-**Current Step:** Not Started
-**Status:** 🔵 Ready for Execution
+**Current Step:** Step 1: Config deprecation messaging
+**Status:** 🟡 In Progress
 **Last Updated:** 2026-04-02
 **Review Level:** 2
 **Review Counter:** 0
-**Iteration:** 0
+**Iteration:** 1
 **Size:** M
 
 ---
 
 ### Step 0: Preflight — Inventory dead code
-**Status:** ⬜ Not Started
-- [ ] Read PROMPT.md and STATUS.md
-- [ ] Identify dead TMUX execution functions
-- [ ] Identify dead TMUX merge functions
-- [ ] Identify dead TMUX session helpers
-- [ ] Log inventory in STATUS.md
+**Status:** 🟩 Complete
+- [x] Read PROMPT.md and STATUS.md
+- [x] Identify dead TMUX execution functions
+- [x] Identify dead TMUX merge functions
+- [x] Identify dead TMUX session helpers
+- [x] Log inventory in STATUS.md
 
 ### Step 1: Config deprecation messaging
-**Status:** ⬜ Not Started
+**Status:** 🟨 In Progress
 - [ ] Mark spawn_mode: "tmux" as deprecated in config-schema
 - [ ] Emit deprecation warning in config-loader
 - [ ] V2-first doctor/preflight messaging
@@ -51,7 +51,28 @@
 
 ---
 
+## Step 0 Inventory (Dead TMUX Paths)
+
+### Execution (`extensions/taskplane/execution.ts`)
+- `executeLane()` is legacy-only. It is selected only via `executeWave(..., runtimeBackend)` legacy branch, but `selectRuntimeBackend()` in `engine.ts` now always returns `"v2"`.
+- `spawnLaneSession()` is legacy-only; it is called from `executeLane()` and legacy resume branches.
+- `buildTmuxSpawnArgs()` is legacy-only; it is called by `spawnLaneSession()`.
+- Additional legacy-only helpers tied to the TMUX lane path: `pollUntilTaskComplete()`, `resolveLaneLogPath()`, `resolveLaneLogRelativePath()`, `readLaneLogTailAsync()`, `captureTmuxPaneTailAsync()`, `readTaskStatusTailAsync()`, `buildLaneEnvVars()`, `generateTelemetryPaths()`.
+
+### Merge (`extensions/taskplane/merge.ts`)
+- `spawnMergeAgent()` is the TMUX merge spawner (legacy path); `spawnMergeAgentV2()` is the active path under V2.
+- `generateMergeTelemetryPaths()` is only used by legacy `spawnMergeAgent()`.
+- `merge.ts` currently has dead legacy import drift from execution.ts: `buildLaneEnvVars`, `buildTmuxSpawnArgs`, and `generateTelemetryPaths` are imported but unused.
+
+### Sessions (`extensions/taskplane/sessions.ts`)
+- No dead session helper exports found: `listOrchSessions()` and `formatOrchSessions()` are still used by `/orch-sessions` and engine cleanup checks.
+- Non-functional cleanup candidate: unused `join` import in `sessions.ts`.
+
 ## Execution Log
 
 | Timestamp | Action | Outcome |
+| 2026-04-02 04:22 | Task started | Runtime V2 lane-runner execution |
+| 2026-04-02 04:22 | Step 0 started | Preflight — Inventory dead code |
+| 2026-04-02 04:36 | Step 0 completed | Dead TMUX path inventory logged in STATUS.md |
+| 2026-04-02 04:36 | Step 1 started | Config deprecation messaging |
 |-----------|--------|---------|
