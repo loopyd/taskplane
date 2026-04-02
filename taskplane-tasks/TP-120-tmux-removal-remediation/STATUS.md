@@ -29,8 +29,8 @@
 - [x] Remove other TMUX-only helpers
 - [x] Update imports — remove TMUX references
 - [x] Remove fallback branches, keep V2-only paths
-- [ ] R002: Seed/clear V2 liveness registry cache in MergeHealthMonitor.poll()
-- [ ] R002: Update supervisor-merge-monitoring test expectations for V2 liveness path
+- [x] R002: Seed/clear V2 liveness registry cache in MergeHealthMonitor.poll()
+- [x] R002: Update supervisor-merge-monitoring test expectations for V2 liveness path
 
 ### Step 2: Remove merge health monitor TMUX polling
 **Status:** ⬜ Not Started

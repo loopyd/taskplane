@@ -7,12 +7,12 @@ import { readFile as fsReadFile } from "fs/promises";
 import { execSync, spawnSync, spawn } from "child_process";
 import { join, dirname, resolve, relative } from "path";
 
-import { execLog, isV2AgentAlive } from "./execution.ts";
+import { execLog, isV2AgentAlive, setV2LivenessRegistryCache } from "./execution.ts";
 import { resolveOperatorId } from "./naming.ts";
 import { MERGE_POLL_INTERVAL_MS, MERGE_RESULT_GRACE_MS, MERGE_RESULT_READ_RETRIES, MERGE_RESULT_READ_RETRY_DELAY_MS, MERGE_SPAWN_RETRY_MAX, MERGE_TIMEOUT_MAX_RETRIES, MERGE_TIMEOUT_MS, MERGE_HEALTH_POLL_INTERVAL_MS, MERGE_HEALTH_WARNING_THRESHOLD_MS, MERGE_HEALTH_STUCK_THRESHOLD_MS, MERGE_HEALTH_CAPTURE_LINES, MergeError, VALID_MERGE_STATUSES, buildEngineEventBase } from "./types.ts";
 import type { AllocatedLane, LaneExecutionResult, MergeLaneResult, MergeResult, MergeResultStatus, MergeWaveResult, OrchestratorConfig, RepoMergeOutcome, TaskRunnerConfig, TransactionRecord, TransactionStatus, VerificationBaselineResult, WaveExecutionResult, WorkspaceConfig, MergeHealthStatus, MergeHealthEventType, MergeSessionSnapshot, MergeSessionHealthState, EngineEvent, OrchBatchPhase } from "./types.ts";
 import { resolveBaseBranch, resolveRepoRoot } from "./waves.ts";
-import { readManifest, writeManifest, buildRegistrySnapshot, writeRegistrySnapshot } from "./process-registry.ts";
+import { readManifest, writeManifest, buildRegistrySnapshot, writeRegistrySnapshot, readRegistrySnapshot } from "./process-registry.ts";
 import { generateMergeWorktreePath, sleepAsync, sleepSync } from "./worktree.ts";
 import { getCurrentBranch, runGit } from "./git.ts";
 import { ORCH_MESSAGES } from "./messages.ts";
@@ -2806,46 +2806,56 @@ export class MergeHealthMonitor {
 	async poll(): Promise<void> {
 		const now = Date.now();
 
-		for (const [sessionName, state] of this.sessions) {
-			const sessionAlive = isV2AgentAlive(sessionName, "v2");
-			const resultPath = this._resultPaths.get(sessionName) ?? "";
-			const hasResultFile = resultPath ? existsSync(resultPath) : false;
+		try {
+			setV2LivenessRegistryCache(readRegistrySnapshot(this.stateRoot, this.batchId));
+		} catch {
+			setV2LivenessRegistryCache(null);
+		}
 
-			// Capture pane output for activity detection — async to avoid blocking
-			const currentOutput = sessionAlive
-				? await captureMergePaneOutputAsync(sessionName)
-				: null;
+		try {
+			for (const [sessionName, state] of this.sessions) {
+				const sessionAlive = isV2AgentAlive(sessionName, "v2");
+				const resultPath = this._resultPaths.get(sessionName) ?? "";
+				const hasResultFile = resultPath ? existsSync(resultPath) : false;
 
-			// Classify health
-			const newStatus = classifyMergeHealth(
-				sessionAlive,
-				hasResultFile,
-				currentOutput,
-				state,
-				now,
-			);
+				// Capture pane output for activity detection — async to avoid blocking
+				const currentOutput = sessionAlive
+					? await captureMergePaneOutputAsync(sessionName)
+					: null;
 
-			// Update snapshot if output changed
-			if (currentOutput !== null && (
-				state.lastSnapshot === null || currentOutput !== state.lastSnapshot.content
-			)) {
-				state.lastSnapshot = { content: currentOutput, capturedAt: now };
-				state.lastActivityAt = now;
-			}
+				// Classify health
+				const newStatus = classifyMergeHealth(
+					sessionAlive,
+					hasResultFile,
+					currentOutput,
+					state,
+					now,
+				);
 
-			const prevStatus = state.status;
-			state.status = newStatus;
+				// Update snapshot if output changed
+				if (currentOutput !== null && (
+					state.lastSnapshot === null || currentOutput !== state.lastSnapshot.content
+				)) {
+					state.lastSnapshot = { content: currentOutput, capturedAt: now };
+					state.lastActivityAt = now;
+				}
 
-			// Emit events based on status transitions
-			this._emitHealthEvents(state, now);
+				const prevStatus = state.status;
+				state.status = newStatus;
 
-			// Signal dead session for early exit
-			if (newStatus === "dead" && !state.deadEmitted) {
-				state.deadEmitted = true;
-				if (this._onDeadSession) {
-					this._onDeadSession(sessionName, state.laneNumber);
+				// Emit events based on status transitions
+				this._emitHealthEvents(state, now);
+
+				// Signal dead session for early exit
+				if (newStatus === "dead" && !state.deadEmitted) {
+					state.deadEmitted = true;
+					if (this._onDeadSession) {
+						this._onDeadSession(sessionName, state.laneNumber);
+					}
 				}
 			}
+		} finally {
+			setV2LivenessRegistryCache(null);
 		}
 	}
 

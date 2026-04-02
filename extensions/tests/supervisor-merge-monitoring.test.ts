@@ -500,7 +500,7 @@ describe("MergeHealthMonitor", () => {
 // ── 8. MergeHealthMonitor.poll() Behavior Tests ──────────────────────
 
 describe("MergeHealthMonitor.poll() behavior", () => {
-	it("8.1: poll() source verifies it calls tmuxHasSession + existsSync + classifyMergeHealth", () => {
+	it("8.1: poll() source verifies V2 liveness cache wiring + classifyMergeHealth", () => {
 		const mergeSource = readFileSync(
 			join(__dirname, "..", "taskplane", "merge.ts"),
 			"utf-8",
@@ -510,8 +510,10 @@ describe("MergeHealthMonitor.poll() behavior", () => {
 		expect(pollIdx).toBeGreaterThan(-1);
 		const pollBody = mergeSource.substring(pollIdx, pollIdx + 1500);
 
-		// Verify poll checks session liveness (async — TP-070)
-		expect(pollBody).toContain("tmuxHasSessionAsync(sessionName)");
+		// Verify poll seeds/clears V2 liveness cache and checks V2 liveness
+		expect(pollBody).toContain("setV2LivenessRegistryCache(readRegistrySnapshot(this.stateRoot, this.batchId))");
+		expect(pollBody).toContain("isV2AgentAlive(sessionName, \"v2\")");
+		expect(pollBody).toContain("setV2LivenessRegistryCache(null)");
 		// Verify poll checks result file
 		expect(pollBody).toContain("existsSync(resultPath)");
 		// Verify poll classifies health
