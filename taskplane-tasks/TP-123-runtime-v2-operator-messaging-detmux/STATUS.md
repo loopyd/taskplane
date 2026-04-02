@@ -1,10 +1,10 @@
 # TP-123: Runtime V2 Operator Messaging De-TMUX — Status
 
 **Current Step:** Step 4: Documentation & delivery
-**Status:** 🟡 In Progress
+**Status:** ✅ Complete
 **Last Updated:** 2026-04-02
 **Review Level:** 2
-**Review Counter:** 5
+**Review Counter:** 6
 **Iteration:** 1
 **Size:** M
 
@@ -35,9 +35,9 @@
 - [x] Fix failures
 
 ### Step 4: Documentation & delivery
-**Status:** 🟨 In Progress
-- [ ] Update migration docs with messaging changes
-- [ ] Record before/after inventory in STATUS.md
+**Status:** ✅ Complete
+- [x] Update migration docs with messaging changes
+- [x] Record before/after inventory in STATUS.md
 
 ---
 
@@ -58,6 +58,18 @@
 | `dashboard/public/app.js` | 859 | ``tmux attach -t ${effectiveSession}`` (merge row attach command chip) | Hint text |
 | `dashboard/public/app.js` | 898 | ``tmux attach -t ${sess}`` (active merge session attach command chip) | Hint text |
 
+## Step 4 Inventory (Post-change)
+
+**Before:** 12 user-facing `tmux`/`TMUX` strings across extension + dashboard surfaces.
+
+**After:** 3 user-facing compatibility/diagnostic strings remain (no `tmux attach` hints, no dashboard tmux-liveness labels).
+
+| File | Line(s) | Remaining user-facing `tmux`/`TMUX` string | Classification | Disposition |
+|------|---------|---------------------------------------------|----------------|-------------|
+| `extensions/taskplane/extension.ts` | 1647 | `⚠️ Runtime V2 is now the default backend. \`spawn_mode: tmux\` is deprecated and kept only for legacy compatibility.` | Legacy compatibility note | Kept intentionally for explicit legacy config warning |
+| `extensions/taskplane/extension.ts` | 4625 | ``Runtime: V2 default (configured spawn_mode: ${orchConfig.orchestrator.spawn_mode}${orchConfig.orchestrator.spawn_mode === "tmux" ? "; legacy compatibility mode" : ""})`` | Legacy compatibility note | Kept; only surfaces `tmux` when config is actually set to legacy mode |
+| `extensions/taskplane/worktree.ts` | 1713 | `spawn_mode: tmux is legacy-only under Runtime V2; subprocess backend will be used` | Diagnostic message | Kept intentionally in preflight diagnostics for migration safety |
+
 ## Execution Log
 
 | Timestamp | Action | Outcome |
@@ -69,3 +81,4 @@
 | 2026-04-02 20:45 | Review R003 | plan Step 2: APPROVE |
 | 2026-04-02 20:47 | Review R004 | code Step 2: APPROVE |
 | 2026-04-02 20:48 | Review R005 | plan Step 3: APPROVE |
+| 2026-04-02 20:54 | Review R006 | code Step 3: APPROVE |

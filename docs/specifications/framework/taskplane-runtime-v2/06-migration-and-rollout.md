@@ -188,6 +188,20 @@ Workspace-mode smoke tests and segment-roadmap prerequisites pass on Runtime V2.
 - Full suite: 3403 pass, 0 failures
 - Runtime V2 abort/resume/cleanup control paths no longer depend on TMUX fallback branches
 
+## Phase F.5 — Operator messaging de-TMUX (TP-123) ✅ Implemented
+
+### Delivered
+
+- Replaced `/orch-status` attach hints that printed `tmux attach -t ...` with Runtime V2 guidance (`/orch-sessions` + lane session IDs).
+- Updated `/orch-sessions` empty-state copy from "orchestrator TMUX sessions" to backend-neutral "active orchestrator sessions" wording.
+- Updated dashboard lane/merge copy chips to expose/copy session IDs (instead of `tmux attach` commands) and relabeled liveness tooltips to session-based wording.
+- Kept legacy messaging only where compatibility context is required (e.g., explicit `spawn_mode: tmux` deprecation warning).
+
+### Exit gate
+
+- Full extension suite: 3390 pass, 0 failures
+- Dashboard lane/merge liveness indicators unchanged functionally (V2 registry first, tmuxSessions compatibility fallback)
+
 ## Phase G — Default switch and cleanup
 
 ### Deliverables
