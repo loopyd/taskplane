@@ -1,10 +1,10 @@
 # TP-122: TMUX Reference Baseline and Guardrails — Status
 
-**Current Step:** Step 2: Add regression guard test
+**Current Step:** Step 1: Add audit script
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-02
 **Review Level:** 2
-**Review Counter:** 2
+**Review Counter:** 3
 **Iteration:** 1
 **Size:** S
 
@@ -17,15 +17,16 @@
 - [x] Capture baseline in STATUS.md for future tasks
 
 ### Step 1: Add audit script
-**Status:** ✅ Complete
+**Status:** 🟨 In Progress
 - [x] Define strict-mode functional TMUX detection scope and explicit exclusions
 - [x] Define deterministic JSON output contract (schema + stable ordering + normalized paths)
 - [x] Create `scripts/tmux-reference-audit.mjs`
 - [x] Emit machine-readable summary (total + by-file + by-category)
 - [x] Support strict mode failure on functional TMUX usage with explicit exit-code + diagnostics contract
+- [ ] Fix Windows path normalization so output paths are always POSIX-style
 
 ### Step 2: Add regression guard test
-**Status:** 🟨 In Progress
+**Status:** ⬜ Not Started
 - [ ] Add `extensions/tests/tmux-reference-guard.test.ts`
 - [ ] Assert no functional TMUX command execution remains in `extensions/taskplane/*.ts`
 - [ ] Assert audit script output stays parseable and deterministic
@@ -53,7 +54,7 @@
 | 2026-04-02 20:28 | Review R001 (plan, step 1) | REVISE — add strict-mode boundary + deterministic output contract items |
 | 2026-04-02 20:29 | Review R002 (plan, step 1) | APPROVE |
 | 2026-04-02 20:37 | Step 1 completed | Added deterministic audit script with `--json` and `--strict` |
-| 2026-04-02 20:37 | Step 2 started | Add regression guard test |
+| 2026-04-02 20:38 | Review R003 (code, step 1) | REVISE — normalize output paths to POSIX separators on Windows |
 |-----------|--------|---------|
 
 ## Baseline Snapshot (2026-04-02)
@@ -130,5 +131,7 @@ Initial hotspot files by total refs: `types.ts` (44), `execution.ts` (26), `pers
 
 - Reviewer suggestion (R001): keep explicit CLI flags (`--strict`, `--json`) so Step 2 tests can target a stable interface.
 - Reviewer suggestion (R001): add a known-good audit JSON example in STATUS.md once Step 1 implementation is complete.
+- Reviewer suggestion (R003): remove the unused `basename` import from `tmux-reference-audit.mjs` while touching the file.
 | 2026-04-02 20:22 | Review R001 | plan Step 1: REVISE |
 | 2026-04-02 20:23 | Review R002 | plan Step 1: APPROVE |
+| 2026-04-02 20:27 | Review R003 | code Step 1: REVISE |
