@@ -4,7 +4,7 @@
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-02
 **Review Level:** 2
-**Review Counter:** 4
+**Review Counter:** 5
 **Iteration:** 1
 **Size:** M
 
@@ -34,13 +34,13 @@
 
 ### Step 2: Remove merge health monitor TMUX polling
 **Status:** ⬜ Not Started
-- [ ] Replace or remove tmuxHasSessionAsync in MergeHealthMonitor.poll()
-- [ ] Remove captureTmuxPaneTail* calls
-- [ ] Remove tmuxHasSessionAsync import from merge.ts
-- [ ] Evaluate if entire health monitor is legacy dead code
-- [ ] R004: Remove merge.ts TMUX capture helpers and all functional `spawn("tmux"` / `spawnSync("tmux"` calls
-- [ ] R004: Replace pane-output-based health semantics with V2-safe liveness/result-file semantics
-- [ ] R004: Update merge-monitor tests for V2 liveness + no TMUX capture behavior
+- [x] Replace or remove tmuxHasSessionAsync in MergeHealthMonitor.poll()
+- [x] Remove captureTmuxPaneTail* calls
+- [x] Remove tmuxHasSessionAsync import from merge.ts
+- [x] Evaluate if entire health monitor is legacy dead code
+- [x] R004: Remove merge.ts TMUX capture helpers and all functional `spawn("tmux"` / `spawnSync("tmux"` calls
+- [x] R004: Replace pane-output-based health semantics with V2-safe liveness/result-file semantics
+- [x] R004: Update merge-monitor tests for V2 liveness + no TMUX capture behavior
 
 ### Step 3: Remove abort.ts TMUX code
 **Status:** ⬜ Not Started
@@ -96,6 +96,7 @@
 - Reviewer suggestion (R002): add focused unit coverage for merge-monitor behavior when liveness cache is missing/populated.
 - Reviewer suggestion (R002): clean up residual TMUX wording in execution comments in a follow-up.
 - Reviewer suggestion (R004): if monitor remains, keep the V2 liveness cache seed/clear pattern inside poll cycles.
+- Step 2 evaluation: `MergeHealthMonitor` is still active runtime code (constructed in `engine.ts` merge flow), so it was retained and de-TMUXed rather than removed.
 
 ## Execution Log
 
@@ -107,3 +108,4 @@
 | 2026-04-02 14:01 | Review R002 | code Step 1: REVISE |
 | 2026-04-02 14:04 | Review R003 | code Step 1: APPROVE |
 | 2026-04-02 14:06 | Review R004 | plan Step 2: REVISE |
+| 2026-04-02 14:07 | Review R005 | plan Step 2: APPROVE |
