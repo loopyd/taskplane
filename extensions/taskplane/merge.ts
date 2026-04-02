@@ -4,10 +4,10 @@
  */
 import { readFileSync, writeFileSync, existsSync, unlinkSync, copyFileSync, mkdirSync, rmSync, readdirSync } from "fs";
 import { readFile as fsReadFile } from "fs/promises";
-import { execSync, spawnSync } from "child_process";
+import { execSync, spawnSync, spawn } from "child_process";
 import { join, dirname, resolve, relative } from "path";
 
-import { execLog, tmuxHasSession, tmuxHasSessionAsync, tmuxKillSession, tmuxKillSessionAsync, tmuxAsync } from "./execution.ts";
+import { execLog, tmuxHasSessionAsync } from "./execution.ts";
 import { resolveOperatorId } from "./naming.ts";
 import { MERGE_POLL_INTERVAL_MS, MERGE_RESULT_GRACE_MS, MERGE_RESULT_READ_RETRIES, MERGE_RESULT_READ_RETRY_DELAY_MS, MERGE_SPAWN_RETRY_MAX, MERGE_TIMEOUT_MAX_RETRIES, MERGE_TIMEOUT_MS, MERGE_HEALTH_POLL_INTERVAL_MS, MERGE_HEALTH_WARNING_THRESHOLD_MS, MERGE_HEALTH_STUCK_THRESHOLD_MS, MERGE_HEALTH_CAPTURE_LINES, MergeError, VALID_MERGE_STATUSES, buildEngineEventBase } from "./types.ts";
 import type { AllocatedLane, LaneExecutionResult, MergeLaneResult, MergeResult, MergeResultStatus, MergeWaveResult, OrchestratorConfig, RepoMergeOutcome, TaskRunnerConfig, TransactionRecord, TransactionStatus, VerificationBaselineResult, WaveExecutionResult, WorkspaceConfig, MergeHealthStatus, MergeHealthEventType, MergeSessionSnapshot, MergeSessionHealthState, EngineEvent, OrchBatchPhase } from "./types.ts";
@@ -758,11 +758,7 @@ export async function waitForMergeResult(
 							timeoutMs,
 						});
 						// Clean up agent (may still be running post-write)
-						if (isV2) {
-							killMergeAgentV2(sessionName, true);
-						} else if (await tmuxHasSessionAsync(sessionName)) {
-							await tmuxKillSessionAsync(sessionName);
-						}
+						killMergeAgentV2(sessionName, true);
 						return lateResult;
 					}
 					execLog("merge", sessionName, "merge result exists at timeout but non-success — killing", {
@@ -774,11 +770,7 @@ export async function waitForMergeResult(
 			}
 
 			execLog("merge", sessionName, "merge timeout — killing agent", { elapsed, timeoutMs });
-			if (isV2) {
-				killMergeAgentV2(sessionName);
-			} else {
-				await tmuxKillSessionAsync(sessionName);
-			}
+			killMergeAgentV2(sessionName);
 
 			throw new MergeError(
 				"MERGE_TIMEOUT",
@@ -797,11 +789,7 @@ export async function waitForMergeResult(
 					elapsed,
 				});
 				// Clean up agent if still alive
-				if (isV2) {
-					killMergeAgentV2(sessionName, true);
-				} else if (await tmuxHasSessionAsync(sessionName)) {
-					await tmuxKillSessionAsync(sessionName);
-				}
+				killMergeAgentV2(sessionName, true);
 				return result;
 			} catch (err: unknown) {
 				if (err instanceof MergeError && err.code === "MERGE_RESULT_INVALID") {
@@ -814,14 +802,8 @@ export async function waitForMergeResult(
 		}
 
 		// Check agent liveness — backend-aware
-		let agentAlive: boolean;
-		if (isV2) {
-			// V2: check activeMergeAgents map (process handle)
-			agentAlive = activeMergeAgents.has(sessionName);
-		} else {
-			// Legacy: check TMUX session
-			agentAlive = await tmuxHasSessionAsync(sessionName);
-		}
+		// Runtime V2: check active merge agent handle map (process-owned).
+		const agentAlive = activeMergeAgents.has(sessionName);
 
 		if (!agentAlive) {
 			if (sessionDiedAt === null) {
@@ -1761,12 +1743,8 @@ export async function mergeWave(
 				// Best effort
 			}
 
-			// Kill merge agent if still alive (backend-aware)
-			if (runtimeBackend === "v2") {
-				killMergeAgentV2(sessionName);
-			} else if (tmuxHasSession(sessionName)) {
-				tmuxKillSession(sessionName);
-			}
+			// Kill merge agent if still alive.
+			killMergeAgentV2(sessionName);
 
 			const errMsg = err instanceof Error ? err.message : String(err);
 			const errCode = err instanceof MergeError ? err.code : "UNKNOWN";
@@ -2573,6 +2551,26 @@ export function captureMergePaneOutput(
 	}
 }
 
+function runMergeTmuxCommandAsync(
+	args: string[],
+	timeoutMs: number = 5_000,
+): Promise<{ status: number; stdout: string }> {
+	return new Promise((resolve) => {
+		const proc = spawn("tmux", args, {
+			stdio: ["ignore", "pipe", "pipe"],
+			timeout: timeoutMs,
+		});
+
+		let stdout = "";
+		proc.stdout.on("data", (chunk: Buffer) => {
+			stdout += chunk.toString("utf-8");
+		});
+
+		proc.on("error", () => resolve({ status: 1, stdout: "" }));
+		proc.on("close", (code) => resolve({ status: code ?? 1, stdout }));
+	});
+}
+
 /**
  * Async version of captureMergePaneOutput — captures pane output
  * without blocking the event loop.
@@ -2588,7 +2586,7 @@ export async function captureMergePaneOutputAsync(
 	lines: number = MERGE_HEALTH_CAPTURE_LINES,
 ): Promise<string | null> {
 	try {
-		const result = await tmuxAsync([
+		const result = await runMergeTmuxCommandAsync([
 			"capture-pane",
 			"-t", sessionName,
 			"-p",

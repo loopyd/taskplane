@@ -221,55 +221,6 @@ export function execLog(
 }
 
 /**
- * Check if a TMUX session exists (is alive).
- *
- * @param sessionName - TMUX session name to check
- * @returns true if session exists
- */
-export function tmuxHasSession(sessionName: string): boolean {
-	const result = spawnSync("tmux", ["has-session", "-t", sessionName]);
-	return result.status === 0;
-}
-
-/**
- * Kill a TMUX session if it exists.
- *
- * Idempotent: returns true if session was killed or was already absent.
- *
- * @param sessionName - TMUX session name to kill
- * @returns true if session is now absent
- */
-export function tmuxKillSession(sessionName: string): boolean {
-	// Check liveness first so we can distinguish "already gone" from "kill failed".
-	const wasAlive = tmuxHasSession(sessionName);
-	if (!wasAlive) {
-		return true; // Already absent
-	}
-
-	spawnSync("tmux", ["kill-session", "-t", sessionName]);
-
-	// Consider success only if the session is now absent.
-	return !tmuxHasSession(sessionName);
-}
-
-/**
- * Kill a lane session and its child sessions (worker, reviewer).
- *
- * Child session names follow the convention:
- *   - `{sessionName}-worker`
- *   - `{sessionName}-reviewer`
- *
- * @param sessionName - Base lane session name (e.g., "orch-lane-1")
- */
-export function killLaneAndChildren(sessionName: string): void {
-	// Kill children first (they depend on the parent context)
-	tmuxKillSession(`${sessionName}-worker`);
-	tmuxKillSession(`${sessionName}-reviewer`);
-	// Then kill the parent lane session
-	tmuxKillSession(sessionName);
-}
-
-/**
  * TP-112: Check if a V2 agent is alive via process registry.
  * Returns true if the agent's PID is running and status is non-terminal.
  * Returns false if no registry, no entry, terminal status, or dead PID.
@@ -308,19 +259,32 @@ export function setV2LivenessRegistryCache(registry: import("./process-registry.
 
 /**
  * TP-112: Kill V2 lane agents (worker + reviewer) by PID from the registry.
- * Used for stall termination on the V2 path.
+ *
+ * Uses the monitor cache when available for hot-path polling, and can
+ * optionally read a fresh registry snapshot for cleanup flows outside monitor.
+ *
  * @since TP-112
  */
-export function killV2LaneAgents(sessionName: string): void {
-	if (!_v2LivenessRegistryCache) return;
-	const agents = _v2LivenessRegistryCache.agents;
+export function killV2LaneAgents(
+	sessionName: string,
+	options?: { stateRoot?: string; batchId?: string; logContext?: string },
+): void {
+	const registry = _v2LivenessRegistryCache ?? (
+		options?.stateRoot && options?.batchId
+			? readRegistrySnapshot(options.stateRoot, options.batchId)
+			: null
+	);
+	if (!registry) return;
+
+	const agents = registry.agents;
+	const logContext = options?.logContext ?? "monitor";
 	for (const suffix of ["-worker", "-reviewer", ""]) {
 		const key = `${sessionName}${suffix}`;
 		const manifest = agents[key];
 		if (manifest && !isTerminalStatus(manifest.status) && isProcessAlive(manifest.pid)) {
 			try {
 				process.kill(manifest.pid, "SIGTERM");
-				execLog("monitor", key, `killed V2 agent (PID ${manifest.pid}) on stall`);
+				execLog(logContext, key, `killed V2 agent (PID ${manifest.pid})`);
 			} catch { /* already dead */ }
 		}
 	}
@@ -341,7 +305,7 @@ export function killV2LaneAgents(sessionName: string): void {
  *
  * @since TP-070
  */
-export function tmuxAsync(args: string[], timeoutMs: number = 5_000): Promise<{ status: number; stdout: string }> {
+function runTmuxCommandAsync(args: string[], timeoutMs: number = 5_000): Promise<{ status: number; stdout: string }> {
 	return new Promise((resolve) => {
 		const proc = spawn("tmux", args, {
 			stdio: ["ignore", "pipe", "pipe"],
@@ -375,7 +339,7 @@ export function tmuxAsync(args: string[], timeoutMs: number = 5_000): Promise<{ 
  * @since TP-070
  */
 export async function tmuxHasSessionAsync(sessionName: string): Promise<boolean> {
-	const result = await tmuxAsync(["has-session", "-t", sessionName]);
+	const result = await runTmuxCommandAsync(["has-session", "-t", sessionName]);
 	return result.status === 0;
 }
 
@@ -394,7 +358,7 @@ export async function tmuxKillSessionAsync(sessionName: string): Promise<boolean
 	const wasAlive = await tmuxHasSessionAsync(sessionName);
 	if (!wasAlive) return true;
 
-	await tmuxAsync(["kill-session", "-t", sessionName]);
+	await runTmuxCommandAsync(["kill-session", "-t", sessionName]);
 	return !(await tmuxHasSessionAsync(sessionName));
 }
 
@@ -414,7 +378,7 @@ export async function captureTmuxPaneTailAsync(
 	maxLines: number = 40,
 	maxChars: number = 1200,
 ): Promise<string> {
-	const result = await tmuxAsync(["capture-pane", "-p", "-t", sessionName], 3000);
+	const result = await runTmuxCommandAsync(["capture-pane", "-p", "-t", sessionName], 3000);
 	if (result.status !== 0) return "";
 	const raw = (result.stdout || "").replace(/\r\n/g, "\n").trim();
 	if (!raw) return "";
@@ -1464,11 +1428,7 @@ export async function resolveTaskMonitorState(
 			stallMinutes,
 			backend: runtimeBackend ?? "legacy",
 		});
-		if (runtimeBackend === "v2") {
-			killV2LaneAgents(sessionName);
-		} else {
-			killLaneAndChildren(sessionName);
-		}
+		killV2LaneAgents(sessionName);
 
 		return {
 			taskId,
@@ -2342,7 +2302,7 @@ export async function executeWithStopAll(
 
 					// Kill ALL lane sessions immediately
 					for (const lane of lanes) {
-						killLaneAndChildren(laneSessionIdOf(lane));
+						killV2LaneAgents(laneSessionIdOf(lane));
 					}
 				}
 			}
@@ -2356,7 +2316,7 @@ export async function executeWithStopAll(
 				pauseSignal.paused = true;
 				execLog("wave", `W${waveIndex}`, `stop-all triggered by lane error in ${lanes[idx].laneId}: ${errMsg}`);
 				for (const lane of lanes) {
-					killLaneAndChildren(laneSessionIdOf(lane));
+					killV2LaneAgents(laneSessionIdOf(lane));
 				}
 			}
 

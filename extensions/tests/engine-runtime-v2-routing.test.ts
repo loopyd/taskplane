@@ -375,13 +375,12 @@ describe("11.x: Merge V2 liveness + abort correctness", () => {
 		expect(killIdx).toBeLessThan(spawnIdx); // kill BEFORE spawn
 	});
 
-	it("11.3: V2 merge error cleanup path uses backend-aware kill", () => {
-		// Error path must check backend and kill V2 agent
+	it("11.3: V2 merge error cleanup path kills via Runtime V2 handle", () => {
 		const errIdx = mergeSrc.indexOf("Kill merge agent if still alive");
 		expect(errIdx).toBeGreaterThan(-1);
 		const block = mergeSrc.slice(errIdx, errIdx + 300);
-		expect(block).toContain('runtimeBackend === "v2"');
 		expect(block).toContain("killMergeAgentV2(sessionName)");
+		expect(block).not.toContain("tmux");
 	});
 
 	it("11.4: abort kills all V2 merge agents (not just TMUX sessions)", () => {
@@ -425,12 +424,12 @@ describe("12.x: Resume TDZ safety", () => {
 describe("13.x: Resume de-TMUX for V2 (TP-112)", () => {
 	const resumeSrc = readFileSync(join(__dirname, "..", "taskplane", "resume.ts"), "utf-8");
 
-	it("13.1: resume uses process registry for V2 liveness (not tmuxHasSession)", () => {
+	it("13.1: resume uses process registry for liveness (not tmuxHasSession)", () => {
 		const section3Idx = resumeSrc.indexOf("Discover live signals");
 		const block = resumeSrc.slice(section3Idx, section3Idx + 1200);
-		expect(block).toContain('resumeBackend === "v2"');
 		expect(block).toContain("readRegistrySnapshot");
 		expect(block).toContain("isProcessAlive");
+		expect(block).not.toContain("tmuxHasSession");
 	});
 
 	it("13.2: V2 reconnect terminates then re-executes (detect+terminate+rehydrate)", () => {
@@ -524,24 +523,25 @@ describe("14.x: Monitor de-TMUX for V2 (TP-112)", () => {
 		expect(block).toContain("return lane.laneSessionId;");
 	});
 
-	it("14.5: stall kill is backend-aware (V2 kills by PID, not TMUX)", () => {
+	it("14.5: stall kill uses Runtime V2 PID termination (no TMUX fallback)", () => {
 		const fnIdx = execSrc.indexOf("function resolveTaskMonitorState");
 		const block = execSrc.slice(fnIdx, fnIdx + 5000);
-		// Stall path must check backend
 		const stallIdx = block.indexOf("stall detected");
 		expect(stallIdx).toBeGreaterThan(-1);
 		const stallBlock = block.slice(stallIdx, stallIdx + 500);
-		expect(stallBlock).toContain('runtimeBackend === "v2"');
 		expect(stallBlock).toContain("killV2LaneAgents");
+		expect(stallBlock).not.toContain("killLaneAndChildren");
+		expect(stallBlock).not.toContain("tmux");
 	});
 
 	it("14.6: killV2LaneAgents terminates by PID from registry", () => {
 		const fnIdx = execSrc.indexOf("function killV2LaneAgents");
 		expect(fnIdx).toBeGreaterThan(-1);
-		const block = execSrc.slice(fnIdx, fnIdx + 600);
+		const nextSectionIdx = execSrc.indexOf("// ── Async TMUX Helpers", fnIdx);
+		const block = execSrc.slice(fnIdx, nextSectionIdx > fnIdx ? nextSectionIdx : fnIdx + 1200);
 		expect(block).toContain("process.kill");
 		expect(block).toContain("SIGTERM");
-		expect(block).not.toContain("tmux");
+		expect(block).not.toContain("spawn(\"tmux\"");
 	});
 
 	it("14.7: executeWave passes batchId and resolved state root to monitorLanes", () => {
@@ -552,5 +552,17 @@ describe("14.x: Monitor de-TMUX for V2 (TP-112)", () => {
 		const block = waveBlock.slice(callIdx, callIdx + 420);
 		expect(block).toContain("batchId");
 		expect(block).toContain("monitorStateRoot");
+	});
+
+	it("14.8: final cleanup kills lingering Runtime V2 agents without TMUX fallbacks", () => {
+		const cleanupIdx = engineSrc.indexOf("Kill lingering Runtime V2 agents BEFORE removing worktrees.");
+		expect(cleanupIdx).toBeGreaterThan(-1);
+		const cleanupBlock = engineSrc.slice(cleanupIdx, cleanupIdx + 1600);
+		expect(cleanupBlock).toContain("readRegistrySnapshot(stateRoot, batchState.batchId)");
+		expect(cleanupBlock).toContain("lingeringLaneSessions.add(manifest.agentId.replace(/-(worker|reviewer)$/");
+		expect(cleanupBlock).toContain("killV2LaneAgents(sessionName");
+		expect(cleanupBlock).toContain("killAllMergeAgentsV2()");
+		expect(cleanupBlock).not.toContain("tmuxHasSession");
+		expect(cleanupBlock).not.toContain("tmuxKillSession");
 	});
 });
