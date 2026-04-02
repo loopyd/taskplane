@@ -1,7 +1,7 @@
 # TP-124: Comment and Type Doc De-TMUX Sweep — Status
 
 **Current Step:** Step 4: Delivery
-**Status:** 🟡 In Progress
+**Status:** ✅ Complete
 **Last Updated:** 2026-04-02
 **Review Level:** 1
 **Review Counter:** 3
@@ -35,9 +35,9 @@
 - [x] Fix regressions
 
 ### Step 4: Delivery
-**Status:** 🟨 In Progress
-- [ ] Record before/after count for comment/doc references
-- [ ] Note which compatibility literals remain and why
+**Status:** ✅ Complete
+- [x] Record before/after count for comment/doc references
+- [x] Note which compatibility literals remain and why
 
 ---
 
@@ -57,6 +57,7 @@
 | 2026-04-02 21:42 | Step 3 tests | Targeted guard pass (2/2) |
 | 2026-04-02 21:42 | Step 3 completed | No regressions detected |
 | 2026-04-02 21:42 | Step 4 started | Delivery |
+| 2026-04-02 21:45 | Step 4 completed | Delivery summary recorded (before/after + retained literals) |
 |-----------|--------|---------|
 
 ## Step 0 Inventory Snapshot
@@ -77,6 +78,19 @@
 - `ResumeErrorCode`: `"RESUME_TMUX_UNAVAILABLE"` (`types.ts`) — stable resume error-code contract.
 - `AbortErrorCode`: `"ABORT_TMUX_LIST_FAILED"` (`types.ts`) — stable abort error-code contract.
 - Existing type/property names that include `tmux` (for example `LaneStatus.tmuxSession`) are treated as compatibility contracts in this task; only doc wording will be updated.
+
+## Step 4 Delivery Summary
+
+### Before/after comment-doc reference counts (in-scope files)
+- **Before (Step 0 baseline):** 92 total refs; 47 `comments/docs` + 44 `types/contracts` + 1 compat-code
+- **After (post-edit audit):** 9 total refs; 0 `comments/docs` + 9 `types/contracts` + 0 compat-code
+- **Net reduction:** -83 total in-scope `tmux` refs, with comment/doc references reduced to zero in scoped files.
+
+### Compatibility literals intentionally retained
+- `spawn_mode: "tmux" | "subprocess"` — persisted config compatibility while legacy mode still parses.
+- `LaneStatus.tmuxSession` field name — compatibility shape retained for existing state consumers.
+- Error-code literals: `EXEC_TMUX_NOT_AVAILABLE`, `RESUME_TMUX_UNAVAILABLE`, `ABORT_TMUX_LIST_FAILED` — stable contracts referenced by handlers/tests.
+
 | 2026-04-02 21:01 | Review R001 | plan Step 1: APPROVE |
 | 2026-04-02 21:04 | Review R002 | plan Step 2: APPROVE |
 | 2026-04-02 21:07 | Review R003 | plan Step 3: APPROVE |
