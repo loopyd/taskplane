@@ -99,3 +99,5 @@ Pattern counted: `tmuxPrefix|tmuxSessionName|spawnMode === "tmux"|spawn_mode ===
 | 2026-04-02 21:23 | Review R003 | code Step 2: APPROVE |
 | 2026-04-02 21:23 | Review R004 | plan Step 3: APPROVE |
 | 2026-04-02 21:29 | Review R005 | code Step 3: APPROVE |
+| 2026-04-02 21:31 | Worker iter 1 | done in 1037s, tools: 110 |
+| 2026-04-02 21:31 | Task complete | .DONE created |
