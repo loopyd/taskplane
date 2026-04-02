@@ -1,24 +1,24 @@
 # TP-119: Remove TMUX Abort Fallbacks — Status
 
-**Current Step:** Not Started
-**Status:** 🔵 Ready for Execution
+**Current Step:** Step 1: Remove abort TMUX fallbacks
+**Status:** 🟡 In Progress
 **Last Updated:** 2026-04-02
 **Review Level:** 2
 **Review Counter:** 0
-**Iteration:** 0
+**Iteration:** 1
 **Size:** S
 
 ---
 
 ### Step 0: Preflight
-**Status:** ⬜ Not Started
-- [ ] Read PROMPT.md and STATUS.md
-- [ ] Inventory remaining TMUX helper call sites
-- [ ] Classify each call site
-- [ ] Log inventory in STATUS.md
+**Status:** ✅ Complete
+- [x] Read PROMPT.md and STATUS.md
+- [x] Inventory remaining TMUX helper call sites
+- [x] Classify each call site
+- [x] Log inventory in STATUS.md
 
 ### Step 1: Remove abort TMUX fallbacks
-**Status:** ⬜ Not Started
+**Status:** 🟨 In Progress
 - [ ] abort.ts TMUX kill paths
 - [ ] execution.ts TMUX fallbacks in stop-all and stall kill
 - [ ] merge.ts dual kill paths
@@ -47,7 +47,25 @@
 
 ---
 
+## Preflight Inventory (TMUX helper call sites)
+
+| Helper | File:line | Classification | Notes |
+|---|---|---|---|
+| `tmuxHasSession` | `extensions/taskplane/abort.ts:222` | abort fallback | Graceful abort wait loop checks TMUX session exit. |
+| `tmuxKillSession` | `extensions/taskplane/abort.ts:258,269,270,274` | abort fallback | Abort cleanup kills lane/worker/reviewer TMUX sessions alongside V2 merge kill. |
+| `tmuxKillSession` | `extensions/taskplane/execution.ts:266,267,269` via `killLaneAndChildren()` | abort fallback | Used by stop-all and stall termination on legacy lane sessions. |
+| `tmuxHasSession`/`tmuxKillSession` | `extensions/taskplane/merge.ts:1767,1768` | abort fallback | Merge error cleanup keeps legacy TMUX kill branch in addition to V2 path. |
+| `tmuxHasSession` | `extensions/taskplane/resume.ts:905` | legacy reconnect | Resume alive-session detection still has legacy TMUX liveness branch. |
+| `tmuxKillSession` | `extensions/taskplane/engine.ts:2484` | other | Final cleanup of lingering TMUX sessions before worktree removal. |
+| `tmuxHasSession` | `extensions/taskplane/extension.ts:3797,3801` | other | `send_agent_message` liveness fallback when registry entry/read fails. |
+| `tmuxHasSession` | `extensions/taskplane/sessions.ts:65` | other | `/orch-sessions` status decoration uses TMUX liveness probe. |
+| `tmuxHasSession`/`tmuxKillSession` | `extensions/taskplane/execution.ts:244,252` | other | Internal implementation of sync TMUX helpers (self-calls). |
+| `tmuxAsync` | `extensions/taskplane/execution.ts:378,397,417` | other | Async TMUX helper consumers (`has/kill/capture` wrappers). |
+| `tmuxAsync` | `extensions/taskplane/merge.ts:2591` | other | Async merge pane capture helper for health monitoring. |
+
 ## Execution Log
 
 | Timestamp | Action | Outcome |
+| 2026-04-02 06:05 | Task started | Runtime V2 lane-runner execution |
+| 2026-04-02 06:05 | Step 0 started | Preflight |
 |-----------|--------|---------|
