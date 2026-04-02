@@ -1,10 +1,10 @@
 # TP-118: Lane Session Naming Cleanup — Status
 
-**Current Step:** Step 3: Rename in tests
+**Current Step:** Step 4: Remove aliases
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-02
 **Review Level:** 2
-**Review Counter:** 8
+**Review Counter:** 10
 **Iteration:** 1
 **Size:** M
 
@@ -43,9 +43,12 @@
 - [x] Fix all failures
 
 ### Step 4: Remove aliases
-**Status:** ⬜ Not Started
+**Status:** 🟨 In Progress
 - [ ] Remove tmuxSessionName from types
 - [ ] Remove generateTmuxSessionName alias
+- [ ] Restrict legacy `tmuxSessionName` compatibility to ingress-only parsing/normalization paths
+- [ ] Verify non-test production `tmuxSessionName` leftovers are eliminated or explicitly compatibility-ingress scoped
+- [ ] Validate legacy state files with tmux-only lane records still load into laneSessionId canonical runtime shape
 - [ ] Verify full suite
 
 ### Step 5: Documentation & Delivery
@@ -90,6 +93,8 @@
 | 2026-04-02 05:55 | Compatibility scope verified | test grep counts — total `tmuxSessionName`: 60; non-compat test files: 0 |
 | 2026-04-02 05:57 | Full suite run | `node --test tests/*.test.ts` failed (2 tests): `polyrepo-fixture` and `polyrepo-regression` expecting laneSessionId-only fixtures |
 | 2026-04-02 06:00 | Full suite rerun | `node --test tests/*.test.ts` passed (3400 tests, 0 failures) after compatibility fallback assertion fixes |
+| 2026-04-02 06:01 | Review R009 | code Step 3: APPROVE |
+| 2026-04-02 06:02 | Review R010 | plan Step 4: REVISE |
 
 ## Notes
 - Allowed Step 2 leftovers: compatibility alias fields in `types.ts` plus normalization/dual-write handling in `persistence.ts` and resume comment context.
@@ -97,4 +102,7 @@
 - Reviewer suggestion: log post-step grep counts split by production/tests/docs for measurable progress.
 - Reviewer suggestion: run resume-path/runtime test coverage for tmux-only compatibility lane objects after fixing helper recursion.
 - Reviewer suggestion: where tests are not compatibility-focused, rename assertion text/test names to `laneSessionId` for long-term clarity.
+- Reviewer suggestion: for Step 4, log allowed production leftovers and post-step grep counts to prove alias removal completeness.
 | 2026-04-02 05:31 | Review R008 | plan Step 3: APPROVE |
+| 2026-04-02 05:40 | Review R009 | code Step 3: APPROVE |
+| 2026-04-02 05:41 | Review R010 | plan Step 4: REVISE |
