@@ -1,10 +1,10 @@
 # TP-125: Centralize Legacy TMUX Compatibility Shim — Status
 
-**Current Step:** Step 3: Tests
+**Current Step:** Step 4: Delivery
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-02
 **Review Level:** 2
-**Review Counter:** 2
+**Review Counter:** 4
 **Iteration:** 1
 **Size:** M
 
@@ -31,13 +31,13 @@
 - [x] Keep behavior identical
 
 ### Step 3: Tests
-**Status:** 🟨 In Progress
-- [ ] Add/adjust compatibility tests via shim
-- [ ] Run full extension suite
-- [ ] Fix failures
+**Status:** ✅ Complete
+- [x] Add/adjust compatibility tests via shim
+- [x] Run full extension suite
+- [x] Fix failures
 
 ### Step 4: Delivery
-**Status:** ⬜ Not Started
+**Status:** 🟨 In Progress
 - [ ] Record TMUX-reference count delta
 - [ ] Document exactly which legacy inputs remain supported
 
@@ -70,3 +70,5 @@ Ingress-only confirmation: all identified sites are config/state compatibility n
 |-----------|--------|---------|
 | 2026-04-02 21:15 | Review R001 | plan Step 1: APPROVE |
 | 2026-04-02 21:18 | Review R002 | plan Step 2: APPROVE |
+| 2026-04-02 21:23 | Review R003 | code Step 2: APPROVE |
+| 2026-04-02 21:23 | Review R004 | plan Step 3: APPROVE |
