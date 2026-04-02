@@ -1,10 +1,10 @@
 # TP-126: Final TMUX Compatibility Removal and Migration — Status
 
 **Current Step:** Step 4: Final verification & delivery
-**Status:** 🟡 In Progress
+**Status:** ✅ Complete
 **Last Updated:** 2026-04-02
 **Review Level:** 3
-**Review Counter:** 8
+**Review Counter:** 9
 **Iteration:** 2
 **Size:** L
 
@@ -52,10 +52,10 @@
 - [x] Run CLI smoke tests (`help`, `doctor`)
 
 ### Step 4: Final verification & delivery
-**Status:** 🟨 In Progress
-- [ ] Re-run TMUX reference audit and record final counts
-- [ ] Confirm no functional TMUX runtime logic remains
-- [ ] Publish migration notes in docs and STATUS.md
+**Status:** ✅ Complete
+- [x] Re-run TMUX reference audit and record final counts
+- [x] Confirm no functional TMUX runtime logic remains
+- [x] Publish migration notes in docs and STATUS.md
 
 ---
 
@@ -89,6 +89,9 @@
 | 2026-04-02 23:59 | Step 3 full suite | Full `extensions/tests/*.test.ts` suite passed (3400 pass / 0 fail) |
 | 2026-04-03 00:00 | Step 3 CLI smoke | Ran `node bin/taskplane.mjs help` and `doctor`; doctor reported expected missing local `.pi` files in lane root |
 | 2026-04-03 00:00 | Step 3 completed | Migration coverage complete; proceeding to final verification/delivery |
+| 2026-04-03 00:06 | Step 4 TMUX audit | `tmux-reference-audit --json` totals: references=88, filesScanned=37, filesWithReferences=16; category split compat=38, user-facing=12, comments=30, types=8 |
+| 2026-04-03 00:07 | Step 4 strict runtime audit | `tmux-reference-audit --json --strict` passed with `functionalUsage.count=0` |
+| 2026-04-03 00:08 | Step 4 migration notes | Added final TP-126 migration notes in runtime-v2 rollout spec and aligned settings section wording in `docs/reference/commands.md` |
 |-----------|--------|---------|
 | 2026-04-02 21:35 | Review R001 | plan Step 1: REVISE |
 | 2026-04-02 21:35 | Review R002 | plan Step 1: APPROVE |
@@ -99,3 +102,4 @@
 | 2026-04-02 22:02 | Worker iter 1 | killed (wall-clock timeout) in 1800s, tools: 224 |
 | 2026-04-02 22:08 | Review R007 | code Step 2: APPROVE |
 | 2026-04-02 22:08 | Review R008 | plan Step 3: APPROVE |
+| 2026-04-02 22:19 | Review R009 | code Step 3: APPROVE |

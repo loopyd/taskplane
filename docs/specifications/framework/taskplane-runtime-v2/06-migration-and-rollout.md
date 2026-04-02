@@ -215,6 +215,20 @@ Workspace-mode smoke tests and segment-roadmap prerequisites pass on Runtime V2.
 
 No production path requires TMUX. Legacy code is no longer authoritative.
 
+## Phase G.1 — Final TMUX compatibility removal (TP-126) ✅ Implemented
+
+### Delivered
+
+- Removed remaining `taskplane init` TMUX-era scaffolding output (`tmux_prefix` / `tmuxPrefix`, `spawn_mode: "tmux"`) in favor of canonical Runtime V2 fields (`session_prefix` / `sessionPrefix`, `spawn_mode: "subprocess"`).
+- Added CLI integration regressions that verify repo/workspace scaffolds emit canonical subprocess/session-prefix fields only.
+- Added migration failure regressions proving injected legacy config (`tmuxPrefix`, `spawnMode: "tmux"`) now fails with explicit fix guidance.
+- Updated test fixtures that still used TMUX-era spawn-mode defaults where they were no longer testing compatibility behavior.
+
+### Exit gate
+
+- `taskplane init` scaffolds are aligned with the no-TMUX config contract.
+- Legacy config ingress remains migration-only with explicit errors/warnings.
+
 ## 4. Feature flag strategy
 
 Introduce a project/runtime config gate such as:

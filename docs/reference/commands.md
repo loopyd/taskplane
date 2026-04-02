@@ -607,7 +607,7 @@ Open the interactive settings TUI for viewing and editing taskplane configuratio
 
 | Section | Description |
 |---------|-------------|
-| Orchestrator | Lanes, worktree layout, spawn mode, operator ID |
+| Orchestrator | Lanes, worktree layout, session prefix, operator ID |
 | Dependencies | Dependency source and caching |
 | Assignment | Task assignment strategy |
 | Pre-Warm | Auto-detection settings |
