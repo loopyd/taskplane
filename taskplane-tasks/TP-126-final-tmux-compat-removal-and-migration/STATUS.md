@@ -4,7 +4,7 @@
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-02
 **Review Level:** 3
-**Review Counter:** 0
+**Review Counter:** 1
 **Iteration:** 1
 **Size:** L
 
@@ -31,6 +31,7 @@
 **Status:** 🟨 In Progress
 - [ ] Remove/retire `tmuxPrefix` config alias handling
 - [ ] Remove/retire `tmuxSessionName` persisted-lane ingress handling
+- [ ] [R001] Preserve one-release migration-only handling for `lanes[].tmuxSessionName` (warn + normalize to `laneSessionId` + canonical rewrite on save)
 - [ ] Remove/retire `spawnMode: "tmux"` acceptance paths
 - [ ] Keep explicit migration guidance in errors/warnings
 
@@ -55,6 +56,10 @@
 
 ---
 
+## Notes
+
+- R001 suggestion: keep Step 1 operator guidance consistent by ensuring hard failures include concrete fix hints (`tmuxPrefix` → `sessionPrefix`, `spawn_mode: tmux` → `subprocess`).
+
 ## Execution Log
 
 | Timestamp | Action | Outcome |
@@ -63,3 +68,4 @@
 | 2026-04-02 21:45 | Step 0 completed | Legacy inputs + migration policy documented in STATUS.md |
 | 2026-04-02 21:45 | Step 1 started | Remove remaining compatibility paths |
 |-----------|--------|---------|
+| 2026-04-02 21:35 | Review R001 | plan Step 1: REVISE |
