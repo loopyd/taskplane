@@ -2,6 +2,9 @@
 
 Copy this template when creating a new task. Replace all `[bracketed]` fields.
 
+**Before creating:** Verify you have scored complexity and assigned Review Level.
+Review Level 0 is ONLY for trivial changes. Most M+ tasks need Level ≥1.
+
 ---
 
 ````markdown
