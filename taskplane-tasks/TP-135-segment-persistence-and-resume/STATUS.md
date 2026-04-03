@@ -1,10 +1,10 @@
 # TP-135: Segment Persistence and Resume — Status
 
-**Current Step:** Step 1: Populate segments during execution
+**Current Step:** Step 2: Resume reconstruction
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-03
 **Review Level:** 2
-**Review Counter:** 0
+**Review Counter:** 1
 **Iteration:** 1
 **Size:** M
 
@@ -18,15 +18,15 @@
 - [x] Read PersistedSegmentRecord
 
 ### Step 1: Populate segments during execution
-**Status:** 🟨 In Progress
-- [ ] Segment start → running
-- [ ] Segment complete → succeeded
-- [ ] Segment failure → failed + diagnostic
-- [ ] Persist in batch-state.json
-- [ ] Maintain activeSegmentId
+**Status:** ✅ Complete
+- [x] Segment start → running
+- [x] Segment complete → succeeded
+- [x] Segment failure → failed + diagnostic
+- [x] Persist in batch-state.json
+- [x] Maintain activeSegmentId
 
 ### Step 2: Resume reconstruction
-**Status:** ⬜ Not Started
+**Status:** 🟨 In Progress
 - [ ] Read persisted segments for frontier
 - [ ] Identify completed segments
 - [ ] Identify in-flight segments
@@ -62,3 +62,4 @@
 | 2026-04-03 19:12 | Task started | Runtime V2 lane-runner execution |
 | 2026-04-03 19:12 | Step 0 started | Preflight |
 |-----------|--------|---------|
+| 2026-04-03 19:14 | Review R001 | plan Step 1: APPROVE |

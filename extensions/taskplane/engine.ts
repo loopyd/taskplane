@@ -20,7 +20,7 @@ import { resolveOperatorId } from "./naming.ts";
 import { applyPartialProgressToOutcomes, buildTier0EventBase, deleteBatchState, emitEngineEvent, emitTier0Event, loadBatchHistory, loadBatchState, persistRuntimeState, saveBatchHistory, seedPendingOutcomesForAllocatedLanes, syncTaskOutcomesFromMonitor, upsertTaskOutcome } from "./persistence.ts";
 import { readRegistrySnapshot, isTerminalStatus, isProcessAlive as registryIsProcessAlive } from "./process-registry.ts";
 import { buildBatchProgressSnapshot, buildEngineEventBase, defaultResilienceState, FATAL_DISCOVERY_CODES, generateBatchId, TIER0_RETRYABLE_CLASSIFICATIONS, TIER0_RETRY_BUDGETS, tier0ScopeKey, tier0WaveScopeKey } from "./types.ts";
-import type { AllocatedLane, AllocatedTask, BatchHistorySummary, BatchTaskSummary, BatchWaveSummary, DiscoveryResult, EngineEventCallback, EscalationContext, LaneExecutionResult, LaneTaskOutcome, MergeWaveResult, OrchBatchPhase, OrchBatchRuntimeState, OrchestratorConfig, ParsedTask, SupervisorAlert, SupervisorAlertCallback, TaskRunnerConfig, TaskSegmentPlan, TaskSegmentPlanMap, TaskSegmentNode, Tier0EscalationPattern, Tier0RecoveryPattern, TokenCounts, WaveExecutionResult, WorkspaceConfig } from "./types.ts";
+import type { AllocatedLane, AllocatedTask, BatchHistorySummary, BatchTaskSummary, BatchWaveSummary, DiscoveryResult, EngineEventCallback, EscalationContext, LaneExecutionResult, LaneTaskOutcome, MergeWaveResult, OrchBatchPhase, OrchBatchRuntimeState, OrchestratorConfig, ParsedTask, PersistedSegmentRecord, SupervisorAlert, SupervisorAlertCallback, TaskRunnerConfig, TaskSegmentPlan, TaskSegmentPlanMap, TaskSegmentNode, Tier0EscalationPattern, Tier0RecoveryPattern, TokenCounts, WaveExecutionResult, WorkspaceConfig } from "./types.ts";
 import { buildDependencyGraph, computeWaveAssignments, resolveBaseBranch, resolveRepoRoot, validateGraph } from "./waves.ts";
 import { deleteBranchBestEffort, forceCleanupWorktree, formatPreflightResults, listWorktrees, preserveFailedLaneProgress, removeAllWorktrees, removeWorktree, runPreflight, safeResetWorktree, sleepSync } from "./worktree.ts";
 import { runPreflightCleanup, formatPreflightCleanup } from "./cleanup.ts";
@@ -128,7 +128,171 @@ interface SegmentFrontierTaskState {
 	orderedSegments: TaskSegmentNode[];
 	nextSegmentIndex: number;
 	statusBySegmentId: Map<string, SegmentLifecycleStatus>;
+	dependsOnBySegmentId: Map<string, string[]>;
 	terminalStatus: "pending" | "succeeded" | "failed" | "skipped";
+}
+
+function buildSegmentDependencyMap(plan: TaskSegmentPlan): Map<string, string[]> {
+	const depsBySegmentId = new Map<string, string[]>();
+	for (const segment of plan.segments) {
+		depsBySegmentId.set(segment.segmentId, []);
+	}
+	for (const edge of plan.edges) {
+		if (!depsBySegmentId.has(edge.toSegmentId)) continue;
+		depsBySegmentId.get(edge.toSegmentId)!.push(edge.fromSegmentId);
+	}
+	for (const [segmentId, deps] of depsBySegmentId.entries()) {
+		depsBySegmentId.set(segmentId, [...new Set(deps)].sort((a, b) => a.localeCompare(b)));
+	}
+	return depsBySegmentId;
+}
+
+function ensureSegmentRecords(batchState: OrchBatchRuntimeState): PersistedSegmentRecord[] {
+	if (!batchState.segments) {
+		batchState.segments = [];
+	}
+	return batchState.segments;
+}
+
+function upsertRunningSegmentRecord(
+	batchState: OrchBatchRuntimeState,
+	task: ParsedTask,
+	segmentState: SegmentFrontierTaskState,
+	lane: AllocatedLane,
+): boolean {
+	const activeSegmentId = task.activeSegmentId;
+	if (!activeSegmentId) return false;
+
+	const activeSegment = segmentState.orderedSegments.find((segment) => segment.segmentId === activeSegmentId);
+	if (!activeSegment) return false;
+
+	const segmentRecords = ensureSegmentRecords(batchState);
+	const dependsOnSegmentIds = segmentState.dependsOnBySegmentId.get(activeSegmentId) ?? [];
+	const existing = segmentRecords.find((record) => record.segmentId === activeSegmentId);
+	const now = Date.now();
+
+	const restarted = !!existing
+		&& existing.status !== "running"
+		&& existing.startedAt !== null;
+
+	const next: PersistedSegmentRecord = {
+		segmentId: activeSegmentId,
+		taskId: task.taskId,
+		repoId: activeSegment.repoId,
+		status: "running",
+		laneId: lane.laneId,
+		sessionName: lane.laneSessionId,
+		worktreePath: lane.worktreePath,
+		branch: lane.branch,
+		startedAt: existing?.status === "running"
+			? existing.startedAt
+			: (existing?.startedAt ?? now),
+		endedAt: null,
+		retries: existing
+			? existing.retries + (restarted ? 1 : 0)
+			: 0,
+		exitReason: existing?.status === "running"
+			? existing.exitReason
+			: "Segment running",
+		dependsOnSegmentIds,
+		exitDiagnostic: existing?.status === "running"
+			? existing.exitDiagnostic
+			: undefined,
+	};
+
+	if (!existing) {
+		segmentRecords.push(next);
+		return true;
+	}
+
+	const changed =
+		existing.taskId !== next.taskId
+		|| existing.repoId !== next.repoId
+		|| existing.status !== next.status
+		|| existing.laneId !== next.laneId
+		|| existing.sessionName !== next.sessionName
+		|| existing.worktreePath !== next.worktreePath
+		|| existing.branch !== next.branch
+		|| existing.startedAt !== next.startedAt
+		|| existing.endedAt !== next.endedAt
+		|| existing.retries !== next.retries
+		|| existing.exitReason !== next.exitReason
+		|| existing.dependsOnSegmentIds.length !== next.dependsOnSegmentIds.length
+		|| existing.dependsOnSegmentIds.some((segmentId, idx) => segmentId !== next.dependsOnSegmentIds[idx])
+		|| existing.exitDiagnostic !== next.exitDiagnostic;
+
+	if (changed) {
+		Object.assign(existing, next);
+	}
+	return changed;
+}
+
+function upsertTerminalSegmentRecord(
+	batchState: OrchBatchRuntimeState,
+	task: ParsedTask,
+	segmentState: SegmentFrontierTaskState,
+	segmentId: string,
+	status: "succeeded" | "failed" | "skipped",
+	outcome: LaneTaskOutcome | undefined,
+	lane: AllocatedLane | undefined,
+): boolean {
+	const segment = segmentState.orderedSegments.find((candidate) => candidate.segmentId === segmentId);
+	if (!segment) return false;
+
+	const segmentRecords = ensureSegmentRecords(batchState);
+	const existing = segmentRecords.find((record) => record.segmentId === segmentId);
+	const now = Date.now();
+	const dependsOnSegmentIds = segmentState.dependsOnBySegmentId.get(segmentId) ?? [];
+	const nextExitDiagnostic = status === "failed"
+		? (outcome?.exitDiagnostic ?? existing?.exitDiagnostic)
+		: undefined;
+
+	const next: PersistedSegmentRecord = {
+		segmentId,
+		taskId: task.taskId,
+		repoId: segment.repoId,
+		status,
+		laneId: lane?.laneId ?? existing?.laneId ?? "",
+		sessionName: lane?.laneSessionId ?? existing?.sessionName ?? "",
+		worktreePath: lane?.worktreePath ?? existing?.worktreePath ?? "",
+		branch: lane?.branch ?? existing?.branch ?? "",
+		startedAt: existing?.startedAt ?? outcome?.startTime ?? now,
+		endedAt: outcome?.endTime ?? now,
+		retries: existing?.retries ?? 0,
+		exitReason: outcome?.exitReason ?? (status === "succeeded"
+			? "Segment completed"
+			: status === "failed"
+			? "Segment failed"
+			: "Segment skipped"),
+		dependsOnSegmentIds,
+		exitDiagnostic: nextExitDiagnostic,
+	};
+
+	if (!existing) {
+		segmentRecords.push(next);
+		return true;
+	}
+
+	const changed =
+		existing.taskId !== next.taskId
+		|| existing.repoId !== next.repoId
+		|| existing.status !== next.status
+		|| existing.laneId !== next.laneId
+		|| existing.sessionName !== next.sessionName
+		|| existing.worktreePath !== next.worktreePath
+		|| existing.branch !== next.branch
+		|| existing.startedAt !== next.startedAt
+		|| existing.endedAt !== next.endedAt
+		|| existing.retries !== next.retries
+		|| existing.exitReason !== next.exitReason
+		|| existing.dependsOnSegmentIds.length !== next.dependsOnSegmentIds.length
+		|| existing.dependsOnSegmentIds.some((depSegmentId, idx) => depSegmentId !== next.dependsOnSegmentIds[idx])
+		|| existing.exitDiagnostic !== next.exitDiagnostic;
+
+	if (changed) {
+		Object.assign(existing, next);
+	}
+	return changed;
 }
 
 function buildFallbackSegmentPlan(taskId: string, task: ParsedTask): TaskSegmentPlan {
@@ -226,6 +390,7 @@ export function buildSegmentFrontierWaves(
 	for (const [taskId, task] of pending.entries()) {
 		const plan = segmentPlans?.get(taskId) ?? buildFallbackSegmentPlan(taskId, task);
 		const orderedSegments = linearizeTaskSegmentPlan(plan);
+		const dependsOnBySegmentId = buildSegmentDependencyMap(plan);
 		task.segmentIds = orderedSegments.map((segment) => segment.segmentId);
 		task.activeSegmentId = null;
 		if (packetRepoId) {
@@ -238,6 +403,7 @@ export function buildSegmentFrontierWaves(
 			orderedSegments,
 			nextSegmentIndex: 0,
 			statusBySegmentId: new Map(orderedSegments.map((segment) => [segment.segmentId, "pending" as SegmentLifecycleStatus])),
+			dependsOnBySegmentId,
 			terminalStatus: "pending",
 		});
 	}
@@ -1442,8 +1608,26 @@ export async function executeOrchBatch(
 				const laneRepoRoot = resolveRepoRoot(lane.repoId, repoRoot, workspaceConfig);
 				encounteredRepoRoots.set(laneRepoRoot, lane.repoId);
 			}
-			if (seedPendingOutcomesForAllocatedLanes(lanes, allTaskOutcomes)) {
-				persistRuntimeState("wave-lanes-allocated", batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discoveryRef, stateRoot);
+			const seededPendingOutcomes = seedPendingOutcomesForAllocatedLanes(lanes, allTaskOutcomes);
+			let startedSegments = false;
+			for (const lane of lanes) {
+				for (const laneTask of lane.tasks) {
+					const task = discovery.pending.get(laneTask.taskId);
+					const segmentState = segmentStateByTask.get(laneTask.taskId);
+					if (!task || !segmentState) continue;
+					startedSegments = upsertRunningSegmentRecord(batchState, task, segmentState, lane) || startedSegments;
+				}
+			}
+			if (seededPendingOutcomes || startedSegments) {
+				persistRuntimeState(
+					startedSegments ? "segment-start" : "wave-lanes-allocated",
+					batchState,
+					wavePlan,
+					latestAllocatedLanes,
+					allTaskOutcomes,
+					discoveryRef,
+					stateRoot,
+				);
 			}
 		};
 
@@ -1631,6 +1815,12 @@ export async function executeOrchBatch(
 		const completedTaskIdsThisWave: string[] = [];
 		const failedTaskIdsThisWave: string[] = [];
 		const skippedTaskIdsThisWave: string[] = [];
+		const laneByTaskId = new Map<string, AllocatedLane>();
+		for (const lane of latestAllocatedLanes) {
+			for (const laneTask of lane.tasks) {
+				laneByTaskId.set(laneTask.taskId, lane);
+			}
+		}
 
 		for (const taskId of waveResult.succeededTaskIds) {
 			const task = discovery.pending.get(taskId);
@@ -1640,6 +1830,8 @@ export async function executeOrchBatch(
 			const activeSegmentId = task.activeSegmentId;
 			if (activeSegmentId) {
 				segmentState.statusBySegmentId.set(activeSegmentId, "succeeded");
+				const outcome = allTaskOutcomes.find((candidate) => candidate.taskId === taskId);
+				upsertTerminalSegmentRecord(batchState, task, segmentState, activeSegmentId, "succeeded", outcome, laneByTaskId.get(taskId));
 			}
 			segmentState.nextSegmentIndex += 1;
 			task.activeSegmentId = null;
@@ -1658,6 +1850,8 @@ export async function executeOrchBatch(
 			const activeSegmentId = task.activeSegmentId;
 			if (activeSegmentId) {
 				segmentState.statusBySegmentId.set(activeSegmentId, "failed");
+				const outcome = allTaskOutcomes.find((candidate) => candidate.taskId === taskId);
+				upsertTerminalSegmentRecord(batchState, task, segmentState, activeSegmentId, "failed", outcome, laneByTaskId.get(taskId));
 			}
 			task.activeSegmentId = null;
 			segmentState.terminalStatus = "failed";
@@ -1672,6 +1866,8 @@ export async function executeOrchBatch(
 			const activeSegmentId = task.activeSegmentId;
 			if (activeSegmentId) {
 				segmentState.statusBySegmentId.set(activeSegmentId, "skipped");
+				const outcome = allTaskOutcomes.find((candidate) => candidate.taskId === taskId);
+				upsertTerminalSegmentRecord(batchState, task, segmentState, activeSegmentId, "skipped", outcome, laneByTaskId.get(taskId));
 			}
 			task.activeSegmentId = null;
 			segmentState.terminalStatus = "skipped";
