@@ -1,10 +1,10 @@
 # TP-135: Segment Persistence and Resume — Status
 
-**Current Step:** Step 2: Resume reconstruction
+**Current Step:** Step 3: Reconciliation edge cases
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-03
 **Review Level:** 2
-**Review Counter:** 1
+**Review Counter:** 3
 **Iteration:** 1
 **Size:** M
 
@@ -26,16 +26,16 @@
 - [x] Maintain activeSegmentId
 
 ### Step 2: Resume reconstruction
-**Status:** 🟨 In Progress
-- [ ] Read persisted segments for frontier
-- [ ] Identify completed segments
-- [ ] Identify in-flight segments
-- [ ] Identify pending segments
-- [ ] Reconstruct DAG
-- [ ] Resume from first incomplete
+**Status:** ✅ Complete
+- [x] Read persisted segments for frontier
+- [x] Identify completed segments
+- [x] Identify in-flight segments
+- [x] Identify pending segments
+- [x] Reconstruct DAG
+- [x] Resume from first incomplete
 
 ### Step 3: Reconciliation edge cases
-**Status:** ⬜ Not Started
+**Status:** 🟨 In Progress
 - [ ] Mid-segment crash
 - [ ] Between-segment crash
 - [ ] All segments complete
@@ -63,3 +63,5 @@
 | 2026-04-03 19:12 | Step 0 started | Preflight |
 |-----------|--------|---------|
 | 2026-04-03 19:14 | Review R001 | plan Step 1: APPROVE |
+| 2026-04-03 19:22 | Review R002 | code Step 1: APPROVE |
+| 2026-04-03 19:23 | Review R003 | plan Step 2: APPROVE |
