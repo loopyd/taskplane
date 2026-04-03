@@ -1,10 +1,10 @@
 # TP-128: Full Package TMUX Extrication — Status
 
 **Current Step:** Step 6: Documentation & Delivery
-**Status:** 🟡 In Progress
+**Status:** ✅ Complete
 **Last Updated:** 2026-04-03
 **Review Level:** 2
-**Review Counter:** 14
+**Review Counter:** 15
 **Iteration:** 1
 **Size:** M
 
@@ -55,8 +55,8 @@
 
 ### Step 6: Documentation & Delivery
 **Status:** 🟨 In Progress
-- [ ] Update STATUS.md
-- [ ] Log final count
+- [x] Update STATUS.md
+- [x] Log final count
 
 ---
 
@@ -68,6 +68,24 @@
 - `templates/config/task-runner.yaml`: **3** matches
 - `extensions/taskplane/supervisor-primer.md`: **23** matches
 - `extensions/taskplane/supervisor.ts`: **7** matches
+
+## Completion Summary
+
+- Removed `install-tmux` command surface and TMUX doctor guidance from `bin/taskplane.mjs`.
+- Removed TMUX guidance language from supervisor template sources (`templates/agents/supervisor.md`, `extensions/taskplane/supervisor.ts`, `extensions/taskplane/supervisor-primer.md`).
+- Expanded `scripts/tmux-reference-audit.mjs` to recursively scan `extensions/`, `bin/`, `templates/`, and `dashboard/` with deterministic output ordering.
+- Expanded strict functional detection for JS/CJS/MJS shell-command payload forms and updated guard coverage in `extensions/tests/tmux-reference-guard.test.ts`.
+- Removed remaining functional TMUX command execution from `dashboard/server.cjs` (`getTmuxSessions`, `captureTmuxPane`) while preserving API shape.
+- Verification complete: full Node test suite passed (`3119` tests, `0` failures).
+
+## Final TMUX Reference Count (Expanded Audit)
+
+- `functionalUsage.count`: **0**
+- `extensions/*`: **291** references
+- `bin/*`: **3** references
+- `templates/*`: **4** references
+- `dashboard/*`: **60** references
+- **Total references:** **358**
 
 ## Notes
 
@@ -104,3 +122,6 @@
 | 2026-04-03 04:48 | Review R012 | plan Step 4: APPROVE |
 | 2026-04-03 04:53 | Review R013 | code Step 4: APPROVE |
 | 2026-04-03 04:54 | Review R014 | plan Step 5: APPROVE |
+| 2026-04-03 04:59 | Review R015 | code Step 5: APPROVE |
+| 2026-04-03 14:23 | Task started | Runtime V2 lane-runner execution |
+| 2026-04-03 14:23 | Task complete | .DONE created |
