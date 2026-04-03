@@ -1,9 +1,9 @@
 # Multi-Repo Task Execution Specification (#51)
 
-**Status:** Draft — requested for implementation planning
+**Status:** V2 Aligned — implementation planning baseline updated
 **Priority:** P0 (polyrepo production blocker)
 **Created:** 2026-03-27
-**Updated:** 2026-03-28
+**Updated:** 2026-04-03
 **Related:** #51, `autonomous-supervisor.md`, `implemented/polyrepo-support-spec.md`
 
 ## Problem Statement
@@ -441,43 +441,42 @@ Dashboard should display:
 
 ## Implementation Plan
 
-## Phase A — Spec + contracts (this doc)
+## Phase A — Spec + contracts (this doc) ✅ Complete
 
 - finalize data model
 - finalize env/path contract
 - finalize failure/supervisor protocol
 
-## Phase B — Planning + schema
+## Phase B — TP-081: Planning + schema baseline ✅ Complete
 
 - segment graph builder
 - batch-state v4 migration
 - deterministic segment scheduling rules
 
-## Phase C — Execution engine
+## Phase C — TP-133: Execution engine completion
 
 - dual-context execution (segment repo + packet repo)
-- packet-path env vars
+- `ExecutionUnit.packet`/`PacketPaths` authority through execution flow
 - segment-level outcome handling
 
-## Phase D — Supervisor policy integration
+## Phase D — TP-134: Lane-runner integration
 
-- segment-failure alert payloads
-- supervisor decision hooks
-- continue-unaffected behavior
+- per-segment execution in `lane-runner.ts`
+- subprocess agent-host lifecycle parity across lanes
+- packet-home write guarantees during lane execution
 
-## Phase E — Dashboard + docs + templates
+## Phase E — TP-135: Supervisor integration + observability
 
-- segment visualization
-- packet-home status visibility
-- prompt template updates for optional explicit segment hints
+- segment-failure alert payloads and decision hooks
+- mailbox/tool-driven supervisor control path
+- continue-unaffected behavior + intervention auditability
 
-## Phase F — acceptance validation
+## Phase F — TP-136: Resume + acceptance validation
 
-- polyrepo 6-task smoke passes twice consecutively
-- forced interruption + resume passes
-- dynamic segment-expansion scenario passes (worker requests new repo segment mid-task)
-- no false `.DONE` failures
-- no `TASK_AUTOSTART file not found` for valid packet paths
+- forced interruption + resume passes with deterministic segment frontier
+- polyrepo smoke pass coverage for linear and fan-out topologies
+- no false `.DONE` failures for valid packet paths
+- dynamic segment-expansion scenarios validated in post-MVP tranche
 
 ---
 
