@@ -325,7 +325,7 @@ $repoFilter.addEventListener("change", (e) => {
   // Re-render with current data
   if (currentData) {
     const batch = currentData.batch;
-    const sessions = currentData.sessions || [];
+    const sessions = currentData.sessions ?? currentData.tmuxSessions ?? [];
     if (batch) {
       renderLanesTasks(batch, sessions);
       renderMergeAgents(batch, sessions);
@@ -1389,7 +1389,7 @@ let currentData = null;
 function render(data) {
   currentData = data;
   const batch = data.batch;
-  const sessions = data.sessions || [];
+  const sessions = data.sessions ?? data.tmuxSessions ?? [];
 
   $lastUpdate.textContent = new Date().toLocaleTimeString();
 

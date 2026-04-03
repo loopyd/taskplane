@@ -1015,6 +1015,7 @@ export function startBatchInWorker(
 	let stderrBatchId = toSafeBatchId(batchState.batchId || pendingBatchId);
 	let stderrLogPath = join(telemetryDir, `${stderrBatchId}-engine-worker-stderr.log`);
 	let stderrLogStream = createWriteStream(stderrLogPath, { flags: "a" });
+	stderrLogStream.on("error", () => { /* non-fatal: telemetry stream */ });
 	let stderrTailBuffer = "";
 
 	const appendStderr = (chunk: Buffer | string) => {
@@ -1032,6 +1033,10 @@ export function startBatchInWorker(
 
 		const nextPath = join(telemetryDir, `${resolvedBatchId}-engine-worker-stderr.log`);
 		try {
+			// Flush pending writes before rotating. cork→uncork ensures buffered
+			// data is flushed synchronously before we read the file contents.
+			stderrLogStream.cork();
+			stderrLogStream.uncork();
 			stderrLogStream.end();
 			const pendingContent = existsSync(stderrLogPath) ? readFileSync(stderrLogPath, "utf-8") : "";
 			if (pendingContent) writeFileSync(nextPath, pendingContent, { flag: "a" });
@@ -1043,14 +1048,17 @@ export function startBatchInWorker(
 		stderrBatchId = resolvedBatchId;
 		stderrLogPath = nextPath;
 		stderrLogStream = createWriteStream(stderrLogPath, { flags: "a" });
+		stderrLogStream.on("error", () => { /* non-fatal: telemetry stream */ });
 	};
 
 	const readStderrTail = (lineCount = 25): string => {
+		// Prefer in-memory tail buffer (always has the freshest unflushed data)
+		// over the disk file (which may lag behind due to stream buffering).
 		let content = stderrTailBuffer;
-		try {
-			if (existsSync(stderrLogPath)) content = readFileSync(stderrLogPath, "utf-8");
-		} catch {
-			// fallback to in-memory tail
+		if (!content) {
+			try {
+				if (existsSync(stderrLogPath)) content = readFileSync(stderrLogPath, "utf-8");
+			} catch { /* fallback: empty */ }
 		}
 		const lines = content.split(/\r?\n/).filter(Boolean);
 		if (lines.length === 0) return "(no stderr output captured)";
@@ -1071,6 +1079,7 @@ export function startBatchInWorker(
 
 	// Terminal settlement guard (R001 §3): ensures onTerminal fires at most once.
 	let settled = false;
+	let errorReceivedViaIpc = false;
 	const settle = () => {
 		if (settled) return;
 		settled = true;
@@ -1110,6 +1119,7 @@ export function startBatchInWorker(
 				break;
 
 			case "error": {
+				errorReceivedViaIpc = true;
 				const sourceLabel = msg.source ? ` (${msg.source})` : "";
 				const stackLine = msg.stack?.split("\n")[0]?.trim();
 				if (batchState.phase !== "completed" && batchState.phase !== "failed") {
@@ -1172,6 +1182,12 @@ export function startBatchInWorker(
 
 	child.on("exit", (code: number | null) => {
 		if (code !== 0 && !settled) {
+			// If we already received an error IPC with diagnostics, the exit is expected
+			// (the worker calls process.exit(1) after sending the error). Skip duplicate alert.
+			if (errorReceivedViaIpc) {
+				settle();
+				return;
+			}
 			rotateStderrLogToBatch(batchState.batchId || undefined);
 			const stderrTail = readStderrTail();
 			if (batchState.phase !== "completed" && batchState.phase !== "failed") {
