@@ -1,10 +1,10 @@
 # TP-131: TMUX Naming Residual Cleanup — Status
 
-**Current Step:** Step 2: Dashboard server cleanup
+**Current Step:** Step 3: Templates and other shipped files
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-03
 **Review Level:** 1
-**Review Counter:** 2
+**Review Counter:** 3
 **Iteration:** 1
 **Size:** S
 
@@ -25,16 +25,16 @@
 - [x] Update class references in app.js and index.html
 
 ### Step 2: Dashboard server cleanup
-**Status:** 🟨 In Progress
-- [ ] Rename tmuxSessions → sessions in API response
-- [ ] Add /api/state compatibility transition (emit sessions + legacy tmuxSessions)
-- [ ] Remove/rename getTmuxSessions stub
-- [ ] Remove/rename /api/pane/* no-op endpoint
-- [ ] Document tmuxSessionName compat mapping
-- [ ] Update tmux prefix comments
+**Status:** ✅ Complete
+- [x] Rename tmuxSessions → sessions in API response
+- [x] Add /api/state compatibility transition (emit sessions + legacy tmuxSessions)
+- [x] Remove/rename getTmuxSessions stub
+- [x] Remove/rename /api/pane/* no-op endpoint
+- [x] Document tmuxSessionName compat mapping
+- [x] Update tmux prefix comments
 
 ### Step 3: Templates and other shipped files
-**Status:** ⬜ Not Started
+**Status:** 🟨 In Progress
 - [ ] Clean templates/config/task-runner.yaml
 - [ ] Clean bin/rpc-wrapper.mjs comments
 - [ ] Update task-orchestrator.ts comment
@@ -63,10 +63,14 @@
 | 2026-04-03 15:42 | Baseline tmux audit | 358 references total; 0 functional usage; roots: extensions/bin/templates/dashboard |
 | 2026-04-03 15:43 | Scope grep inventory | app.js 27, style.css 12, server.cjs 21, template 4, rpc-wrapper 3, task-orchestrator 1, audit script 19, guard test 3 |
 | 2026-04-03 15:45 | Review R002 | plan Step 2: REVISE |
+| 2026-04-03 15:46 | Review R003 | plan Step 2: APPROVE |
 | 2026-04-03 15:50 | Step 1 implementation | Renamed app.js session variables/comments and .tmux-* CSS classes to neutral session-* naming |
 | 2026-04-03 15:51 | Targeted test | tests/tmux-reference-guard.test.ts passed (2/2) |
+| 2026-04-03 15:57 | Step 2 implementation | Added sessions + legacy tmuxSessions API transition, removed /api/pane endpoint/timer, and updated session-prefix comments |
+| 2026-04-03 15:57 | Targeted test | tests/tmux-reference-guard.test.ts passed (2/2) |
+| 2026-04-03 15:57 | Verification note | grep confirmed no in-repo /api/pane consumers before endpoint removal |
 
 ## Notes
 
-- Reviewer suggestion: capture grep evidence that `/api/pane/*` is unused before removing endpoint.
+- Reviewer suggestion: capture grep evidence that `/api/pane/*` is unused before removal.
 - Reviewer suggestion: keep neutral “session ID/prefix” terminology consistent in updated comments.
