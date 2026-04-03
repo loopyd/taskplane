@@ -684,6 +684,8 @@ export interface LaneTaskOutcome {
 	taskId: string;
 	/** Final task status */
 	status: LaneTaskStatus;
+	/** Segment identifier for segment-aware execution (null for whole-task units). */
+	segmentId?: string | null;
 	/** When execution started (epoch ms), null if never started (skipped) */
 	startTime: number | null;
 	/** When execution ended (epoch ms), null if still pending */

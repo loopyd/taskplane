@@ -159,6 +159,7 @@ export async function executeTaskV2(
 	const promptPath = unit.packet.promptPath;
 	const taskFolder = unit.packet.taskFolder;
 	const taskId = unit.taskId;
+	const segmentId = unit.segmentId;
 	const workerAgentId = buildRuntimeAgentId(config.agentIdPrefix, config.laneNumber, "worker");
 
 	// ── 1. Ensure STATUS.md exists ──────────────────────────────────
@@ -183,7 +184,7 @@ export async function executeTaskV2(
 	for (let iter = 0; iter < config.maxIterations; iter++) {
 		if (pauseSignal.paused) {
 			logExecution(statusPath, "Paused", `User paused at iteration ${totalIterations}`);
-			return makeResult(taskId, workerAgentId, "skipped", startTime,
+			return makeResult(taskId, segmentId, workerAgentId, "skipped", startTime,
 				"Paused by user", false, totalIterations, cumulativeCostUsd, cumulativeTokens, config, statusPath);
 		}
 
@@ -305,7 +306,7 @@ export async function executeTaskV2(
 				iterationTelemetry = telemetry;
 				lastTelemetry = telemetry;
 				// Emit lane snapshot
-				emitSnapshot(config, taskId, "running", telemetry, statusPath);
+				emitSnapshot(config, taskId, segmentId, "running", telemetry, statusPath);
 			} catch { /* non-fatal: telemetry callback must never crash the engine */ }
 		});
 
@@ -315,7 +316,7 @@ export async function executeTaskV2(
 		let reviewerSnapshotFailures = 0;
 		const reviewerRefreshFailureThreshold = 5;
 		const reviewerRefresh = setInterval(() => {
-			const ok = emitSnapshot(config, taskId, "running", iterationTelemetry, statusPath);
+			const ok = emitSnapshot(config, taskId, segmentId, "running", iterationTelemetry, statusPath);
 			if (ok) {
 				reviewerSnapshotFailures = 0;
 				return;
@@ -445,7 +446,7 @@ export async function executeTaskV2(
 				`Iteration ${totalIterations}: 0 new checkboxes (${noProgressCount}/${config.noProgressLimit} stall limit)`);
 			if (noProgressCount >= config.noProgressLimit) {
 				logExecution(statusPath, "Task blocked", `No progress after ${noProgressCount} iterations`);
-				return makeResult(taskId, workerAgentId, "failed", startTime,
+				return makeResult(taskId, segmentId, workerAgentId, "failed", startTime,
 					`No progress after ${noProgressCount} iterations`, false, totalIterations, cumulativeCostUsd, cumulativeTokens, config, statusPath, lastTelemetry);
 			}
 		} else {
@@ -485,7 +486,7 @@ export async function executeTaskV2(
 			.map(s => `Step ${s.number}`)
 			.join(", ");
 		logExecution(statusPath, "Task incomplete", `Max iterations reached. Incomplete: ${incomplete}`);
-		return makeResult(taskId, workerAgentId, "failed", startTime,
+		return makeResult(taskId, segmentId, workerAgentId, "failed", startTime,
 			`Max iterations (${config.maxIterations}) reached with incomplete steps: ${incomplete}`,
 			false, totalIterations, cumulativeCostUsd, cumulativeTokens, config, statusPath, lastTelemetry);
 	}
@@ -497,7 +498,7 @@ export async function executeTaskV2(
 	updateStatusField(statusPath, "Status", "✅ Complete");
 	logExecution(statusPath, "Task complete", ".DONE created");
 
-	return makeResult(taskId, workerAgentId, "succeeded", startTime,
+	return makeResult(taskId, segmentId, workerAgentId, "succeeded", startTime,
 		".DONE file created by lane-runner", true, totalIterations, cumulativeCostUsd, cumulativeTokens, config, statusPath, lastTelemetry);
 }
 
@@ -522,6 +523,7 @@ export function mapLaneSnapshotStatusToWorkerStatus(
 
 function makeResult(
 	taskId: string,
+	segmentId: string | null,
 	sessionName: string,
 	status: LaneTaskStatus,
 	startTime: number,
@@ -550,6 +552,7 @@ function makeResult(
 		outcome: {
 			taskId,
 			status,
+			segmentId,
 			startTime,
 			endTime: Date.now(),
 			exitReason,
@@ -566,7 +569,7 @@ function makeResult(
 	// TP-115: Emit terminal snapshot with real telemetry from agent-host result
 	if (config && statusPath) {
 		const terminalStatus = mapLaneTaskStatusToTerminalSnapshotStatus(status);
-		emitSnapshot(config, taskId, terminalStatus, finalTelemetry ?? {}, statusPath);
+		emitSnapshot(config, taskId, segmentId, terminalStatus, finalTelemetry ?? {}, statusPath);
 	}
 
 	return result;
@@ -636,6 +639,7 @@ export function readReviewerTelemetrySnapshot(
 function emitSnapshot(
 	config: LaneRunnerConfig,
 	taskId: string,
+	segmentId: string | null,
 	status: "running" | "idle" | "complete" | "failed",
 	telemetry: Partial<AgentHostResult>,
 	statusPath: string,
@@ -666,7 +670,7 @@ function emitSnapshot(
 			laneId: `lane-${config.laneNumber}`,
 			repoId: config.repoId,
 			taskId,
-			segmentId: null,
+			segmentId,
 			status,
 			worker: {
 				agentId: buildRuntimeAgentId(config.agentIdPrefix, config.laneNumber, "worker"),

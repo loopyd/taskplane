@@ -2187,11 +2187,13 @@ export async function executeLaneV2(
 	});
 
 	for (const task of lane.tasks) {
+		const taskSegmentId = task.task.activeSegmentId ?? null;
 		if (shouldSkipRemaining || pauseSignal.paused) {
 			const reason = pauseSignal.paused ? "Skipped due to pause signal" : "Skipped due to prior task failure in lane";
 			outcomes.push({
 				taskId: task.taskId,
 				status: "skipped",
+				segmentId: taskSegmentId,
 				startTime: null,
 				endTime: null,
 				exitReason: reason,
@@ -2252,6 +2254,7 @@ export async function executeLaneV2(
 			outcomes.push({
 				taskId: task.taskId,
 				status: "failed",
+				segmentId: taskSegmentId,
 				startTime: Date.now(),
 				endTime: Date.now(),
 				exitReason: `Runtime V2 execution error: ${errMsg}`,

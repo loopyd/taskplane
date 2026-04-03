@@ -1,10 +1,10 @@
 # TP-134: Segment-Aware Lane Execution — Status
 
-**Current Step:** Step 1: Propagate segmentId
+**Current Step:** Step 2: Separate execution cwd from packet paths
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-03
 **Review Level:** 2
-**Review Counter:** 0
+**Review Counter:** 1
 **Iteration:** 1
 **Size:** M
 
@@ -17,13 +17,13 @@
 - [x] Identify path derivation points
 
 ### Step 1: Propagate segmentId
-**Status:** 🟨 In Progress
-- [ ] Pass segmentId to emitSnapshot
-- [ ] Include in lane snapshots
-- [ ] Include in telemetry/outcomes
+**Status:** ✅ Complete
+- [x] Pass segmentId to emitSnapshot
+- [x] Include in lane snapshots
+- [x] Include in telemetry/outcomes
 
 ### Step 2: Separate execution cwd from packet paths
-**Status:** ⬜ Not Started
+**Status:** 🟨 In Progress
 - [ ] Worker cwd from segment repo worktree
 - [ ] STATUS/PROMPT from packet paths
 - [ ] .DONE from packet.donePath
@@ -57,4 +57,7 @@
 | 2026-04-03 18:46 | Step 0 started | Preflight |
 | 2026-04-03 19:05 | Step 0 completed | ExecutionUnit flow/path derivation mapped |
 | 2026-04-03 19:05 | Step 1 started | Propagate segmentId |
+| 2026-04-03 19:14 | Step 1 completed | segmentId propagated to snapshots and outcomes |
+| 2026-04-03 19:14 | Step 2 started | Separate execution cwd from packet paths |
 |-----------|--------|---------|
+| 2026-04-03 18:48 | Review R001 | plan Step 1: APPROVE |
