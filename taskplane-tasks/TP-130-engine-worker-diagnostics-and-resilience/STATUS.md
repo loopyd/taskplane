@@ -1,10 +1,10 @@
 # TP-130: Engine Worker Diagnostics and Resilience — Status
 
-**Current Step:** Step 4: Tests
+**Current Step:** Step 5: Documentation & Delivery
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-03
 **Review Level:** 1
-**Review Counter:** 5
+**Review Counter:** 6
 **Iteration:** 1
 **Size:** S
 
@@ -37,16 +37,16 @@
 - [x] Reset on success
 
 ### Step 4: Tests
-**Status:** 🟨 In Progress
-- [ ] Test: uncaughtException handler exists
-- [ ] Test: unhandledRejection handler exists
-- [ ] Test: stderr capture + failure alert tail wiring exists
-- [ ] Test: snapshot failure threshold + reset wiring exists
-- [ ] Run full suite
-- [ ] Fix failures
+**Status:** ✅ Complete
+- [x] Test: uncaughtException handler exists
+- [x] Test: unhandledRejection handler exists
+- [x] Test: stderr capture + failure alert tail wiring exists
+- [x] Test: snapshot failure threshold + reset wiring exists
+- [x] Run full suite
+- [x] Fix failures
 
 ### Step 5: Documentation & Delivery
-**Status:** ⬜ Not Started
+**Status:** 🟨 In Progress
 - [ ] Update STATUS.md
 
 ---
@@ -71,8 +71,11 @@
 | 2026-04-03 15:48 | Step 3 started | Snapshot failure counter |
 | 2026-04-03 15:56 | Step 3 completed | Added snapshot failure threshold + disable warning |
 | 2026-04-03 15:56 | Step 4 started | Tests |
+| 2026-04-03 16:16 | Step 4 completed | Added resilience coverage + full suite pass |
+| 2026-04-03 16:16 | Step 5 started | Documentation & Delivery |
 | 2026-04-03 15:23 | Review R001 | plan Step 1: APPROVE |
 | 2026-04-03 15:26 | Review R002 | plan Step 2: APPROVE |
 | 2026-04-03 15:30 | Review R003 | plan Step 3: REVISE |
 | 2026-04-03 15:30 | Review R004 | plan Step 3: APPROVE |
 | 2026-04-03 15:33 | Review R005 | plan Step 4: REVISE |
+| 2026-04-03 15:34 | Review R006 | plan Step 4: APPROVE |
