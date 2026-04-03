@@ -1,10 +1,10 @@
 # TP-131: TMUX Naming Residual Cleanup — Status
 
-**Current Step:** Step 3: Templates and other shipped files
+**Current Step:** Step 4: Audit script expansion
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-03
 **Review Level:** 1
-**Review Counter:** 3
+**Review Counter:** 4
 **Iteration:** 1
 **Size:** S
 
@@ -34,13 +34,13 @@
 - [x] Update tmux prefix comments
 
 ### Step 3: Templates and other shipped files
-**Status:** 🟨 In Progress
-- [ ] Clean templates/config/task-runner.yaml
-- [ ] Clean bin/rpc-wrapper.mjs comments
-- [ ] Update task-orchestrator.ts comment
+**Status:** ✅ Complete
+- [x] Clean templates/config/task-runner.yaml
+- [x] Clean bin/rpc-wrapper.mjs comments
+- [x] Update task-orchestrator.ts comment
 
 ### Step 4: Audit script expansion
-**Status:** ⬜ Not Started
+**Status:** 🟨 In Progress
 - [ ] Add skills/ to SCAN_ROOTS
 - [ ] Update guard test if needed
 
@@ -66,9 +66,12 @@
 | 2026-04-03 15:46 | Review R003 | plan Step 2: APPROVE |
 | 2026-04-03 15:50 | Step 1 implementation | Renamed app.js session variables/comments and .tmux-* CSS classes to neutral session-* naming |
 | 2026-04-03 15:51 | Targeted test | tests/tmux-reference-guard.test.ts passed (2/2) |
+| 2026-04-03 15:51 | Review R004 | plan Step 3: APPROVE |
 | 2026-04-03 15:57 | Step 2 implementation | Added sessions + legacy tmuxSessions API transition, removed /api/pane endpoint/timer, and updated session-prefix comments |
 | 2026-04-03 15:57 | Targeted test | tests/tmux-reference-guard.test.ts passed (2/2) |
 | 2026-04-03 15:57 | Verification note | grep confirmed no in-repo /api/pane consumers before endpoint removal |
+| 2026-04-03 16:00 | Step 3 implementation | Cleaned TMUX wording in template, rpc wrapper comments, and orchestrator command header |
+| 2026-04-03 16:00 | Targeted test | tests/tmux-reference-guard.test.ts passed (2/2) |
 
 ## Notes
 
