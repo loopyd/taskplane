@@ -1,10 +1,10 @@
 # TP-131: TMUX Naming Residual Cleanup — Status
 
-**Current Step:** Step 4: Audit script expansion
+**Current Step:** Step 5: Verification
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-03
 **Review Level:** 1
-**Review Counter:** 4
+**Review Counter:** 5
 **Iteration:** 1
 **Size:** S
 
@@ -40,12 +40,12 @@
 - [x] Update task-orchestrator.ts comment
 
 ### Step 4: Audit script expansion
-**Status:** 🟨 In Progress
-- [ ] Add skills/ to SCAN_ROOTS
-- [ ] Update guard test if needed
+**Status:** ✅ Complete
+- [x] Add skills/ to SCAN_ROOTS
+- [x] Update guard test if needed
 
 ### Step 5: Verification
-**Status:** ⬜ Not Started
+**Status:** 🟨 In Progress
 - [ ] Run full test suite
 - [ ] Fix failures
 - [ ] Run audit and log final counts
@@ -72,8 +72,12 @@
 | 2026-04-03 15:57 | Verification note | grep confirmed no in-repo /api/pane consumers before endpoint removal |
 | 2026-04-03 16:00 | Step 3 implementation | Cleaned TMUX wording in template, rpc wrapper comments, and orchestrator command header |
 | 2026-04-03 16:00 | Targeted test | tests/tmux-reference-guard.test.ts passed (2/2) |
+| 2026-04-03 16:01 | Review R005 | plan Step 4: APPROVE |
+| 2026-04-03 16:02 | Step 4 implementation | Expanded audit roots to include skills/ and updated deterministic guard expectations |
+| 2026-04-03 16:02 | Targeted test | tests/tmux-reference-guard.test.ts passed (2/2) |
 
 ## Notes
 
 - Reviewer suggestion: capture grep evidence that `/api/pane/*` is unused before removal.
 - Reviewer suggestion: keep neutral “session ID/prefix” terminology consistent in updated comments.
+| 2026-04-03 15:53 | Review R005 | plan Step 4: APPROVE |
