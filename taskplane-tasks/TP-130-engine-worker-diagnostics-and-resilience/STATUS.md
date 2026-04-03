@@ -4,7 +4,7 @@
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-03
 **Review Level:** 1
-**Review Counter:** 4
+**Review Counter:** 5
 **Iteration:** 1
 **Size:** S
 
@@ -40,6 +40,8 @@
 **Status:** 🟨 In Progress
 - [ ] Test: uncaughtException handler exists
 - [ ] Test: unhandledRejection handler exists
+- [ ] Test: stderr capture + failure alert tail wiring exists
+- [ ] Test: snapshot failure threshold + reset wiring exists
 - [ ] Run full suite
 - [ ] Fix failures
 
@@ -53,6 +55,7 @@
 
 - Reviewer R003 suggestion: include lane/task + consecutive failure count in disable warning.
 - Reviewer R003 suggestion: add targeted threshold behavior test (failure threshold + success reset).
+- Reviewer R005 suggestion: keep additional coverage lightweight via source/contract tests in existing files.
 
 ## Execution Log
 
@@ -72,3 +75,4 @@
 | 2026-04-03 15:26 | Review R002 | plan Step 2: APPROVE |
 | 2026-04-03 15:30 | Review R003 | plan Step 3: REVISE |
 | 2026-04-03 15:30 | Review R004 | plan Step 3: APPROVE |
+| 2026-04-03 15:33 | Review R005 | plan Step 4: REVISE |
