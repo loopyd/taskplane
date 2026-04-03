@@ -16,7 +16,7 @@ Taskplane workspace mode currently assumes a practical execution model of **one 
 
 Observed failures (polyrepo smoke tests) are consistent with this mismatch:
 - workers complete useful code changes
-- sessions exit successfully
+- lane-runner subprocesses exit successfully
 - `.DONE`/`STATUS.md` are written in a different location than orchestrator expects
 - orchestrator marks tasks failed after apparent completion
 
@@ -116,7 +116,7 @@ This prevents split ownership and removes ambiguity during execution/resume.
 
 A task is decomposed into **segments**:
 
-- Segment = execution unit for one repo (repo-scoped worktree/session/commit stream)
+- Segment = execution unit for one repo (repo-scoped worktree/subprocess/commit stream)
 - One task can have N segments (N >= 1)
 - Segments form an intra-task DAG
 
@@ -138,6 +138,17 @@ Scheduler moves from task-level nodes to segment-level nodes:
 ---
 
 ## Execution Model
+
+### Runtime V2 execution path
+
+Execution flows through the orchestrator runtime, not `task-runner.ts`:
+
+1. `extensions/taskplane/execution.ts` builds per-lane work assignments.
+2. `buildExecutionUnit()` materializes authoritative `ExecutionUnit` payloads.
+3. `extensions/taskplane/lane-runner.ts` executes each unit in the lane process.
+4. Worker agents run as subprocesses managed by lane-runner/engine runtime services.
+
+Engine lifecycle runs in the orchestrator worker thread (`engine-worker.ts`), while the extension main thread handles command dispatch, UI state sync, and supervisor tool routing.
 
 ## Segment ordering and DAG
 
@@ -269,18 +280,15 @@ No other location may be considered authoritative for completion.
 
 ## Engine/runner path contract (new)
 
-Introduce explicit packet-path environment contract for task-runner:
+Runtime V2 uses `ExecutionUnit.packet` as the packet-path authority:
 
-- `TASK_PACKET_PROMPT_PATH`
-- `TASK_PACKET_STATUS_PATH`
-- `TASK_PACKET_DONE_PATH`
-- `TASK_PACKET_REVIEWS_DIR`
+- engine builds an `ExecutionUnit` via `buildExecutionUnit()`
+- `ExecutionUnit.packet` carries `PacketPaths` (`promptPath`, `statusPath`, `donePath`, `reviewsDir`, `taskFolder`)
+- lane execution consumes those paths directly instead of deriving packet files from `cwd`
 
 Execution `cwd` remains the active segment repo worktree.
 
-Task-runner reads/writes packet files via packet-path vars, not by deriving from `cwd`.
-
-This removes split-brain behavior between source/worktree/cross-repo paths.
+This removes split-brain behavior between source/worktree/cross-repo paths without relying on `TASK_PACKET_*` env vars.
 
 ---
 
@@ -299,6 +307,12 @@ Candidate supervisor actions:
 - continue unrelated segments/tasks
 - pause batch only when required
 - escalate to operator only for truly blocked states
+
+Runtime V2 supervisor integration is mailbox/tool driven (not terminal I/O polling). Primary controls are:
+- `orch_status()` for batch/wave/segment progress
+- `send_agent_message(...)` and `broadcast_message(...)` for steering
+- `read_agent_status(...)` / `read_agent_replies(...)` for observability
+- `orch_retry_task(...)`, `orch_skip_task(...)`, and `orch_force_merge(...)` for recovery operations
 
 This aligns with `autonomous-supervisor.md` and unattended operation goals.
 

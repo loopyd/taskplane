@@ -1,10 +1,10 @@
 # TP-132: Multi-Repo Spec V2 Alignment — Status
 
-**Current Step:** Step 1: Update execution model references
+**Current Step:** Step 2: Add MVP scope section
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-03
 **Review Level:** 1
-**Review Counter:** 0
+**Review Counter:** 1
 **Iteration:** 1
 **Size:** S
 
@@ -18,15 +18,15 @@
 - [x] Read execution.ts buildExecutionUnit()
 
 ### Step 1: Update execution model references
-**Status:** 🟨 In Progress
-- [ ] Replace TMUX references with subprocess model
-- [ ] Replace TASK_PACKET_* env vars with ExecutionUnit.packet
-- [ ] Replace task-runner.ts with lane-runner.ts
-- [ ] Update engine threading model
-- [ ] Update supervisor integration references
+**Status:** ✅ Complete
+- [x] Replace TMUX references with subprocess model
+- [x] Replace TASK_PACKET_* env vars with ExecutionUnit.packet
+- [x] Replace task-runner.ts with lane-runner.ts
+- [x] Update engine threading model
+- [x] Update supervisor integration references
 
 ### Step 2: Add MVP scope section
-**Status:** ⬜ Not Started
+**Status:** 🟨 In Progress
 - [ ] Define MVP scope
 - [ ] Defer dynamic expansion
 - [ ] Add acceptance matrix
@@ -50,3 +50,4 @@
 | 2026-04-03 17:44 | Task started | Runtime V2 lane-runner execution |
 | 2026-04-03 17:44 | Step 0 started | Preflight |
 |-----------|--------|---------|
+| 2026-04-03 17:45 | Review R001 | plan Step 1: APPROVE |
