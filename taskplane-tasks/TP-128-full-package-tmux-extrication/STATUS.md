@@ -1,23 +1,23 @@
 # TP-128: Full Package TMUX Extrication — Status
 
-**Current Step:** Not Started
-**Status:** 🔵 Ready for Execution
-**Last Updated:** 2026-04-02
+**Current Step:** Step 1: Remove TMUX from task-runner.ts
+**Status:** 🟡 In Progress
+**Last Updated:** 2026-04-03
 **Review Level:** 2
 **Review Counter:** 0
-**Iteration:** 0
+**Iteration:** 1
 **Size:** M
 
 ---
 
 ### Step 0: Preflight
-**Status:** ⬜ Not Started
-- [ ] Read PROMPT.md and STATUS.md
-- [ ] Count TMUX refs in task-runner.ts, CLI, templates, supervisor
-- [ ] Log inventory
+**Status:** ✅ Complete
+- [x] Read PROMPT.md and STATUS.md
+- [x] Count TMUX refs in task-runner.ts, CLI, templates, supervisor
+- [x] Log inventory
 
 ### Step 1: Remove TMUX from task-runner.ts
-**Status:** ⬜ Not Started
+**Status:** 🟨 In Progress
 - [ ] Remove spawnAgentTmux
 - [ ] Remove spawn_mode: "tmux" branch
 - [ ] Remove TMUX session helpers
@@ -54,7 +54,19 @@
 
 ---
 
+## TMUX Inventory (Step 0)
+
+- `extensions/task-runner.ts`: **124** matches
+- `bin/taskplane.mjs`: **51** matches
+- `templates/agents/supervisor.md`: **4** matches
+- `templates/config/task-runner.yaml`: **3** matches
+- `extensions/taskplane/supervisor-primer.md`: **23** matches
+- `extensions/taskplane/supervisor.ts`: **7** matches
+
 ## Execution Log
 
 | Timestamp | Action | Outcome |
+| 2026-04-03 04:02 | Task started | Runtime V2 lane-runner execution |
+| 2026-04-03 04:02 | Step 0 started | Preflight |
+| 2026-04-03 04:10 | TMUX inventory captured | Counted refs in task-runner, CLI, templates, and supervisor files |
 |-----------|--------|---------|
