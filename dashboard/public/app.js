@@ -325,10 +325,10 @@ $repoFilter.addEventListener("change", (e) => {
   // Re-render with current data
   if (currentData) {
     const batch = currentData.batch;
-    const tmux = currentData.tmuxSessions || [];
+    const sessions = currentData.sessions || [];
     if (batch) {
-      renderLanesTasks(batch, tmux);
-      renderMergeAgents(batch, tmux);
+      renderLanesTasks(batch, sessions);
+      renderMergeAgents(batch, sessions);
     }
   }
 });
@@ -510,14 +510,14 @@ function renderSummary(batch) {
 
 // ─── Render: Lanes + Tasks (integrated) ─────────────────────────────────────
 
-function renderLanesTasks(batch, tmuxSessions) {
+function renderLanesTasks(batch, sessions) {
   if (!batch || !batch.lanes || batch.lanes.length === 0) {
     $lanesTasksBody.innerHTML = '<div class="empty-state">No lanes</div>';
     return;
   }
 
   const tasks = batch.tasks || [];
-  const tmuxSet = new Set(tmuxSessions || []);
+  const sessionSet = new Set(sessions || []);
   const laneStates = currentData?.laneStates || {};
   const telemetry = currentData?.telemetry || {};
   // TP-107: V2 lane snapshots take precedence over legacy lane states when present
@@ -534,10 +534,10 @@ function renderLanesTasks(batch, tmuxSessions) {
       if (!laneMatchesRepo) continue;
     }
 
-    // TP-107: check V2 registry for liveness first, fall back to tmux
+    // TP-107: check Runtime V2 registry for liveness first, fall back to session list
     const laneSessionId = lane.laneSessionId;
     const v2Alive = isLaneAliveV2(lane.laneNumber);
-    const alive = v2Alive !== null ? v2Alive : tmuxSet.has(laneSessionId);
+    const alive = v2Alive !== null ? v2Alive : sessionSet.has(laneSessionId);
     const sessionChip = `session: ${laneSessionId}`;
 
     // Lane header
@@ -552,14 +552,14 @@ function renderLanesTasks(batch, tmuxSessions) {
     }
     html += `  </div>`;
     html += `  <div class="lane-right">`;
-    html += `    <span class="tmux-dot ${alive ? "alive" : "dead"}" title="${alive ? "session alive" : "session not active"}"></span>`;
+    html += `    <span class="session-dot ${alive ? "alive" : "dead"}" title="${alive ? "session alive" : "session not active"}"></span>`;
     // View button: shows conversation stream when available
     const isViewingConv = viewerMode === 'conversation' && viewerTarget === laneSessionId;
-    html += `    <button class="tmux-view-btn${isViewingConv ? ' active' : ''}" onclick="viewConversation('${escapeHtml(laneSessionId)}')" title="View worker conversation">👁 View</button>`;
+    html += `    <button class="session-view-btn${isViewingConv ? ' active' : ''}" onclick="viewConversation('${escapeHtml(laneSessionId)}')" title="View worker conversation">👁 View</button>`;
     if (alive) {
-      html += `    <span class="tmux-cmd" data-session="${escapeHtml(laneSessionId)}" onclick="copySessionId('${escapeHtml(laneSessionId)}')" title="Copy session ID">${escapeHtml(sessionChip)}</span>`;
+      html += `    <span class="session-cmd" data-session="${escapeHtml(laneSessionId)}" onclick="copySessionId('${escapeHtml(laneSessionId)}')" title="Copy session ID">${escapeHtml(sessionChip)}</span>`;
     } else {
-      html += `    <span class="tmux-cmd dead-session">${escapeHtml(sessionChip)}</span>`;
+      html += `    <span class="session-cmd dead-session">${escapeHtml(sessionChip)}</span>`;
     }
     html += `  </div>`;
     html += `</div>`;
@@ -774,14 +774,14 @@ function mergeTelemetryHtml(tel, alive) {
   return html;
 }
 
-function renderMergeAgents(batch, tmuxSessions) {
+function renderMergeAgents(batch, sessions) {
   const mergeResults = batch?.mergeResults || [];
-  const tmuxSet = new Set(tmuxSessions || []);
+  const sessionSet = new Set(sessions || []);
   const showRepos = knownRepos.length >= 2;
   const telemetry = currentData?.telemetry || {};
 
   // Check for active merge sessions (convention: {prefix}-{opId}-merge-{N})
-  const mergeSessions = (tmuxSessions || []).filter(s => s.includes("-merge-"));
+  const mergeSessions = (sessions || []).filter(s => s.includes("-merge-"));
 
   // Derive merge session name from lane session naming pattern.
   // Lane sessions: "{prefix}-{opId}-lane-{N}", merge sessions: "{prefix}-{opId}-merge-{N}".
@@ -845,14 +845,14 @@ function renderMergeAgents(batch, tmuxSessions) {
     let effectiveSession = null;
     for (const ln of waveLaneNums) {
       const candidate = getMergeSessionName(ln);
-      if (tmuxSet.has(candidate) && !shownSessions.has(candidate)) {
+      if (sessionSet.has(candidate) && !shownSessions.has(candidate)) {
         effectiveSession = candidate;
         break;
       }
     }
     // Fallback: any unshown alive merge session
     if (!effectiveSession) {
-      effectiveSession = mergeSessions.find(s => tmuxSet.has(s) && !shownSessions.has(s)) || null;
+      effectiveSession = mergeSessions.find(s => sessionSet.has(s) && !shownSessions.has(s)) || null;
     }
     const effectiveAlive = !!effectiveSession;
     if (effectiveSession) shownSessions.add(effectiveSession);
@@ -876,7 +876,7 @@ function renderMergeAgents(batch, tmuxSessions) {
     html += `<td>`;
     if (effectiveAlive) {
       const sessionChip = `session: ${effectiveSession}`;
-      html += `<span class="tmux-cmd" data-session="${escapeHtml(effectiveSession)}" onclick="copySessionId('${escapeHtml(effectiveSession)}')" title="Copy session ID">${escapeHtml(sessionChip)}</span>`;
+      html += `<span class="session-cmd" data-session="${escapeHtml(effectiveSession)}" onclick="copySessionId('${escapeHtml(effectiveSession)}')" title="Copy session ID">${escapeHtml(sessionChip)}</span>`;
     } else {
       html += '<span class="merge-no-data">—</span>';
     }
@@ -921,7 +921,7 @@ function renderMergeAgents(batch, tmuxSessions) {
     html += `<td class="merge-session-cell">${escapeHtml(sess)}</td>`;
     // Full telemetry cell for active merge session
     html += `<td class="merge-telemetry-cell">${mergeTelemetryHtml(sessTel, true)}</td>`;
-    html += `<td><span class="tmux-cmd" data-session="${escapeHtml(sess)}" onclick="copySessionId('${escapeHtml(sess)}')" title="Copy session ID">${escapeHtml(sessionChip)}</span></td>`;
+    html += `<td><span class="session-cmd" data-session="${escapeHtml(sess)}" onclick="copySessionId('${escapeHtml(sess)}')" title="Copy session ID">${escapeHtml(sessionChip)}</span></td>`;
     html += `<td>—</td>`;
     html += `</tr>`;
   }
@@ -1389,7 +1389,7 @@ let currentData = null;
 function render(data) {
   currentData = data;
   const batch = data.batch;
-  const tmux = data.tmuxSessions || [];
+  const sessions = data.sessions || [];
 
   $lastUpdate.textContent = new Date().toLocaleTimeString();
 
@@ -1423,8 +1423,8 @@ function render(data) {
   updateRepoFilter(repos);
 
   renderSupervisor(data);
-  renderLanesTasks(batch, tmux);
-  renderMergeAgents(batch, tmux);
+  renderLanesTasks(batch, sessions);
+  renderMergeAgents(batch, sessions);
   // TP-107: Runtime V2 panels
   renderAgentsPanel(data.runtimeRegistry);
   renderMessagesPanel(data.mailbox);
@@ -1492,7 +1492,7 @@ let lastStatusMdText = "";
 // ── Open conversation viewer (TP-107: V2 events preferred, legacy fallback) ──
 
 /**
- * Resolve a lane's tmux session name to a Runtime V2 agent ID via the registry.
+ * Resolve a lane session ID to a Runtime V2 agent ID via the registry.
  * Returns null if no V2 registry data is available.
  */
 function resolveV2AgentId(sessionName) {
@@ -1500,7 +1500,7 @@ function resolveV2AgentId(sessionName) {
   const agents = currentData.runtimeRegistry.agents;
   // Direct match on agentId
   if (agents[sessionName]) return sessionName;
-  // Match by tmux session prefix + "-worker" suffix (common V2 naming)
+  // Match by session ID prefix + "-worker" suffix (common V2 naming)
   const workerKey = sessionName + '-worker';
   if (agents[workerKey]) return workerKey;
   // Search by laneNumber match from lane snapshots
