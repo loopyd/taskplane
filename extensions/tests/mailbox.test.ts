@@ -859,14 +859,12 @@ describe("TP-090: task-runner steering annotation contract (source extraction)",
 		expect(taskRunnerSrc).toContain("function sanitizeSteeringContent");
 	});
 
-	it("steeringPendingPath is passed only for worker sessions", () => {
-		// Worker spawn has steeringPendingPath
-		expect(taskRunnerSrc).toContain("steeringPendingPath,");
-		// The option is defined in spawnAgentTmux
-		expect(taskRunnerSrc).toContain("steeringPendingPath?:");
+	it("subprocess runner no longer passes explicit steeringPendingPath spawn options", () => {
+		expect(taskRunnerSrc).not.toContain("steeringPendingPath,");
+		expect(taskRunnerSrc).not.toContain("steeringPendingPath?:");
 	});
 
-	it("rpc-wrapper passes --steering-pending-path from opts", () => {
-		expect(taskRunnerSrc).toContain("--steering-pending-path");
+	it("subprocess runner has no rpc-wrapper --steering-pending-path flag", () => {
+		expect(taskRunnerSrc).not.toContain("--steering-pending-path");
 	});
 });
