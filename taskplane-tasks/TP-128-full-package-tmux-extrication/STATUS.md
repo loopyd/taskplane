@@ -1,10 +1,10 @@
 # TP-128: Full Package TMUX Extrication — Status
 
-**Current Step:** Step 2: Remove TMUX from CLI
+**Current Step:** Step 1: Remove TMUX from task-runner.ts
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-03
 **Review Level:** 2
-**Review Counter:** 1
+**Review Counter:** 2
 **Iteration:** 1
 **Size:** M
 
@@ -17,15 +17,17 @@
 - [x] Log inventory
 
 ### Step 1: Remove TMUX from task-runner.ts
-**Status:** ✅ Complete
+**Status:** 🟨 In Progress
 - [x] Remove spawnAgentTmux
 - [x] Remove spawn_mode: "tmux" branch
 - [x] Remove TMUX session helpers
 - [x] Keep subprocess path working
 - [x] Update tests
+- [ ] R002: Migrate persistent-worker-context test expectations to subprocess-only behavior
+- [ ] R002: Reconcile mailbox steering tests with subprocess task-runner behavior
 
 ### Step 2: Remove TMUX from CLI
-**Status:** 🟨 In Progress
+**Status:** ⬜ Not Started
 - [ ] Remove doctor TMUX checks
 - [ ] Remove install-tmux guidance
 - [ ] Update help text
@@ -63,6 +65,11 @@
 - `extensions/taskplane/supervisor-primer.md`: **23** matches
 - `extensions/taskplane/supervisor.ts`: **7** matches
 
+## Notes
+
+- R002 Suggestion: Prefer behavioral subprocess tests over source-string checks when replacing removed TMUX assertions.
+- R002 Suggestion: Document steering contract shifts in mailbox/task-runner test comments where behavior changed.
+
 ## Execution Log
 
 | Timestamp | Action | Outcome |
@@ -71,3 +78,4 @@
 | 2026-04-03 04:10 | TMUX inventory captured | Counted refs in task-runner, CLI, templates, and supervisor files |
 |-----------|--------|---------|
 | 2026-04-03 04:03 | Review R001 | plan Step 1: APPROVE |
+| 2026-04-03 04:19 | Review R002 | code Step 1: REVISE |
