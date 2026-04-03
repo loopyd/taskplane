@@ -78,6 +78,8 @@
 | 2026-04-03 16:05 | Full test suite | extensions tests/*.test.ts passed (3124/3124) |
 | 2026-04-03 16:05 | Final tmux audit | 298 refs total; 0 functional usage; filesScanned 179; roots include skills |
 | 2026-04-03 16:06 | Dashboard smoke check | Started dashboard on :4011 and fetched /, /app.js, /style.css successfully |
+| 2026-04-03 15:58 | Worker iter 1 | done in 1163s, tools: 181 |
+| 2026-04-03 15:58 | Task complete | .DONE created |
 
 ## Notes
 
