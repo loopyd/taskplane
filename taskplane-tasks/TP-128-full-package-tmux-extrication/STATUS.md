@@ -1,10 +1,10 @@
 # TP-128: Full Package TMUX Extrication — Status
 
-**Current Step:** Step 5: Tests and verification
+**Current Step:** Step 6: Documentation & Delivery
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-03
 **Review Level:** 2
-**Review Counter:** 12
+**Review Counter:** 14
 **Iteration:** 1
 **Size:** M
 
@@ -48,13 +48,13 @@
 - [x] Update guard test for expanded scope and deterministic ordering
 
 ### Step 5: Tests and verification
-**Status:** 🟨 In Progress
-- [ ] Run full suite
-- [ ] Fix failures
-- [ ] Run expanded audit
+**Status:** ✅ Complete
+- [x] Run full suite
+- [x] Fix failures
+- [x] Run expanded audit
 
 ### Step 6: Documentation & Delivery
-**Status:** ⬜ Not Started
+**Status:** 🟨 In Progress
 - [ ] Update STATUS.md
 - [ ] Log final count
 
@@ -102,3 +102,5 @@
 | 2026-04-03 04:45 | Review R010 | code Step 3: APPROVE |
 | 2026-04-03 04:47 | Review R011 | plan Step 4: REVISE |
 | 2026-04-03 04:48 | Review R012 | plan Step 4: APPROVE |
+| 2026-04-03 04:53 | Review R013 | code Step 4: APPROVE |
+| 2026-04-03 04:54 | Review R014 | plan Step 5: APPROVE |
