@@ -1,7 +1,7 @@
 # TP-129: Live Context % and Full Reviewer Telemetry — Status
 
 **Current Step:** Step 4: Documentation & Delivery
-**Status:** 🟡 In Progress
+**Status:** ✅ Complete
 **Last Updated:** 2026-04-03
 **Review Level:** 1
 **Review Counter:** 4
@@ -39,8 +39,8 @@
 - [x] Fix failures
 
 ### Step 4: Documentation & Delivery
-**Status:** 🟨 In Progress
-- [ ] Update STATUS.md
+**Status:** ✅ Complete
+- [x] Update STATUS.md
 
 ---
 
@@ -52,14 +52,18 @@
 | 2026-04-03 15:14 | Worker telemetry documented | Worker row renders ⏱ elapsed, 🔧 tool count, 📊 context %, 🪙 token summary (input+cacheRead, output, optional cost), last tool label, and retry/compaction badges |
 | 2026-04-03 15:14 | Step 0 completed | Advancing to Step 1 |
 | 2026-04-03 15:15 | Review R001 | plan Step 1: REVISE; hydrate Step 1/Step 3 checklist with initial-request + bounded-cadence requirements |
+| 2026-04-03 15:11 | Review R002 | plan Step 1: APPROVE |
 | 2026-04-03 15:18 | Step 1 implemented | agent-host now requests get_session_stats on assistant message #1 and every 5 assistant message_end events |
 | 2026-04-03 15:18 | Step 1 completed | Advancing to Step 2 |
+| 2026-04-03 15:14 | Review R003 | plan Step 2: APPROVE |
 | 2026-04-03 15:24 | Step 2 implementation | Reviewer sub-row now shows worker-style badges: ⏱ elapsed, 🔧 tools, 📊 context, 🪙 token summary, last tool |
 | 2026-04-03 15:24 | Server field check | `dashboard/server.cjs` already synthesizes reviewer elapsed/context/tokens/cost fields; no server patch required |
 | 2026-04-03 15:24 | Step 2 completed | Advancing to Step 3 |
+| 2026-04-03 15:17 | Review R004 | plan Step 3: APPROVE |
 | 2026-04-03 15:30 | Full test suite | `node --test tests/*.test.ts` passed (3120 passed, 0 failed) |
 | 2026-04-03 15:30 | Failure remediation | No test failures observed; no fixes required |
 | 2026-04-03 15:30 | Step 3 completed | Advancing to Step 4 |
+| 2026-04-03 15:32 | Step 4 completed | STATUS finalized with implementation/test summary |
 
 ## Notes
 
@@ -72,6 +76,10 @@
   - Retry/compaction badges from telemetry sidecar (`retryActive`/`retries`, `compactions`)
 - Plan review suggestion noted: prefer deterministic turn-based cadence over timers for easier testability and lower edge-case risk.
 - Reviewer `📊` context badge already existed; parity update retained it in the same `worker-stat` badge layout while adding missing elapsed/token badges.
-| 2026-04-03 15:11 | Review R002 | plan Step 1: APPROVE |
-| 2026-04-03 15:14 | Review R003 | plan Step 2: APPROVE |
-| 2026-04-03 15:17 | Review R004 | plan Step 3: APPROVE |
+
+## Completion Summary
+
+- `extensions/taskplane/agent-host.ts`: replaced one-shot `statsRequested` flow with periodic `get_session_stats` requests (first assistant message + every 5 assistant `message_end` events).
+- `dashboard/public/app.js`: upgraded reviewer sub-row to worker-style telemetry badges with elapsed (`⏱`), token summary (`🪙`), context (`📊`), tool count (`🔧`), and last tool.
+- `extensions/tests/process-registry.test.ts`: added structural test (`9.8`) asserting immediate + bounded-cadence stats request behavior.
+- Verification: full suite passed (`3120` passed, `0` failed).
