@@ -1,10 +1,10 @@
 # TP-129: Live Context % and Full Reviewer Telemetry — Status
 
-**Current Step:** Step 3: Tests
+**Current Step:** Step 4: Documentation & Delivery
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-03
 **Review Level:** 1
-**Review Counter:** 3
+**Review Counter:** 4
 **Iteration:** 1
 **Size:** M
 
@@ -33,13 +33,13 @@
 - [x] Verify badge layout matches worker row
 
 ### Step 3: Tests
-**Status:** 🟨 In Progress
-- [ ] Test: initial immediate stats request is preserved and periodic follow-ups occur at bounded cadence
-- [ ] Run full suite
-- [ ] Fix failures
+**Status:** ✅ Complete
+- [x] Test: initial immediate stats request is preserved and periodic follow-ups occur at bounded cadence
+- [x] Run full suite
+- [x] Fix failures
 
 ### Step 4: Documentation & Delivery
-**Status:** ⬜ Not Started
+**Status:** 🟨 In Progress
 - [ ] Update STATUS.md
 
 ---
@@ -57,6 +57,9 @@
 | 2026-04-03 15:24 | Step 2 implementation | Reviewer sub-row now shows worker-style badges: ⏱ elapsed, 🔧 tools, 📊 context, 🪙 token summary, last tool |
 | 2026-04-03 15:24 | Server field check | `dashboard/server.cjs` already synthesizes reviewer elapsed/context/tokens/cost fields; no server patch required |
 | 2026-04-03 15:24 | Step 2 completed | Advancing to Step 3 |
+| 2026-04-03 15:30 | Full test suite | `node --test tests/*.test.ts` passed (3120 passed, 0 failed) |
+| 2026-04-03 15:30 | Failure remediation | No test failures observed; no fixes required |
+| 2026-04-03 15:30 | Step 3 completed | Advancing to Step 4 |
 
 ## Notes
 
@@ -71,3 +74,4 @@
 - Reviewer `📊` context badge already existed; parity update retained it in the same `worker-stat` badge layout while adding missing elapsed/token badges.
 | 2026-04-03 15:11 | Review R002 | plan Step 1: APPROVE |
 | 2026-04-03 15:14 | Review R003 | plan Step 2: APPROVE |
+| 2026-04-03 15:17 | Review R004 | plan Step 3: APPROVE |
