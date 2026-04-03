@@ -1120,6 +1120,8 @@ export function startBatchInWorker(
 
 			case "error": {
 				errorReceivedViaIpc = true;
+				rotateStderrLogToBatch(batchState.batchId || undefined);
+				const stderrTail = readStderrTail();
 				const sourceLabel = msg.source ? ` (${msg.source})` : "";
 				const stackLine = msg.stack?.split("\n")[0]?.trim();
 				if (batchState.phase !== "completed" && batchState.phase !== "failed") {
@@ -1134,6 +1136,36 @@ export function startBatchInWorker(
 					`   Batch ${batchState.batchId} marked as failed.`,
 					"error",
 				);
+				// Alert supervisor — this is the PRIMARY notification path for engine
+				// crashes caught by uncaughtException/unhandledRejection handlers.
+				// The child.on("exit") handler is suppressed when errorReceivedViaIpc
+				// is true, so this is the only path that reaches the supervisor.
+				onSupervisorAlert?.({
+					category: "task-failure",
+					summary:
+						`🔴 Engine crashed with unhandled error${sourceLabel}: ${msg.message}\n` +
+						(stackLine ? `  Stack: ${stackLine}\n` : "") +
+						`  Batch ${batchState.batchId} marked as failed.\n\n` +
+						`Engine stderr tail (${stderrLogPath}):\n${stderrTail}\n\n` +
+						`This is a critical engine failure. The batch cannot continue.\n` +
+						`Available actions:\n` +
+						`  - orch_status() to inspect state\n` +
+						`  - orch_resume(force=true) to retry from last checkpoint`,
+					context: {
+						batchProgress: batchState.totalTasks > 0 ? {
+							succeededTasks: batchState.succeededTasks,
+							failedTasks: batchState.failedTasks,
+							skippedTasks: batchState.skippedTasks,
+							blockedTasks: batchState.blockedTasks,
+							totalTasks: batchState.totalTasks,
+							currentWave: batchState.currentWaveIndex + 1,
+							totalWaves: batchState.totalWaves,
+						} : undefined,
+					},
+				});
+				// Persist failed state to disk so dashboard/resume see it.
+				// The engine-worker is dead and can't persist — we must do it here.
+				try { saveBatchState(JSON.stringify(batchState, null, 2), wkData.cwd); } catch { /* best effort */ }
 				updateWidget();
 				break;
 			}
@@ -1223,6 +1255,8 @@ export function startBatchInWorker(
 					} : undefined,
 				},
 			});
+			// Persist failed state to disk (engine is dead, can't persist itself)
+			try { saveBatchState(JSON.stringify(batchState, null, 2), wkData.cwd); } catch { /* best effort */ }
 		}
 		settle();
 	});
