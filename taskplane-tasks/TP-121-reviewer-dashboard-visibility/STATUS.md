@@ -4,7 +4,7 @@
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-03
 **Review Level:** 2
-**Review Counter:** 6
+**Review Counter:** 8
 **Iteration:** 1
 **Size:** M
 
@@ -40,9 +40,9 @@
 
 ### Step 4: Dashboard frontend — verify reviewer sub-row
 **Status:** ⬜ Not Started
-- [ ] Verify reviewerActive check works with V2 data
-- [ ] Adjust if needed
-- [ ] Test appearance/disappearance
+- [x] Verify reviewerActive check works with V2 data
+- [x] Adjust if needed
+- [x] Test appearance/disappearance
 
 ### Step 5: Tests
 **Status:** ⬜ Not Started
@@ -74,3 +74,5 @@
 | 2026-04-03 03:15 | Review R004 | plan Step 2: APPROVE |
 | 2026-04-03 03:18 | Review R005 | code Step 2: APPROVE |
 | 2026-04-03 03:19 | Review R006 | plan Step 3: APPROVE |
+| 2026-04-03 03:23 | Review R007 | code Step 3: APPROVE |
+| 2026-04-03 03:24 | Review R008 | plan Step 4: APPROVE |
