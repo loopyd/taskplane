@@ -1,10 +1,10 @@
 # TP-135: Segment Persistence and Resume — Status
 
-**Current Step:** Step 3: Reconciliation edge cases
+**Current Step:** Step 4: Tests
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-03
 **Review Level:** 2
-**Review Counter:** 5
+**Review Counter:** 7
 **Iteration:** 1
 **Size:** M
 
@@ -40,14 +40,14 @@
 - [x] R005: Add integration-order regression test (reconstructSegmentFrontier → reconcileTaskStates)
 
 ### Step 3: Reconciliation edge cases
-**Status:** 🟨 In Progress
-- [ ] Mid-segment crash
-- [ ] Between-segment crash
-- [ ] All segments complete
-- [ ] Segment failure + dependents
+**Status:** ✅ Complete
+- [x] Mid-segment crash
+- [x] Between-segment crash
+- [x] All segments complete
+- [x] Segment failure + dependents
 
 ### Step 4: Tests
-**Status:** ⬜ Not Started
+**Status:** 🟨 In Progress
 - [ ] Test segments in batch-state
 - [ ] Test resume frontier reconstruction
 - [ ] Test mid-segment crash resume
@@ -77,3 +77,5 @@
 | 2026-04-03 19:23 | Review R003 | plan Step 2: APPROVE |
 | 2026-04-03 19:31 | Review R004 | code Step 2: REVISE |
 | 2026-04-03 19:36 | Review R005 | code Step 2: REVISE |
+| 2026-04-03 19:39 | Review R006 | code Step 2: APPROVE |
+| 2026-04-03 19:39 | Review R007 | plan Step 3: APPROVE |

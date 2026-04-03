@@ -156,4 +156,139 @@ describe("TP-135 resume segment fallback behavior", () => {
 		expect(point.resumeWaveIndex).toBe(2);
 		expect(point.pendingTaskIds).toEqual([]);
 	});
+
+	it("mid-segment crash re-executes the running segment", () => {
+		const state = makeState({
+			tasks: [{
+				taskId: "TP-020",
+				laneNumber: 1,
+				sessionName: "orch-lane-1",
+				status: "running",
+				taskFolder: "/tmp/tasks/TP-020",
+				startedAt: Date.now() - 1000,
+				endedAt: null,
+				doneFileFound: false,
+				exitReason: "",
+				segmentIds: ["TP-020::api"],
+				activeSegmentId: "TP-020::api",
+			}],
+			segments: [
+				makeSegment({ taskId: "TP-020", segmentId: "TP-020::api", status: "running" }),
+			],
+		});
+
+		reconstructSegmentFrontier(state);
+		expect(state.tasks[0].activeSegmentId).toBe("TP-020::api");
+
+		const reconciled = reconcileTaskStates(state, new Set(), new Set(), new Set(["TP-020"]));
+		expect(reconciled[0].action).toBe("re-execute");
+	});
+
+	it("between-segment crash resumes from next pending segment", () => {
+		const state = makeState({
+			wavePlan: [["TP-021"], ["TP-021"]],
+			totalWaves: 2,
+			tasks: [{
+				taskId: "TP-021",
+				laneNumber: 1,
+				sessionName: "orch-lane-1",
+				status: "running",
+				taskFolder: "/tmp/tasks/TP-021",
+				startedAt: Date.now() - 1000,
+				endedAt: null,
+				doneFileFound: false,
+				exitReason: "",
+				segmentIds: ["TP-021::api", "TP-021::web"],
+				activeSegmentId: null,
+			}],
+			segments: [
+				makeSegment({ taskId: "TP-021", segmentId: "TP-021::api", status: "succeeded", endedAt: Date.now() - 100 }),
+			],
+		});
+
+		reconstructSegmentFrontier(state);
+		expect(state.tasks[0].activeSegmentId).toBe("TP-021::web");
+		expect(state.tasks[0].status).toBe("pending");
+
+		const reconciled = reconcileTaskStates(state, new Set(), new Set(), new Set(["TP-021"]));
+		expect(reconciled[0].action).toBe("re-execute");
+	});
+
+	it("all segments complete keeps task terminal and resumes past final wave", () => {
+		const state = makeState({
+			wavePlan: [["TP-022"], ["TP-022"]],
+			totalWaves: 2,
+			mergeResults: [
+				{ waveIndex: 0, status: "succeeded" },
+				{ waveIndex: 1, status: "succeeded" },
+			] as any,
+			tasks: [{
+				taskId: "TP-022",
+				laneNumber: 1,
+				sessionName: "orch-lane-1",
+				status: "running",
+				taskFolder: "/tmp/tasks/TP-022",
+				startedAt: Date.now() - 2000,
+				endedAt: Date.now() - 100,
+				doneFileFound: true,
+				exitReason: "done",
+				segmentIds: ["TP-022::api", "TP-022::web"],
+				activeSegmentId: null,
+			}],
+			segments: [
+				makeSegment({ taskId: "TP-022", segmentId: "TP-022::api", status: "succeeded", endedAt: Date.now() - 500 }),
+				makeSegment({ taskId: "TP-022", segmentId: "TP-022::web", repoId: "web", status: "succeeded", dependsOnSegmentIds: ["TP-022::api"], endedAt: Date.now() - 100 }),
+			],
+		});
+
+		reconstructSegmentFrontier(state);
+		expect(state.tasks[0].status).toBe("succeeded");
+		expect(state.tasks[0].activeSegmentId).toBeNull();
+
+		const reconciled = reconcileTaskStates(state, new Set(), new Set(), new Set());
+		const point = computeResumePoint(state, reconciled);
+		expect(point.resumeWaveIndex).toBe(2);
+	});
+
+	it("failed segment is treated as task-level failure for dependency blocking", () => {
+		const state = makeState({
+			wavePlan: [["TP-030"], ["TP-031"]],
+			totalWaves: 2,
+			tasks: [
+				{
+					taskId: "TP-030",
+					laneNumber: 1,
+					sessionName: "orch-lane-1",
+					status: "running",
+					taskFolder: "/tmp/tasks/TP-030",
+					startedAt: Date.now() - 2000,
+					endedAt: Date.now() - 100,
+					doneFileFound: false,
+					exitReason: "failed",
+					segmentIds: ["TP-030::api"],
+					activeSegmentId: null,
+				},
+				{
+					taskId: "TP-031",
+					laneNumber: 1,
+					sessionName: "",
+					status: "pending",
+					taskFolder: "/tmp/tasks/TP-031",
+					startedAt: null,
+					endedAt: null,
+					doneFileFound: false,
+					exitReason: "",
+				},
+			],
+			segments: [
+				makeSegment({ taskId: "TP-030", segmentId: "TP-030::api", status: "failed", endedAt: Date.now() - 100 }),
+			],
+		});
+
+		reconstructSegmentFrontier(state);
+		const reconciled = reconcileTaskStates(state, new Set(), new Set(), new Set());
+		const point = computeResumePoint(state, reconciled);
+		expect(point.failedTaskIds).toContain("TP-030");
+		expect(point.pendingTaskIds).toContain("TP-031");
+	});
 });
