@@ -224,6 +224,39 @@ export function collectAllRepoRoots(
 // ── Resume Pure Functions ────────────────────────────────────────────
 
 /**
+ * Collect task IDs with authoritative .DONE markers.
+ *
+ * Segment frontier state does not suppress .DONE authority. If a marker exists,
+ * resume reconciliation will mark the task complete regardless of segment state.
+ */
+export function collectDoneTaskIdsForResume(
+	persistedState: PersistedBatchState,
+	repoRoot: string,
+	workspaceConfig?: WorkspaceConfig | null,
+): Set<string> {
+	const doneTaskIds = new Set<string>();
+	for (const task of persistedState.tasks) {
+		if (task.taskFolder && hasTaskDoneMarker(task.taskFolder)) {
+			doneTaskIds.add(task.taskId);
+			continue;
+		}
+		const laneRec = persistedState.lanes.find(l => l.taskIds.includes(task.taskId));
+		if (laneRec?.worktreePath && task.taskFolder) {
+			const resolved = resolveCanonicalTaskPaths(
+				task.taskFolder,
+				laneRec.worktreePath,
+				repoRoot,
+				!!workspaceConfig,
+			);
+			if (existsSync(resolved.donePath)) {
+				doneTaskIds.add(task.taskId);
+			}
+		}
+	}
+	return doneTaskIds;
+}
+
+/**
  * Check whether a persisted batch state is eligible for resume.
  *
  * Resume eligibility matrix:
@@ -704,8 +737,8 @@ export function computeResumePoint(
 		const waveTasks = persistedState.wavePlan[i];
 		const allDone = waveTasks.every((taskId) => {
 			const waveSegmentId = waveSegmentIdByTaskOccurrence.get(`${i}:${taskId}`);
-			if (waveSegmentId) {
-				const segmentStatus = segmentStatusBySegmentId.get(waveSegmentId) ?? "pending";
+			if (waveSegmentId && segmentStatusBySegmentId.has(waveSegmentId)) {
+				const segmentStatus = segmentStatusBySegmentId.get(waveSegmentId)!;
 				return segmentStatus === "succeeded"
 					|| segmentStatus === "failed"
 					|| segmentStatus === "stalled"
@@ -740,8 +773,8 @@ export function computeResumePoint(
 		// only failures/skips don't produce merges and can be safely skipped).
 		const hasSucceededTasks = waveTasks.some((taskId) => {
 			const waveSegmentId = waveSegmentIdByTaskOccurrence.get(`${i}:${taskId}`);
-			if (waveSegmentId) {
-				return (segmentStatusBySegmentId.get(waveSegmentId) ?? "pending") === "succeeded";
+			if (waveSegmentId && segmentStatusBySegmentId.has(waveSegmentId)) {
+				return segmentStatusBySegmentId.get(waveSegmentId) === "succeeded";
 			}
 			const reconciled = reconciledMap.get(taskId);
 			if (!reconciled) return false;
@@ -768,8 +801,8 @@ export function computeResumePoint(
 	for (let i = resumeWaveIndex; i < persistedState.wavePlan.length; i++) {
 		for (const taskId of persistedState.wavePlan[i]) {
 			const waveSegmentId = waveSegmentIdByTaskOccurrence.get(`${i}:${taskId}`);
-			if (waveSegmentId) {
-				const segmentStatus = segmentStatusBySegmentId.get(waveSegmentId) ?? "pending";
+			if (waveSegmentId && segmentStatusBySegmentId.has(waveSegmentId)) {
+				const segmentStatus = segmentStatusBySegmentId.get(waveSegmentId)!;
 				if (segmentStatus === "running" || segmentStatus === "pending") {
 					actualPendingTaskIds.push(taskId);
 				}
@@ -1094,31 +1127,7 @@ export async function resumeOrchBatch(
 	// TP-109: In workspace mode or V2 execution, .DONE is written in the worktree
 	// at the resolved packet path, not the original discovery path. Resume must
 	// check both locations for authoritative completion detection.
-	const doneTaskIds = new Set<string>();
-	for (const task of persistedState.tasks) {
-		const segmentFrontier = segmentFrontierByTask.get(task.taskId);
-		const allowDoneMarker = !segmentFrontier || segmentFrontier.allSucceeded;
-		if (!allowDoneMarker) continue;
-
-		// Check original task folder path
-		if (task.taskFolder && hasTaskDoneMarker(task.taskFolder)) {
-			doneTaskIds.add(task.taskId);
-			continue;
-		}
-		// Check worktree-relative path (packet-home authority)
-		const laneRec = persistedState.lanes.find(l => l.taskIds.includes(task.taskId));
-		if (laneRec?.worktreePath && task.taskFolder) {
-			const resolved = resolveCanonicalTaskPaths(
-				task.taskFolder,
-				laneRec.worktreePath,
-				repoRoot,
-				!!workspaceConfig,
-			);
-			if (existsSync(resolved.donePath)) {
-				doneTaskIds.add(task.taskId);
-			}
-		}
-	}
+	const doneTaskIds = collectDoneTaskIdsForResume(persistedState, repoRoot, workspaceConfig);
 
 	// ── 3b. Detect existing worktrees ────────────────────────────
 	const existingWorktreeTaskIds = new Set<string>();

@@ -1,6 +1,6 @@
 # TP-135: Segment Persistence and Resume — Status
 
-**Current Step:** Step 2: Resume reconstruction (R004 revisions)
+**Current Step:** Step 3: Reconciliation edge cases
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-03
 **Review Level:** 2
@@ -26,19 +26,19 @@
 - [x] Maintain activeSegmentId
 
 ### Step 2: Resume reconstruction
-**Status:** 🟨 In Progress (R004 revisions)
+**Status:** ✅ Complete
 - [x] Read persisted segments for frontier
 - [x] Identify completed segments
 - [x] Identify in-flight segments
 - [x] Identify pending segments
 - [x] Reconstruct DAG
 - [x] Resume from first incomplete
-- [ ] R004: Preserve .DONE authority even when segment frontier is incomplete
-- [ ] R004: Fall back to task-level reconciliation when wave segment record is missing
-- [ ] R004: Add regression tests for .DONE authority + missing-segment fallback
+- [x] R004: Preserve .DONE authority even when segment frontier is incomplete
+- [x] R004: Fall back to task-level reconciliation when wave segment record is missing
+- [x] R004: Add regression tests for .DONE authority + missing-segment fallback
 
 ### Step 3: Reconciliation edge cases
-**Status:** ⬜ Not Started
+**Status:** 🟨 In Progress
 - [ ] Mid-segment crash
 - [ ] Between-segment crash
 - [ ] All segments complete
