@@ -4,7 +4,7 @@
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-03
 **Review Level:** 1
-**Review Counter:** 2
+**Review Counter:** 3
 **Iteration:** 1
 **Size:** S
 
@@ -31,6 +31,7 @@
 
 ### Step 3: Snapshot failure counter
 **Status:** 🟨 In Progress
+- [ ] Add non-throwing emitSnapshot success/failure signal
 - [ ] Add consecutive failure counter
 - [ ] Disable interval after 5 failures
 - [ ] Reset on success
@@ -48,6 +49,11 @@
 
 ---
 
+## Notes
+
+- Reviewer R003 suggestion: include lane/task + consecutive failure count in disable warning.
+- Reviewer R003 suggestion: add targeted threshold behavior test (failure threshold + success reset).
+
 ## Execution Log
 
 | Timestamp | Action | Outcome |
@@ -62,3 +68,4 @@
 | 2026-04-03 15:48 | Step 3 started | Snapshot failure counter |
 | 2026-04-03 15:23 | Review R001 | plan Step 1: APPROVE |
 | 2026-04-03 15:26 | Review R002 | plan Step 2: APPROVE |
+| 2026-04-03 15:30 | Review R003 | plan Step 3: REVISE |
