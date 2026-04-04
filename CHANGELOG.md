@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.24.10] - 2026-04-04
+
+### Fixed
+- **Workspace wave 2+ worktree base branch** — Worktrees now branch from the orch branch (which has prior wave merged work) instead of the repo's HEAD. Fixes wave 2 workers not finding wave 1 artifacts in polyrepo mode.
+
 ## [0.24.9] - 2026-04-03
 
 ### Fixed
