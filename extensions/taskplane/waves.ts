@@ -567,6 +567,20 @@ export function resolveBaseBranch(
 	batchBaseBranch: string,
 	workspaceConfig?: WorkspaceConfig | null,
 ): string {
+	// Step 0: If the batch base branch is an orch branch (wave 2+), check if
+	// it exists in this repo. The orch branch has merged work from previous
+	// waves — worktrees MUST branch from it so workers see prior wave output.
+	// Without this, wave 2 worktrees branch from the repo's HEAD (e.g. develop)
+	// which lacks wave 1's code, causing dependency satisfaction failures.
+	if (batchBaseBranch.startsWith("orch/") && repoId) {
+		try {
+			const check = runGit(["rev-parse", "--verify", `refs/heads/${batchBaseBranch}`], repoRoot);
+			if (check.status === 0) {
+				return batchBaseBranch;
+			}
+		} catch { /* orch branch doesn't exist in this repo — fall through */ }
+	}
+
 	// Step 1: Detect current branch of this specific repo.
 	// This is the branch the developer is working on — worktrees should
 	// branch from here so task files committed on this branch are visible.
