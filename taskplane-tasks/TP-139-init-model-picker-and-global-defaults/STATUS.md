@@ -1,26 +1,26 @@
 # TP-139: Init Model Picker and Global Defaults — Status
 
-**Current Step:** Not Started
-**Status:** 🔵 Ready for Execution
+**Current Step:** Step 1: Model registry access from CLI
+**Status:** 🟡 In Progress
 **Last Updated:** 2026-04-05
 **Review Level:** 2
 **Review Counter:** 0
-**Iteration:** 0
+**Iteration:** 1
 **Size:** M
 
 ---
 
 ### Step 0: Preflight
-**Status:** ⬜ Not Started
-- [ ] Read PROMPT.md and STATUS.md
-- [ ] Read bin/taskplane.mjs init flow
-- [ ] Read config-loader.ts preferences functions
-- [ ] Read config-schema.ts UserPreferences
-- [ ] Understand settings-tui.ts pickModel pattern
-- [ ] Determine model registry CLI access approach
+**Status:** ✅ Complete
+- [x] Read PROMPT.md and STATUS.md
+- [x] Read bin/taskplane.mjs init flow
+- [x] Read config-loader.ts preferences functions
+- [x] Read config-schema.ts UserPreferences
+- [x] Understand settings-tui.ts pickModel pattern
+- [x] Determine model registry CLI access approach
 
 ### Step 1: Model registry access from CLI
-**Status:** ⬜ Not Started
+**Status:** 🟨 In Progress
 > ⚠️ Hydrate: Approach depends on Step 0 investigation of pi's model registry API
 
 - [ ] Implement model query with graceful fallback
@@ -81,6 +81,8 @@
 | Timestamp | Action | Outcome |
 |-----------|--------|---------|
 | 2026-04-05 | Task staged | Split from TP-138, PROMPT.md and STATUS.md created |
+| 2026-04-05 18:55 | Task started | Runtime V2 lane-runner execution |
+| 2026-04-05 18:55 | Step 0 started | Preflight |
 
 ---
 
