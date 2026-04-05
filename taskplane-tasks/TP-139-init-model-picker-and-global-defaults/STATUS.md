@@ -27,7 +27,7 @@
 - [x] Parse provider/model output into `{ provider, id, displayName }[]`
 - [x] Handle missing `pi`/query failures with graceful fallback behavior
 - [x] Add targeted tests for model discovery parsing + fallback
-- [ ] R002 fix: make CLI direct-execution guard symlink-safe and add regression test
+- [x] R002 fix: make CLI direct-execution guard symlink-safe and add regression test
 
 ### Step 2: Interactive model selection in init
 **Status:** ⬜ Not Started
@@ -91,6 +91,7 @@
 | 2026-04-05 18:59 | Review R001 | plan Step 1: APPROVE |
 | 2026-04-05 19:06 | Review R002 | code Step 1: REVISE |
 | 2026-04-05 19:07 | Step 1 tests | `tests/init-model-discovery.test.ts` passed (4/4) |
+| 2026-04-05 19:14 | R002 regression tests | `tests/cli-command-surface.test.ts` + `tests/init-model-discovery.test.ts` passed (7/7) |
 
 ---
 

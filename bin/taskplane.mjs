@@ -25,7 +25,7 @@ if (nodeMajor < MIN_NODE_MAJOR) {
 import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { execSync, execFileSync, spawn } from "node:child_process";
 import {
 	TASKPLANE_GITIGNORE_HEADER,
@@ -2764,7 +2764,14 @@ export async function main(argv = process.argv.slice(2)) {
 const isDirectExecution = (() => {
 	const argv1 = process.argv[1];
 	if (!argv1) return false;
-	return pathToFileURL(path.resolve(argv1)).href === import.meta.url;
+
+	try {
+		const invokedPath = fs.realpathSync(argv1);
+		const modulePath = fs.realpathSync(__filename);
+		return invokedPath === modulePath;
+	} catch {
+		return path.resolve(argv1) === __filename;
+	}
 })();
 
 if (isDirectExecution) {
