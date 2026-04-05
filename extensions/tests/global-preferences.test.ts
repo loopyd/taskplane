@@ -334,6 +334,47 @@ describe("loadGlobalPreferences", () => {
 		expect(prefs.reviewerModel).toBeUndefined();
 		expect(prefs.mergeModel).toBeUndefined();
 	});
+
+	it("6.11: config-shaped nested overrides are parsed and preferences-only fields are preserved", () => {
+		const agentDir = makeTestDir("nested-overrides");
+		process.env.PI_CODING_AGENT_DIR = agentDir;
+
+		writePrefsFile(agentDir, JSON.stringify({
+			taskRunner: {
+				worker: { model: "nested-worker", tools: "read,write" },
+				context: { maxWorkerIterations: 44 },
+			},
+			orchestrator: {
+				orchestrator: { maxLanes: 9 },
+				failure: { stallTimeout: 120 },
+			},
+			workspace: {
+				routing: {
+					tasksRoot: "taskplane-tasks",
+					defaultRepo: "default",
+					taskPacketRepo: "default",
+				},
+				repos: {
+					default: { path: "." },
+				},
+			},
+			dashboardPort: 7070,
+			initAgentDefaults: {
+				workerModel: "seed-worker",
+				workerThinking: "on",
+			},
+		}));
+
+		const prefs = loadGlobalPreferences();
+		expect(prefs.taskRunner?.worker?.model).toBe("nested-worker");
+		expect(prefs.taskRunner?.context?.maxWorkerIterations).toBe(44);
+		expect(prefs.orchestrator?.orchestrator?.maxLanes).toBe(9);
+		expect(prefs.orchestrator?.failure?.stallTimeout).toBe(120);
+		expect(prefs.workspace?.routing?.tasksRoot).toBe("taskplane-tasks");
+		expect(prefs.dashboardPort).toBe(7070);
+		expect(prefs.initAgentDefaults?.workerModel).toBe("seed-worker");
+		expect(prefs.initAgentDefaults?.workerThinking).toBe("on");
+	});
 });
 
 // ── 7.x: Layer 2 guardrails ─────────────────────────────────────────
@@ -463,6 +504,33 @@ describe("Layer 2 guardrails — applyGlobalPreferences", () => {
 		// Should not throw — auto-migration handles legacy value
 		applyGlobalPreferences(config, prefs);
 		expect(config.orchestrator.orchestrator.spawnMode).toBe("subprocess");
+	});
+
+	it("7.9: nested config-shaped overrides merge deeply and win over flat aliases", () => {
+		const config = deepClone(DEFAULT_PROJECT_CONFIG);
+		config.taskRunner.worker.model = "project-worker";
+		config.orchestrator.orchestrator.maxLanes = 3;
+
+		const prefs: GlobalPreferences = {
+			workerModel: "legacy-worker",
+			taskRunner: {
+				worker: { model: "nested-worker" },
+				reviewer: { thinking: "off" },
+				context: { maxReviewCycles: 5 },
+			},
+			orchestrator: {
+				orchestrator: { maxLanes: 8 },
+				failure: { stallTimeout: 75 },
+			},
+		};
+
+		applyGlobalPreferences(config, prefs);
+
+		expect(config.taskRunner.worker.model).toBe("nested-worker");
+		expect(config.taskRunner.reviewer.thinking).toBe("off");
+		expect(config.taskRunner.context.maxReviewCycles).toBe(5);
+		expect(config.orchestrator.orchestrator.maxLanes).toBe(8);
+		expect(config.orchestrator.failure.stallTimeout).toBe(75);
 	});
 });
 
@@ -671,5 +739,43 @@ describe("Layer 2 merge integration", () => {
 
 		// Non-empty pref SHOULD override
 		expect(config.taskRunner.reviewer.model).toBe("non-empty-reviewer");
+	});
+
+	it("8.8: loadProjectConfig e2e — applies nested global overrides and preserves preferences-only keys", () => {
+		const agentDir = makeTestDir("e2e-nested-agent");
+		process.env.PI_CODING_AGENT_DIR = agentDir;
+
+		writePrefsFile(agentDir, JSON.stringify({
+			taskRunner: {
+				reviewer: { thinking: "off" },
+			},
+			orchestrator: {
+				orchestrator: { maxLanes: 11 },
+				failure: { stallTimeout: 150 },
+			},
+			dashboardPort: 4567,
+			initAgentDefaults: { reviewerModel: "seed-reviewer" },
+		}));
+
+		const projectDir = makeTestDir("e2e-nested-project");
+		writePiFile(projectDir, "taskplane-config.json", JSON.stringify({
+			configVersion: 1,
+			taskRunner: {
+				reviewer: { thinking: "on" },
+			},
+			orchestrator: {
+				orchestrator: { maxLanes: 2 },
+				failure: { stallTimeout: 20 },
+			},
+		}));
+
+		const config = loadProjectConfig(projectDir);
+		expect(config.taskRunner.reviewer.thinking).toBe("off");
+		expect(config.orchestrator.orchestrator.maxLanes).toBe(11);
+		expect(config.orchestrator.failure.stallTimeout).toBe(150);
+
+		// Preferences-only keys are intentionally not merged into runtime config
+		expect((config as any).dashboardPort).toBeUndefined();
+		expect((config as any).initAgentDefaults).toBeUndefined();
 	});
 });

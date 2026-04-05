@@ -495,19 +495,10 @@ export interface TaskplaneConfig {
  *
  * Preferences JSON uses camelCase keys matching the runtime config shape.
  *
- * Layer 2 allowlist — preference field → config path:
- *
- * | Preference field   | Config path                          | Type    |
- * |--------------------|--------------------------------------|---------|
- * | operatorId         | orchestrator.orchestrator.operatorId | string  |
- * | sessionPrefix      | orchestrator.orchestrator.sessionPrefix | string  |
- * | spawnMode          | orchestrator.orchestrator.spawnMode  | string  |
- * | workerModel        | taskRunner.worker.model              | string  |
- * | reviewerModel      | taskRunner.reviewer.model            | string  |
- * | mergeModel         | orchestrator.merge.model             | string  |
- * | supervisorModel    | orchestrator.supervisor.model        | string  |
- * | dashboardPort      | (preferences-only; not yet in schema)| number  |
- * | initAgentDefaults  | (preferences-only; used by init UX)  | object  |
+ * Layer 2 allowlist:
+ * - Config-shaped nested overrides (`taskRunner`, `orchestrator`, `workspace`)
+ * - Legacy flat aliases (`workerModel`, `reviewerModel`, etc.) for backward compatibility
+ * - Preferences-only keys (`dashboardPort`, `initAgentDefaults`)
  */
 export interface InitAgentDefaultsPreferences {
 	/** Worker model default for `taskplane init` prompts (empty = inherit) */
@@ -524,24 +515,32 @@ export interface InitAgentDefaultsPreferences {
 	mergeThinking?: string;
 }
 
+export type DeepPartial<T> = T extends Array<infer U>
+	? Array<DeepPartial<U>>
+	: T extends object
+		? { [K in keyof T]?: DeepPartial<T[K]> }
+		: T;
+
 export interface GlobalPreferences {
-	/** Operator identifier (overrides orchestrator.orchestrator.operatorId) */
+	/**
+	 * Global baseline overrides using the same shape as project config.
+	 * All fields are optional and merged deeply into schema defaults.
+	 */
+	taskRunner?: DeepPartial<TaskRunnerSection>;
+	orchestrator?: DeepPartial<OrchestratorSection>;
+	workspace?: DeepPartial<WorkspaceSectionConfig>;
+
+	/** Legacy flat aliases (backward compatibility for existing preferences.json files). */
 	operatorId?: string;
-	/** Orchestrator session prefix (overrides orchestrator.orchestrator.sessionPrefix) */
 	sessionPrefix?: string;
-	/** Spawn mode override (overrides orchestrator.orchestrator.spawnMode). */
 	spawnMode?: "subprocess";
-	/** Worker model override (overrides taskRunner.worker.model) */
 	workerModel?: string;
-	/** Reviewer model override (overrides taskRunner.reviewer.model) */
 	reviewerModel?: string;
-	/** Merge model override (overrides orchestrator.merge.model) */
 	mergeModel?: string;
-	/** Merge thinking override (overrides orchestrator.merge.thinking) */
 	mergeThinking?: string;
-	/** Supervisor model override (overrides orchestrator.supervisor.model) (TP-041) */
 	supervisorModel?: string;
-	/** Dashboard port (preferences-only; not yet wired into config schema) */
+
+	/** Preferences-only values (stored globally, not merged into runtime config). */
 	dashboardPort?: number;
 	/** Saved defaults used to pre-populate `taskplane init` model/thinking prompts */
 	initAgentDefaults?: InitAgentDefaultsPreferences;

@@ -12,7 +12,7 @@
  * Layer 2 — Global preferences:
  *   After loading Layer 1, reads `~/.pi/agent/taskplane/preferences.json`
  *   (or `$PI_CODING_AGENT_DIR/taskplane/preferences.json`) and applies
- *   allowlisted user-scoped fields on top. Unknown keys are ignored.
+ *   allowlisted global-preference fields on top. Unknown top-level keys are ignored.
  *   Malformed preferences fall back to defaults silently.
  *
  * Path resolution:
@@ -790,11 +790,34 @@ function extractInitAgentDefaults(rawInitDefaults: unknown): GlobalPreferences["
 	return Object.keys(extracted).length > 0 ? extracted : undefined;
 }
 
+function extractConfigOverrideSection(rawSection: unknown): Record<string, any> | undefined {
+	if (!rawSection || typeof rawSection !== "object" || Array.isArray(rawSection)) {
+		return undefined;
+	}
+	return deepClone(rawSection as Record<string, any>);
+}
+
 function extractAllowlistedPreferences(raw: Record<string, any>, prefsPath: string): GlobalPreferences {
 	migrateGlobalPreferences(raw, prefsPath);
 
 	const prefs: GlobalPreferences = {};
 
+	const taskRunnerOverrides = extractConfigOverrideSection(raw.taskRunner);
+	if (taskRunnerOverrides) {
+		prefs.taskRunner = taskRunnerOverrides as GlobalPreferences["taskRunner"];
+	}
+
+	const orchestratorOverrides = extractConfigOverrideSection(raw.orchestrator);
+	if (orchestratorOverrides) {
+		prefs.orchestrator = orchestratorOverrides as GlobalPreferences["orchestrator"];
+	}
+
+	const workspaceOverrides = extractConfigOverrideSection(raw.workspace);
+	if (workspaceOverrides) {
+		prefs.workspace = workspaceOverrides as GlobalPreferences["workspace"];
+	}
+
+	// Legacy flat aliases (backward compatibility for existing preferences.json files)
 	if (typeof raw.operatorId === "string") prefs.operatorId = raw.operatorId;
 	if (typeof raw.sessionPrefix === "string") {
 		prefs.sessionPrefix = raw.sessionPrefix;
@@ -807,6 +830,8 @@ function extractAllowlistedPreferences(raw: Record<string, any>, prefsPath: stri
 	if (typeof raw.mergeModel === "string") prefs.mergeModel = raw.mergeModel;
 	if (typeof raw.mergeThinking === "string") prefs.mergeThinking = raw.mergeThinking;
 	if (typeof raw.supervisorModel === "string") prefs.supervisorModel = raw.supervisorModel;
+
+	// Preferences-only fields (intentionally not merged into runtime config)
 	if (typeof raw.dashboardPort === "number" && Number.isFinite(raw.dashboardPort)) {
 		prefs.dashboardPort = raw.dashboardPort;
 	}
@@ -821,25 +846,13 @@ function extractAllowlistedPreferences(raw: Record<string, any>, prefsPath: stri
 /**
  * Apply global preferences (Layer 2) onto a project config (Layer 1).
  *
- * Only allowlisted fields are applied. Global preferences win for Layer 2
- * fields; all other config fields (Layer 1) are left untouched.
+ * Merge order inside Layer 2:
+ *   1. Legacy flat aliases (for backward compatibility)
+ *   2. Config-shaped nested overrides (`taskRunner` / `orchestrator` / `workspace`)
+ *      Nested overrides intentionally win when both styles are present.
  *
- * Mutates `config` in place and returns it for chaining.
- *
- * Empty-string preference values are treated as "not set" and do NOT
- * override the project config value. This lets users clear a preference
- * by deleting the field or setting it to "".
- *
- * Mapping table:
- *   prefs.operatorId    → config.orchestrator.orchestrator.operatorId
- *   prefs.sessionPrefix → config.orchestrator.orchestrator.sessionPrefix
- *   prefs.spawnMode     → config.orchestrator.orchestrator.spawnMode
- *   prefs.workerModel   → config.taskRunner.worker.model
- *   prefs.reviewerModel → config.taskRunner.reviewer.model
- *   prefs.mergeModel    → config.orchestrator.merge.model
- *   prefs.supervisorModel → config.orchestrator.supervisor.model
- *   prefs.dashboardPort → (no config target yet — stored only)
- *   prefs.initAgentDefaults → (preferences-only; consumed by CLI init flow)
+ * Preferences-only fields (`dashboardPort`, `initAgentDefaults`) are preserved
+ * in `GlobalPreferences` but intentionally not merged into runtime config.
  */
 export function applyGlobalPreferences(config: TaskplaneConfig, prefs: GlobalPreferences): TaskplaneConfig {
 	// Helper: only apply non-empty string values
@@ -847,6 +860,7 @@ export function applyGlobalPreferences(config: TaskplaneConfig, prefs: GlobalPre
 		if (val !== undefined && val !== "") setter(val);
 	};
 
+	// 1) Legacy flat aliases
 	applyStr(prefs.operatorId, (v) => { config.orchestrator.orchestrator.operatorId = v; });
 	applyStr(prefs.sessionPrefix, (v) => { config.orchestrator.orchestrator.sessionPrefix = v; });
 	applyStr(prefs.workerModel, (v) => { config.taskRunner.worker.model = v; });
@@ -864,8 +878,19 @@ export function applyGlobalPreferences(config: TaskplaneConfig, prefs: GlobalPre
 		config.orchestrator.orchestrator.spawnMode = prefs.spawnMode;
 	}
 
-	// dashboardPort: no config schema target yet — intentionally not applied
-	// It can be read directly from loadGlobalPreferences() by consumers that need it.
+	// 2) Config-shaped nested overrides
+	if (prefs.taskRunner) {
+		deepMerge(config.taskRunner as Record<string, any>, prefs.taskRunner as Record<string, any>);
+	}
+	if (prefs.orchestrator) {
+		deepMerge(config.orchestrator as Record<string, any>, prefs.orchestrator as Record<string, any>);
+	}
+	if (prefs.workspace) {
+		if (!config.workspace || typeof config.workspace !== "object") {
+			config.workspace = {} as TaskplaneConfig["workspace"];
+		}
+		deepMerge(config.workspace as Record<string, any>, prefs.workspace as Record<string, any>);
+	}
 
 	return config;
 }
@@ -944,7 +969,7 @@ export function resolveConfigRoot(cwd: string, pointerConfigRoot?: string): stri
  *
  *   Layer 2 — Global preferences (applied on top of Layer 1):
  *     Reads `~/.pi/agent/taskplane/preferences.json` and overrides only
- *     allowlisted user-scoped fields. See `applyGlobalPreferences()` for
+ *     allowlisted global-preference fields. See `applyGlobalPreferences()` for
  *     the field mapping.
  *
  * Config root resolution order:
@@ -986,7 +1011,7 @@ export function loadProjectConfig(cwd: string, pointerConfigRoot?: string): Task
 	_projectMigrationDone = false; // Reset guard for each top-level load
 	migrateProjectConfig(config, configRoot);
 
-	// Layer 2: Global preferences (allowlisted fields only)
+	// Layer 2: Global preferences (allowlisted fields + legacy aliases)
 	const prefs = loadGlobalPreferences();
 	applyGlobalPreferences(config, prefs);
 	// No second migrateProjectConfig call needed — idempotency guard + prefs

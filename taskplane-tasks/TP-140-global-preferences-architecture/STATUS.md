@@ -1,10 +1,10 @@
 # TP-140: Global Preferences Architecture — Status
 
-**Current Step:** Step 2: Expand global preferences schema
+**Current Step:** Step 3: Flip config loading precedence
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-05
 **Review Level:** 2
-**Review Counter:** 3
+**Review Counter:** 4
 **Iteration:** 1
 **Size:** L
 
@@ -27,16 +27,16 @@
 - [x] Run targeted tests
 
 ### Step 2: Expand global preferences schema
-**Status:** 🟨 In Progress
-- [ ] Expand GlobalPreferences to cover all configurable fields
-- [ ] Add backward-compatible support for legacy flat-key global preferences files
-- [ ] Preserve preferences-only fields (dashboardPort, initAgentDefaults) during schema expansion
-- [ ] Update extractAllowlistedPreferences for expanded fields
-- [ ] Update applyGlobalPreferences for all new fields
-- [ ] Add targeted tests for legacy flat keys + expanded nested preference parsing
+**Status:** ✅ Complete
+- [x] Expand GlobalPreferences to cover all configurable fields
+- [x] Add backward-compatible support for legacy flat-key global preferences files
+- [x] Preserve preferences-only fields (dashboardPort, initAgentDefaults) during schema expansion
+- [x] Update extractAllowlistedPreferences for expanded fields
+- [x] Update applyGlobalPreferences for all new fields
+- [x] Add targeted tests for legacy flat keys + expanded nested preference parsing
 
 ### Step 3: Flip config loading precedence
-**Status:** ⬜ Not Started
+**Status:** 🟨 In Progress
 - [ ] Rewrite loadProjectConfig: schema → global → project
 - [ ] Implement deep merge for sparse project config
 - [ ] Update loadLayer1Config similarly
@@ -111,3 +111,4 @@
 | 2026-04-05 22:07 | Review R001 | plan Step 1: APPROVE |
 | 2026-04-05 22:11 | Review R002 | code Step 1: APPROVE |
 | 2026-04-05 22:13 | Review R003 | plan Step 2: REVISE |
+| 2026-04-05 22:13 | Review R004 | plan Step 2: APPROVE |
