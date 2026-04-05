@@ -4,7 +4,7 @@
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-05
 **Review Level:** 2
-**Review Counter:** 1
+**Review Counter:** 3
 **Iteration:** 1
 **Size:** L
 
@@ -29,8 +29,11 @@
 ### Step 2: Expand global preferences schema
 **Status:** 🟨 In Progress
 - [ ] Expand GlobalPreferences to cover all configurable fields
+- [ ] Add backward-compatible support for legacy flat-key global preferences files
+- [ ] Preserve preferences-only fields (dashboardPort, initAgentDefaults) during schema expansion
 - [ ] Update extractAllowlistedPreferences for expanded fields
 - [ ] Update applyGlobalPreferences for all new fields
+- [ ] Add targeted tests for legacy flat keys + expanded nested preference parsing
 
 ### Step 3: Flip config loading precedence
 **Status:** ⬜ Not Started
@@ -103,5 +106,8 @@
 
 ## Notes
 
-*Reserved for execution notes*
+- Suggestion (R003): consider modeling GlobalPreferences as config deep-partial + preferences-only extension to reduce schema drift.
+- Suggestion (R003): keep allowlist extraction centralized so new config keys are not missed.
 | 2026-04-05 22:07 | Review R001 | plan Step 1: APPROVE |
+| 2026-04-05 22:11 | Review R002 | code Step 1: APPROVE |
+| 2026-04-05 22:13 | Review R003 | plan Step 2: REVISE |
