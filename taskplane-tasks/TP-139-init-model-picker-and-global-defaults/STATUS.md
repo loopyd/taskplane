@@ -1,10 +1,10 @@
 # TP-139: Init Model Picker and Global Defaults — Status
 
-**Current Step:** Step 2: Interactive model selection in init
+**Current Step:** Step 1: Model registry access from CLI (revision R002)
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-05
 **Review Level:** 2
-**Review Counter:** 1
+**Review Counter:** 2
 **Iteration:** 1
 **Size:** M
 
@@ -20,16 +20,17 @@
 - [x] Determine model registry CLI access approach
 
 ### Step 1: Model registry access from CLI
-**Status:** ✅ Complete
+**Status:** 🟨 In Progress
 > ⚠️ Hydrate: Approach depends on Step 0 investigation of pi's model registry API
 
 - [x] Implement CLI model discovery helper using `pi --list-models`
 - [x] Parse provider/model output into `{ provider, id, displayName }[]`
 - [x] Handle missing `pi`/query failures with graceful fallback behavior
 - [x] Add targeted tests for model discovery parsing + fallback
+- [ ] R002 fix: make CLI direct-execution guard symlink-safe and add regression test
 
 ### Step 2: Interactive model selection in init
-**Status:** 🟨 In Progress
+**Status:** ⬜ Not Started
 - [ ] Add provider → model picker to init flow
 - [ ] "Inherit" as default first option
 - [ ] Per-agent or "same for all" selection
@@ -69,6 +70,7 @@
 | # | Type | Step | Verdict | File |
 |---|------|------|---------|------|
 | 1 | Plan | 1 | APPROVE | - |
+| 2 | Code | 1 | REVISE | .reviews/R002-code-step1.md |
 
 ---
 
@@ -87,6 +89,7 @@
 | 2026-04-05 18:55 | Task started | Runtime V2 lane-runner execution |
 | 2026-04-05 18:55 | Step 0 started | Preflight |
 | 2026-04-05 18:59 | Review R001 | plan Step 1: APPROVE |
+| 2026-04-05 19:06 | Review R002 | code Step 1: REVISE |
 | 2026-04-05 19:07 | Step 1 tests | `tests/init-model-discovery.test.ts` passed (4/4) |
 
 ---
@@ -99,4 +102,4 @@
 
 ## Notes
 
-*Reserved for execution notes*
+- Suggestion from R002 (advisory): tighten parser filtering for non-table lines if `pi --list-models` format changes.
