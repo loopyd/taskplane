@@ -37,6 +37,8 @@ export interface OrchestratorConfig {
 	merge: {
 		model: string;
 		tools: string;
+		/** Merge-agent thinking mode (empty = inherit session thinking) */
+		thinking: string;
 		verify: string[];
 		order: "fewest-files-first" | "sequential";
 		/** Merge agent timeout in minutes. Default: 10. Increase for large batches. */
@@ -280,6 +282,7 @@ export const DEFAULT_ORCHESTRATOR_CONFIG: OrchestratorConfig = {
 	merge: {
 		model: "",
 		tools: "read,write,edit,bash,grep,find,ls",
+		thinking: "",
 		verify: [],
 		order: "fewest-files-first",
 		timeout_minutes: 90,

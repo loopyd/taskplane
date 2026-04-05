@@ -1017,6 +1017,7 @@ export function toOrchestratorConfig(config: TaskplaneConfig): import("./types.t
 		merge: {
 			model: o.merge.model,
 			tools: o.merge.tools,
+			thinking: o.merge.thinking,
 			verify: [...o.merge.verify],
 			order: o.merge.order,
 			timeout_minutes: o.merge.timeoutMinutes ?? 90,
