@@ -25,6 +25,7 @@ if (nodeMajor < MIN_NODE_MAJOR) {
 import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
+import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { execSync, execFileSync, spawn } from "node:child_process";
 import {
@@ -132,6 +133,110 @@ function getVersion(cmd, flag = "--version") {
 		return execSync(`${cmd} ${flag}`, { stdio: "pipe" }).toString().trim();
 	} catch {
 		return null;
+	}
+}
+
+/**
+ * Parse the tabular output from `pi --list-models` into structured model rows.
+ *
+ * Expected format:
+ *   provider   model   context ...
+ *   anthropic  claude-sonnet-4-6 ...
+ */
+export function parsePiListModelsOutput(rawOutput) {
+	if (typeof rawOutput !== "string" || rawOutput.trim() === "") return [];
+
+	const rows = rawOutput.split(/\r?\n/);
+	const parsed = new Map();
+
+	for (const row of rows) {
+		const trimmed = row.trim();
+		if (!trimmed) continue;
+		if (/^provider\s+model\b/i.test(trimmed)) continue;
+
+		const parts = trimmed.split(/\s+/);
+		if (parts.length < 2) continue;
+
+		const provider = parts[0].trim();
+		const id = parts[1].trim();
+		if (!provider || !id) continue;
+		if (!/^[a-z0-9][a-z0-9._-]*$/i.test(provider)) continue;
+		if (!/^[^\s]+$/.test(id)) continue;
+
+		const key = `${provider.toLowerCase()}/${id.toLowerCase()}`;
+		if (parsed.has(key)) continue;
+
+		parsed.set(key, {
+			provider,
+			id,
+			displayName: `${provider}/${id}`,
+		});
+	}
+
+	return [...parsed.values()].sort((a, b) =>
+		a.provider.localeCompare(b.provider) || a.id.localeCompare(b.id)
+	);
+}
+
+function extractExecFailure(error) {
+	if (!error || typeof error !== "object") return "Unknown error";
+	const err = error;
+	if (typeof err.stderr === "string" && err.stderr.trim()) return err.stderr.trim();
+	if (Buffer.isBuffer(err.stderr)) {
+		const msg = err.stderr.toString("utf-8").trim();
+		if (msg) return msg;
+	}
+	if (typeof err.message === "string" && err.message.trim()) return err.message.trim();
+	return "Unknown error";
+}
+
+/**
+ * Query available models from pi in standalone CLI context.
+ *
+ * Returns a structured model list and diagnostics; never throws.
+ */
+export function queryAvailableModelsFromPi({
+	execFileSyncImpl = execFileSync,
+	commandExistsImpl = commandExists,
+	timeoutMs = 10000,
+} = {}) {
+	if (!commandExistsImpl("pi")) {
+		return {
+			models: [],
+			source: "pi --list-models",
+			available: false,
+			error: "pi is not available on PATH",
+		};
+	}
+
+	try {
+		const output = execFileSyncImpl("pi", ["--list-models"], {
+			encoding: "utf-8",
+			stdio: ["ignore", "pipe", "pipe"],
+			timeout: timeoutMs,
+		});
+		const models = parsePiListModelsOutput(output);
+		if (models.length === 0) {
+			return {
+				models: [],
+				source: "pi --list-models",
+				available: false,
+				error: "pi returned no parseable model rows",
+			};
+		}
+		return {
+			models,
+			source: "pi --list-models",
+			available: true,
+			error: null,
+		};
+	} catch (error) {
+		return {
+			models: [],
+			source: "pi --list-models",
+			available: false,
+			error: extractExecFailure(error),
+		};
 	}
 }
 
@@ -277,8 +382,333 @@ function buildTestingCommands(vars) {
 	return commands;
 }
 
-function generateProjectConfig(vars) {
+const USER_PREFERENCES_SUBDIR = "taskplane";
+const USER_PREFERENCES_FILENAME = "preferences.json";
+
+function createInheritInitAgentConfig() {
 	return {
+		workerModel: "",
+		reviewerModel: "",
+		mergeModel: "",
+		workerThinking: "",
+		reviewerThinking: "",
+		mergeThinking: "",
+	};
+}
+
+function normalizeThinkingMode(value) {
+	const cleaned = String(value ?? "").trim().toLowerCase();
+	if (cleaned === "on") return "on";
+	if (cleaned === "off") return "off";
+	return "";
+}
+
+function sanitizeInitAgentConfig(raw) {
+	const defaults = createInheritInitAgentConfig();
+	if (!raw || typeof raw !== "object" || Array.isArray(raw)) return defaults;
+
+	if (typeof raw.workerModel === "string") defaults.workerModel = raw.workerModel;
+	if (typeof raw.reviewerModel === "string") defaults.reviewerModel = raw.reviewerModel;
+	if (typeof raw.mergeModel === "string") defaults.mergeModel = raw.mergeModel;
+	if (raw.workerThinking !== undefined) defaults.workerThinking = normalizeThinkingMode(raw.workerThinking);
+	if (raw.reviewerThinking !== undefined) defaults.reviewerThinking = normalizeThinkingMode(raw.reviewerThinking);
+	if (raw.mergeThinking !== undefined) defaults.mergeThinking = normalizeThinkingMode(raw.mergeThinking);
+
+	return defaults;
+}
+
+function resolveUserPreferencesPathForCli() {
+	const agentDir = process.env.PI_CODING_AGENT_DIR;
+	if (agentDir) {
+		return path.join(agentDir, USER_PREFERENCES_SUBDIR, USER_PREFERENCES_FILENAME);
+	}
+	return path.join(homedir(), ".pi", "agent", USER_PREFERENCES_SUBDIR, USER_PREFERENCES_FILENAME);
+}
+
+function readUserPreferencesForCli() {
+	const prefsPath = resolveUserPreferencesPathForCli();
+	if (!fs.existsSync(prefsPath)) {
+		return {
+			prefsPath,
+			raw: {},
+		};
+	}
+
+	try {
+		const raw = JSON.parse(fs.readFileSync(prefsPath, "utf-8"));
+		if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+			return { prefsPath, raw: {} };
+		}
+		return { prefsPath, raw };
+	} catch {
+		return { prefsPath, raw: {} };
+	}
+}
+
+function writeUserPreferencesForCli(rawPrefs) {
+	const prefsPath = resolveUserPreferencesPathForCli();
+	fs.mkdirSync(path.dirname(prefsPath), { recursive: true });
+	fs.writeFileSync(prefsPath, JSON.stringify(rawPrefs, null, 2) + "\n", "utf-8");
+	return prefsPath;
+}
+
+function loadInitAgentDefaultsFromPreferences() {
+	const { prefsPath, raw } = readUserPreferencesForCli();
+	const defaults = sanitizeInitAgentConfig(raw.initAgentDefaults);
+	const hasDefaults = !!(raw.initAgentDefaults && typeof raw.initAgentDefaults === "object" && !Array.isArray(raw.initAgentDefaults));
+	return { defaults, hasDefaults, prefsPath };
+}
+
+function saveInitAgentDefaultsToPreferences(initAgentConfig) {
+	const { raw } = readUserPreferencesForCli();
+	raw.initAgentDefaults = sanitizeInitAgentConfig(initAgentConfig);
+	const prefsPath = writeUserPreferencesForCli(raw);
+	return { prefsPath, saved: raw.initAgentDefaults };
+}
+
+function splitModelReference(modelRef) {
+	const trimmed = String(modelRef ?? "").trim();
+	if (!trimmed.includes("/")) return null;
+	const [provider, ...idParts] = trimmed.split("/");
+	const id = idParts.join("/").trim();
+	if (!provider || !id) return null;
+	return { provider, id };
+}
+
+function allValuesEqual(values) {
+	if (!Array.isArray(values) || values.length === 0) return true;
+	const first = values[0];
+	return values.every((value) => value === first);
+}
+
+const INIT_AGENT_ROLES = [
+	{ key: "worker", label: "Worker", modelKey: "workerModel", thinkingKey: "workerThinking" },
+	{ key: "reviewer", label: "Reviewer", modelKey: "reviewerModel", thinkingKey: "reviewerThinking" },
+	{ key: "merge", label: "Merger", modelKey: "mergeModel", thinkingKey: "mergeThinking" },
+];
+
+async function promptMenuChoice({ title, question, options, defaultIndex = 0, askImpl = ask, logImpl = console.log }) {
+	while (true) {
+		if (title) logImpl(`\n  ${title}`);
+		for (let i = 0; i < options.length; i++) {
+			logImpl(`    ${i + 1}. ${options[i].label}`);
+		}
+
+		const resolvedDefault = Number.isInteger(defaultIndex) && defaultIndex >= 0 && defaultIndex < options.length
+			? defaultIndex
+			: 0;
+		const answer = String(await askImpl(question, String(resolvedDefault + 1))).trim();
+		const asNum = Number.parseInt(answer, 10);
+		if (!Number.isNaN(asNum) && asNum >= 1 && asNum <= options.length) {
+			return options[asNum - 1].value;
+		}
+
+		const lower = answer.toLowerCase();
+		const byAlias = options.find((option) => {
+			const aliases = [option.value, ...(option.aliases || [])]
+				.filter(Boolean)
+				.map((entry) => String(entry).toLowerCase());
+			return aliases.includes(lower);
+		});
+		if (byAlias) return byAlias.value;
+
+		logImpl(`  ${WARN} Invalid selection. Enter a menu number.`);
+	}
+}
+
+async function promptModelForRole(roleLabel, models, {
+	askImpl = ask,
+	logImpl = console.log,
+	currentModel = "",
+} = {}) {
+	const providers = [...new Set(models.map((model) => model.provider))].sort((a, b) => a.localeCompare(b));
+	const currentRef = splitModelReference(currentModel);
+
+	while (true) {
+		const providerOptions = [
+			{ value: "inherit", label: "inherit (use current session model)", aliases: ["inherit"] },
+			...providers.map((provider) => {
+				const count = models.filter((model) => model.provider === provider).length;
+				return {
+					value: provider,
+					label: `${provider} (${count} models)`,
+					aliases: [provider],
+				};
+			}),
+		];
+		const providerDefaultIndex = currentRef
+			? Math.max(0, providerOptions.findIndex((option) => option.value === currentRef.provider))
+			: 0;
+
+		const providerChoice = await promptMenuChoice({
+			title: `${roleLabel}: choose model provider`,
+			question: `${roleLabel} provider (number or provider name)`,
+			options: providerOptions,
+			defaultIndex: providerDefaultIndex,
+			askImpl,
+			logImpl,
+		});
+
+		if (providerChoice === "inherit") return "";
+
+		const providerModels = models
+			.filter((model) => model.provider === providerChoice)
+			.sort((a, b) => a.id.localeCompare(b.id));
+
+		const modelOptions = [
+			{ value: "back", label: "← back to providers", aliases: ["back"] },
+			...providerModels.map((model) => ({
+				value: model.id,
+				label: model.id,
+				aliases: [model.id, `${model.provider}/${model.id}`],
+			})),
+		];
+		const modelDefaultIndex = (() => {
+			if (currentRef?.provider === providerChoice) {
+				const idx = providerModels.findIndex((model) => model.id === currentRef.id);
+				if (idx >= 0) return idx + 1;
+			}
+			return providerModels.length > 0 ? 1 : 0;
+		})();
+
+		const modelChoice = await promptMenuChoice({
+			title: `${roleLabel}: choose model (${providerChoice})`,
+			question: `${roleLabel} model (number or model id)`,
+			options: modelOptions,
+			defaultIndex: modelDefaultIndex,
+			askImpl,
+			logImpl,
+		});
+
+		if (modelChoice === "back") continue;
+		return `${providerChoice}/${modelChoice}`;
+	}
+}
+
+async function promptThinkingForRole(roleLabel, {
+	askImpl = ask,
+	logImpl = console.log,
+	currentThinking = "",
+} = {}) {
+	const thinkingOptions = [
+		{ value: "", label: "inherit (use current session thinking)", aliases: ["inherit"] },
+		{ value: "on", label: "on" },
+		{ value: "off", label: "off" },
+	];
+	const normalized = normalizeThinkingMode(currentThinking);
+	const defaultIndex = Math.max(0, thinkingOptions.findIndex((option) => option.value === normalized));
+
+	return promptMenuChoice({
+		title: `${roleLabel}: choose thinking mode`,
+		question: `${roleLabel} thinking (number or value)`,
+		options: thinkingOptions,
+		defaultIndex,
+		askImpl,
+		logImpl,
+	});
+}
+
+function applyInitAgentConfig(projectConfig, initAgentConfig) {
+	if (!initAgentConfig) return projectConfig;
+
+	projectConfig.taskRunner.worker.model = initAgentConfig.workerModel ?? "";
+	projectConfig.taskRunner.reviewer.model = initAgentConfig.reviewerModel ?? "";
+	projectConfig.orchestrator.merge.model = initAgentConfig.mergeModel ?? "";
+
+	projectConfig.taskRunner.worker.thinking = normalizeThinkingMode(initAgentConfig.workerThinking);
+	projectConfig.taskRunner.reviewer.thinking = normalizeThinkingMode(initAgentConfig.reviewerThinking);
+	projectConfig.orchestrator.merge.thinking = normalizeThinkingMode(initAgentConfig.mergeThinking);
+
+	return projectConfig;
+}
+
+export async function collectInitAgentConfig({
+	interactive = true,
+	askImpl = ask,
+	confirmImpl = confirm,
+	queryModelsImpl = queryAvailableModelsFromPi,
+	loadInitDefaultsImpl = loadInitAgentDefaultsFromPreferences,
+	logImpl = console.log,
+} = {}) {
+	if (!interactive) return null;
+
+	const savedDefaults = await loadInitDefaultsImpl();
+	const initAgentConfig = sanitizeInitAgentConfig(savedDefaults?.defaults);
+	const hasSavedDefaults = !!savedDefaults?.hasDefaults;
+
+	if (hasSavedDefaults) {
+		logImpl(`\n  ${INFO} Loaded saved init defaults from ${savedDefaults.prefsPath}`);
+	}
+
+	let discovery;
+	try {
+		discovery = await queryModelsImpl();
+	} catch (error) {
+		discovery = {
+			models: [],
+			available: false,
+			error: error?.message || "unknown error",
+		};
+	}
+
+	if (!discovery?.available || !Array.isArray(discovery.models) || discovery.models.length === 0) {
+		logImpl(`\n  ${WARN} Model list unavailable (${discovery?.error || "unknown"}).`);
+		if (hasSavedDefaults) {
+			logImpl("     Using saved defaults from preferences for worker/reviewer/merger.\n");
+		} else {
+			logImpl("     Skipping model picker and using inherit defaults for worker/reviewer/merger.\n");
+		}
+		return initAgentConfig;
+	}
+
+	logImpl(`\n${c.bold}Agent model setup${c.reset}`);
+	logImpl(`  ${c.dim}Choose models for worker/reviewer/merger (inherit is always option #1).${c.reset}`);
+
+	const modelDefaults = INIT_AGENT_ROLES.map((role) => initAgentConfig[role.modelKey] || "");
+	const thinkingDefaults = INIT_AGENT_ROLES.map((role) => normalizeThinkingMode(initAgentConfig[role.thinkingKey]));
+	const sameModelDefaults = allValuesEqual(modelDefaults);
+	const sameThinkingDefaults = allValuesEqual(thinkingDefaults);
+	const useSameModel = await confirmImpl(
+		"Use the same model for worker, reviewer, and merger?",
+		sameModelDefaults && sameThinkingDefaults,
+	);
+
+	if (useSameModel) {
+		const selectedModel = await promptModelForRole("All agents", discovery.models, {
+			askImpl,
+			logImpl,
+			currentModel: sameModelDefaults ? modelDefaults[0] : "",
+		});
+		const selectedThinking = await promptThinkingForRole("All agents", {
+			askImpl,
+			logImpl,
+			currentThinking: sameThinkingDefaults ? thinkingDefaults[0] : "",
+		});
+		for (const role of INIT_AGENT_ROLES) {
+			initAgentConfig[role.modelKey] = selectedModel;
+			initAgentConfig[role.thinkingKey] = selectedThinking;
+		}
+		return initAgentConfig;
+	}
+
+	for (const role of INIT_AGENT_ROLES) {
+		initAgentConfig[role.modelKey] = await promptModelForRole(role.label, discovery.models, {
+			askImpl,
+			logImpl,
+			currentModel: initAgentConfig[role.modelKey],
+		});
+		initAgentConfig[role.thinkingKey] = await promptThinkingForRole(role.label, {
+			askImpl,
+			logImpl,
+			currentThinking: initAgentConfig[role.thinkingKey],
+		});
+	}
+
+	return initAgentConfig;
+}
+
+export function generateProjectConfig(vars, initAgentConfig = null) {
+	const projectConfig = {
 		configVersion: 1,
 		taskRunner: {
 			project: { name: vars.project_name, description: "" },
@@ -323,6 +753,7 @@ function generateProjectConfig(vars) {
 			preWarm: { autoDetect: false, commands: {}, always: [] },
 			merge: {
 				model: "",
+				thinking: "",
 				tools: "read,write,edit,bash,grep,find,ls",
 				verify: [],
 				order: "fewest-files-first",
@@ -338,6 +769,8 @@ function generateProjectConfig(vars) {
 			monitoring: { pollInterval: 5 },
 		},
 	};
+
+	return applyInitAgentConfig(projectConfig, initAgentConfig);
 }
 
 function generateWorkspaceYaml(repoNames, defaultRepo, tasksRoot) {
@@ -483,6 +916,71 @@ function listExampleTaskTemplates() {
 	}
 }
 
+function inferTaskplaneInstallScope() {
+	return /[\\/]\.pi[\\/]/.test(PACKAGE_ROOT) ? "local" : "global";
+}
+
+function resolveProjectConfigJsonPath(projectRoot) {
+	const pointerPath = path.join(projectRoot, ".pi", "taskplane-pointer.json");
+	if (fs.existsSync(pointerPath)) {
+		try {
+			const pointer = JSON.parse(fs.readFileSync(pointerPath, "utf-8"));
+			if (pointer?.config_repo && pointer?.config_path) {
+				const pointedPath = path.resolve(projectRoot, pointer.config_repo, pointer.config_path, "taskplane-config.json");
+				if (fs.existsSync(pointedPath)) return pointedPath;
+			}
+		} catch {
+			// fall through to local .pi path
+		}
+	}
+
+	return path.join(projectRoot, ".pi", "taskplane-config.json");
+}
+
+function extractInitAgentConfigFromProjectConfig(projectConfig) {
+	return sanitizeInitAgentConfig({
+		workerModel: projectConfig?.taskRunner?.worker?.model,
+		reviewerModel: projectConfig?.taskRunner?.reviewer?.model,
+		mergeModel: projectConfig?.orchestrator?.merge?.model,
+		workerThinking: projectConfig?.taskRunner?.worker?.thinking,
+		reviewerThinking: projectConfig?.taskRunner?.reviewer?.thinking,
+		mergeThinking: projectConfig?.orchestrator?.merge?.thinking,
+	});
+}
+
+function cmdConfig(args) {
+	if (!args.includes("--save-as-defaults")) {
+		console.log(`\n${c.bold}Taskplane Config${c.reset}\n`);
+		console.log(`  ${c.cyan}taskplane config --save-as-defaults${c.reset}`);
+		console.log(`     Save worker/reviewer/merger model + thinking settings from this project`);
+		console.log(`     to ${c.cyan}${resolveUserPreferencesPathForCli()}${c.reset} for future ${c.cyan}taskplane init${c.reset} runs.\n`);
+		return;
+	}
+
+	const projectRoot = process.cwd();
+	const configPath = resolveProjectConfigJsonPath(projectRoot);
+	if (!fs.existsSync(configPath)) {
+		die(`Project config not found at ${configPath}. Run ${c.cyan}taskplane init${c.reset} first.`);
+	}
+
+	let projectConfig;
+	try {
+		projectConfig = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+	} catch (error) {
+		die(`Could not read ${configPath}: ${error?.message || error}`);
+	}
+
+	const defaults = extractInitAgentConfigFromProjectConfig(projectConfig);
+	const { prefsPath, saved } = saveInitAgentDefaultsToPreferences(defaults);
+
+	console.log(`\n${OK} ${c.bold}Saved init defaults.${c.reset}`);
+	console.log(`  Source: ${c.cyan}${configPath}${c.reset}`);
+	console.log(`  Target: ${c.cyan}${prefsPath}${c.reset}`);
+	console.log(`  worker:   ${saved.workerModel || "inherit"} (${saved.workerThinking || "inherit"})`);
+	console.log(`  reviewer: ${saved.reviewerModel || "inherit"} (${saved.reviewerThinking || "inherit"})`);
+	console.log(`  merger:   ${saved.mergeModel || "inherit"} (${saved.mergeThinking || "inherit"})\n`);
+}
+
 async function cmdUninstall(args) {
 	const projectRoot = process.cwd();
 	const dryRun = args.includes("--dry-run");
@@ -540,7 +1038,7 @@ async function cmdUninstall(args) {
 			.filter(({ abs }) => abs.startsWith(rootPrefix) && fs.existsSync(abs));
 	}
 
-	const inferredInstallType = /[\\/]\.pi[\\/]/.test(PACKAGE_ROOT) ? "local" : "global";
+	const inferredInstallType = inferTaskplaneInstallScope();
 	const packageScope = local ? "local" : global ? "global" : inferredInstallType;
 	const piRemoveCmd = packageScope === "local"
 		? "pi remove -l npm:taskplane"
@@ -1306,6 +1804,10 @@ async function cmdInit(args) {
 			return;
 		}
 
+		const initAgentConfig = await collectInitAgentConfig({
+			interactive: !isPreset,
+		});
+
 		// ── Scaffold .taskplane/ in config repo ─────────────────────
 		console.log(`\n${c.bold}Creating files in ${configRepoName}/.taskplane/...${c.reset}\n`);
 		// Skip existing files only when --force was NOT used AND the user did NOT confirm overwrite
@@ -1337,7 +1839,7 @@ async function cmdInit(args) {
 		}
 
 		// Project config JSON (taskplane-config.json)
-		const projectConfig = generateProjectConfig(vars);
+		const projectConfig = generateProjectConfig(vars, initAgentConfig);
 		writeFile(
 			path.join(taskplaneDir, "taskplane-config.json"),
 			JSON.stringify(projectConfig, null, 2) + "\n",
@@ -1473,6 +1975,9 @@ async function cmdInit(args) {
 			console.log(`  ${c.cyan}/orch${c.reset}                                             # start the taskplane supervisor`);
 			console.log(`  ${c.cyan}/orch all${c.reset}                                        # run all open tasks`);
 		}
+		if (inferTaskplaneInstallScope() === "global") {
+			console.log(`  ${c.cyan}taskplane config --save-as-defaults${c.reset}             # save these agent defaults for future inits`);
+		}
 		console.log();
 		return;
 	}
@@ -1518,6 +2023,10 @@ async function cmdInit(args) {
 		return;
 	}
 
+	const initAgentConfig = await collectInitAgentConfig({
+		interactive: !isPreset,
+	});
+
 	// Scaffold files
 	console.log(`\n${c.bold}Creating files...${c.reset}\n`);
 	// Skip existing files only when --force was NOT used AND the user did NOT confirm overwrite
@@ -1552,7 +2061,7 @@ async function cmdInit(args) {
 	// Unified project config JSON
 	writeFile(
 		path.join(projectRoot, ".pi", "taskplane-config.json"),
-		JSON.stringify(generateProjectConfig(vars), null, 2) + "\n",
+		JSON.stringify(generateProjectConfig(vars, initAgentConfig), null, 2) + "\n",
 		{ skipIfExists, label: ".pi/taskplane-config.json" },
 	);
 
@@ -1627,6 +2136,9 @@ async function cmdInit(args) {
 	if (preset !== "runner-only") {
 		console.log(`  ${c.cyan}/orch${c.reset}                                             # start the taskplane supervisor`);
 		console.log(`  ${c.cyan}/orch all${c.reset}                                        # run all open tasks`);
+	}
+	if (inferTaskplaneInstallScope() === "global") {
+		console.log(`  ${c.cyan}taskplane config --save-as-defaults${c.reset}             # save these agent defaults for future inits`);
 	}
 	console.log();
 }
@@ -2573,6 +3085,7 @@ ${c.bold}Usage:${c.reset}
 ${c.bold}Commands:${c.reset}
   ${c.cyan}init${c.reset}           Scaffold Taskplane config in the current project
   ${c.cyan}doctor${c.reset}         Validate installation and project configuration
+  ${c.cyan}config${c.reset}         Manage CLI config utilities (e.g., save init defaults)
   ${c.cyan}version${c.reset}        Show version information
   ${c.cyan}dashboard${c.reset}      Launch the web-based orchestrator dashboard
   ${c.cyan}uninstall${c.reset}      Remove Taskplane project files and/or package install
@@ -2589,6 +3102,10 @@ ${c.bold}Init options:${c.reset}
 ${c.bold}Dashboard options:${c.reset}
   --port <number>   Port to listen on (default: 8099)
   --no-open         Don't auto-open browser
+
+${c.bold}Config options:${c.reset}
+  --save-as-defaults  Save current project's worker/reviewer/merger model + thinking
+                      settings to user preferences for future taskplane init runs
 
 ${c.bold}Uninstall options:${c.reset}
   --dry-run         Show what would be removed
@@ -2607,6 +3124,7 @@ ${c.bold}Examples:${c.reset}
                                         # Use existing task area path
   taskplane init --dry-run              # Preview what would be created
   taskplane doctor                      # Check installation health
+  taskplane config --save-as-defaults   # Save current agent settings as init defaults
   taskplane dashboard                   # Launch web dashboard
   taskplane dashboard --port 3000       # Dashboard on custom port
   taskplane uninstall --dry-run         # Preview uninstall actions
@@ -2623,34 +3141,56 @@ ${c.bold}Getting started:${c.reset}
 // MAIN
 // ═════════════════════════════════════════════════════════════════════════════
 
-const [command, ...args] = process.argv.slice(2);
+export async function main(argv = process.argv.slice(2)) {
+	const [command, ...args] = argv;
 
-switch (command) {
-	case "init":
-		await cmdInit(args);
-		break;
-	case "doctor":
-		cmdDoctor();
-		break;
-	case "version":
-	case "--version":
-	case "-v":
-		cmdVersion();
-		break;
-	case "dashboard":
-		cmdDashboard(args);
-		break;
-	case "uninstall":
-		await cmdUninstall(args);
-		break;
-	case "help":
-	case "--help":
-	case "-h":
-	case undefined:
-		showHelp();
-		break;
-	default:
-		console.error(`${FAIL} Unknown command: ${command}`);
-		showHelp();
-		process.exit(1);
+	switch (command) {
+		case "init":
+			await cmdInit(args);
+			break;
+		case "doctor":
+			cmdDoctor();
+			break;
+		case "config":
+			cmdConfig(args);
+			break;
+		case "version":
+		case "--version":
+		case "-v":
+			cmdVersion();
+			break;
+		case "dashboard":
+			cmdDashboard(args);
+			break;
+		case "uninstall":
+			await cmdUninstall(args);
+			break;
+		case "help":
+		case "--help":
+		case "-h":
+		case undefined:
+			showHelp();
+			break;
+		default:
+			console.error(`${FAIL} Unknown command: ${command}`);
+			showHelp();
+			process.exit(1);
+	}
+}
+
+const isDirectExecution = (() => {
+	const argv1 = process.argv[1];
+	if (!argv1) return false;
+
+	try {
+		const invokedPath = fs.realpathSync(argv1);
+		const modulePath = fs.realpathSync(__filename);
+		return invokedPath === modulePath;
+	} catch {
+		return path.resolve(argv1) === __filename;
+	}
+})();
+
+if (isDirectExecution) {
+	await main();
 }
