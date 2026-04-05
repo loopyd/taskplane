@@ -1284,14 +1284,14 @@ describe("17. Write-decision logic (resolveWriteAction)", () => {
 	// 17.2 — L1-only resolveWriteAction
 
 	describe("17.2 L1-only fields", () => {
-		it("17.2.1 L1 field + no destination choice → 'prefs'", () => {
+		it("17.2.1 L1 field + null destination choice (escape) → 'skip'", () => {
 			const field = makeL1Field();
-			expect(resolveWriteAction(field, null, true)).toBe("prefs");
+			expect(resolveWriteAction(field, null, true)).toBe("skip");
 		});
 
-		it("17.2.2 L1 field + no destination choice ignores confirmation flag", () => {
+		it("17.2.2 L1 field + explicit global destination → 'prefs'", () => {
 			const field = makeL1Field();
-			expect(resolveWriteAction(field, null, false)).toBe("prefs");
+			expect(resolveWriteAction(field, "Global preferences (default)", false)).toBe("prefs");
 		});
 	});
 
@@ -1317,9 +1317,9 @@ describe("17. Write-decision logic (resolveWriteAction)", () => {
 			expect(resolveWriteAction(field, "Cancel", true)).toBe("skip");
 		});
 
-		it("17.4.2 L1+L2 field + null choice (escaped) → defaults to 'prefs'", () => {
+		it("17.4.2 L1+L2 field + null choice (escaped) → 'skip'", () => {
 			const field = makeL1L2StringField();
-			expect(resolveWriteAction(field, null, true)).toBe("prefs");
+			expect(resolveWriteAction(field, null, true)).toBe("skip");
 		});
 
 		it("17.4.3 L1+L2 enum field + Cancel choice → 'skip'", () => {
@@ -1358,6 +1358,11 @@ describe("17. Write-decision logic (resolveWriteAction)", () => {
 		it("17.6.3 L1+L2 enum + 'Project config (shared)' + declined → 'skip'", () => {
 			const field = makeL1L2EnumField();
 			expect(resolveWriteAction(field, "Project config (shared)", false)).toBe("skip");
+		});
+
+		it("17.6.4 remove-project destination returns remove-project route", () => {
+			const field = makeL1L2StringField();
+			expect(resolveWriteAction(field, "Remove project override (revert to global)", true)).toBe("remove-project");
 		});
 	});
 

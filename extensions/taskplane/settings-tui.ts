@@ -542,8 +542,7 @@ export function resolveWriteAction(
 	// L2-only fields have no project layer
 	if (field.layer === "L2") return "prefs";
 
-	if (!destinationChoice) return defaultDest;
-	if (destinationChoice === "Cancel") return "skip";
+	if (!destinationChoice || destinationChoice === "Cancel") return "skip";
 	if (destinationChoice.startsWith("Global") || destinationChoice.startsWith("User")) return "prefs";
 	if (destinationChoice.startsWith("Remove project override")) return "remove-project";
 	if (destinationChoice.startsWith("Project") && !projectConfirmed) return "skip";

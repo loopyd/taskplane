@@ -1,6 +1,6 @@
 # TP-140: Global Preferences Architecture — Status
 
-**Current Step:** Step 4: Settings TUI — source badges and save behavior
+**Current Step:** Step 5: Sparse project config in taskplane init
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-05
 **Review Level:** 2
@@ -45,17 +45,17 @@
 - [x] Update tests for new precedence
 
 ### Step 4: Settings TUI — source badges and save behavior
-**Status:** 🟨 In Progress
+**Status:** ✅ Complete
 - [x] Source badges: (global) and (project) only
 - [x] Default save: global preferences
 - [x] Sparse write for project overrides
 - [x] "Remove project override" option
 - [x] Update field layers
-- [ ] Treat destination-picker cancel/escape as skip (no write)
-- [ ] Add tests for cancel semantics and resolveWriteAction remove-project route
+- [x] Treat destination-picker cancel/escape as skip (no write)
+- [x] Add tests for cancel semantics and resolveWriteAction remove-project route
 
 ### Step 5: Sparse project config in taskplane init
-**Status:** ⬜ Not Started
+**Status:** 🟨 In Progress
 - [ ] generateProjectConfig writes only project-specific fields
 - [ ] Agent settings NOT included
 - [ ] Existing full configs continue working
