@@ -1,10 +1,10 @@
 # TP-137: Batch History Persistence Fix — Status
 
-**Current Step:** Step 1: Diagnose and fix root cause
+**Current Step:** Step 2: Ensure history survives integration
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-05
 **Review Level:** 1
-**Review Counter:** 0
+**Review Counter:** 1
 **Iteration:** 1
 **Size:** S
 
@@ -19,12 +19,12 @@
 - [x] Determine root cause
 
 ### Step 1: Diagnose and fix root cause
-**Status:** 🟨 In Progress
-- [ ] Fix identified root cause
-- [ ] Verify history written correctly
+**Status:** ✅ Complete
+- [x] Fix identified root cause
+- [x] Verify history written correctly
 
 ### Step 2: Ensure history survives integration
-**Status:** ⬜ Not Started
+**Status:** 🟨 In Progress
 - [ ] Verify after orch_integrate
 - [ ] Post-integration hook if needed
 - [ ] Handle resumed batch edge case
@@ -49,3 +49,4 @@
 | 2026-04-05 01:30 | Task started | Runtime V2 lane-runner execution |
 | 2026-04-05 01:30 | Step 0 started | Preflight |
 |-----------|--------|---------|
+| 2026-04-05 01:38 | Review R001 | plan Step 1: APPROVE |
