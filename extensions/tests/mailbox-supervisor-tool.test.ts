@@ -32,10 +32,12 @@ describe("workspace-root cleanup wiring", () => {
 	it("buildIntegrationExecutor uses stateRoot override for cleanupPostIntegrate", () => {
 		expect(extensionSource).toContain("buildIntegrationExecutor(repoRoot: string, opId?: string, stateRoot?: string)");
 		expect(extensionSource).toContain("cleanupPostIntegrate(stateRoot ?? repoRoot, context.batchId)");
+		expect(extensionSource).toContain("withPreservedBatchHistory(effectiveStateRoot");
 	});
 
 	it("/orch-integrate manual path cleans up artifacts from execCtx.workspaceRoot", () => {
 		expect(extensionSource).toContain("const stateRoot = execCtx!.workspaceRoot;");
 		expect(extensionSource).toContain("cleanupPostIntegrate(stateRoot, batchId)");
+		expect(extensionSource).toContain("const integrationRun = withPreservedBatchHistory(stateRoot");
 	});
 });

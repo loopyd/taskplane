@@ -2,7 +2,7 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
 import { Type } from "@mariozechner/pi-ai";
 
 import { execSync, execFileSync } from "child_process";
-import { writeFileSync, unlinkSync, mkdirSync, existsSync, readdirSync, readFileSync, statSync, createWriteStream } from "fs";
+import { writeFileSync, unlinkSync, mkdirSync, existsSync, readdirSync, readFileSync, statSync, createWriteStream, renameSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { fork, type ChildProcess } from "child_process";
@@ -363,6 +363,49 @@ export interface IntegrationExecDeps {
 	runGit: (args: string[]) => { ok: boolean; stdout: string; stderr: string };
 	runCommand: (cmd: string, args: string[]) => { ok: boolean; stdout: string; stderr: string };
 	deleteBatchState: () => void;
+}
+
+interface BatchHistorySnapshot {
+	filePath: string;
+	raw: string;
+}
+
+/**
+ * Preserve `.pi/batch-history.json` across integration merges.
+ *
+ * Runtime history is sidecar state, not source-controlled content. In environments
+ * where `.pi/batch-history.json` was previously tracked, merge/checkouts can
+ * replace newer runtime history with stale branch snapshots. This helper snapshots
+ * the file before integration and restores it afterward (best effort).
+ */
+export function withPreservedBatchHistory<T>(stateRoot: string, operation: () => T): T {
+	const historyPath = join(stateRoot, ".pi", "batch-history.json");
+	let snapshot: BatchHistorySnapshot | null = null;
+	try {
+		if (existsSync(historyPath)) {
+			snapshot = {
+				filePath: historyPath,
+				raw: readFileSync(historyPath, "utf-8"),
+			};
+		}
+	} catch {
+		// Best effort only — integration should never fail due to snapshot capture.
+	}
+
+	try {
+		return operation();
+	} finally {
+		if (!snapshot) return;
+		try {
+			const dir = dirname(snapshot.filePath);
+			if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+			const tmpPath = snapshot.filePath + ".tmp";
+			writeFileSync(tmpPath, snapshot.raw);
+			renameSync(tmpPath, snapshot.filePath);
+		} catch {
+			// Best effort only — never block integration completion.
+		}
+	}
 }
 
 /**
@@ -1324,10 +1367,13 @@ export function buildIntegrationExecutor(repoRoot: string, opId?: string, stateR
 			},
 		};
 
-		const result = executeIntegration(mode as IntegrateMode, {
-			...context,
-			currentBranch: context.baseBranch,
-		}, deps);
+		const effectiveStateRoot = stateRoot ?? repoRoot;
+		const result = withPreservedBatchHistory(effectiveStateRoot, () =>
+			executeIntegration(mode as IntegrateMode, {
+				...context,
+				currentBranch: context.baseBranch,
+			}, deps),
+		);
 
 		// TP-051: Clean up stale task/* and saved/* branches after successful integration.
 		// This ensures auto-mode integration (supervisor path) gets the same cleanup
@@ -3116,44 +3162,51 @@ export default function (pi: ExtensionAPI) {
 			reposToIntegrate.push({ id: "(default)", root: repoRoot });
 		}
 
-		let totalCommits = 0;
-		let allSucceeded = true;
-		const repoMessages: string[] = [];
+		const integrationRun = withPreservedBatchHistory(stateRoot, () => {
+			let totalCommits = 0;
+			const repoMessages: string[] = [];
 
-		for (const repo of reposToIntegrate) {
-			const preCountResult = runGit(["rev-list", "--count", `HEAD..${resolvedOrchBranch}`], repo.root);
-			const repoCommitsBefore = preCountResult.ok ? parseInt(preCountResult.stdout) || 0 : 0;
+			for (const repo of reposToIntegrate) {
+				const preCountResult = runGit(["rev-list", "--count", `HEAD..${resolvedOrchBranch}`], repo.root);
+				const repoCommitsBefore = preCountResult.ok ? parseInt(preCountResult.stdout) || 0 : 0;
 
-			const integrationResult = executeIntegration(parsed.mode, resolution as IntegrationContext, {
-				runGit: (gitArgs: string[]) => runGit(gitArgs, repo.root),
-				runCommand: (cmd: string, cmdArgs: string[]) => {
-					try {
-						const stdout = execFileSync(cmd, cmdArgs, {
-							encoding: "utf-8",
-							timeout: 60_000,
-							cwd: repo.root,
-							stdio: ["pipe", "pipe", "pipe"],
-						}).trim();
-						return { ok: true, stdout, stderr: "" };
-					} catch (err: unknown) {
-						const e = err as { stdout?: string; stderr?: string; message?: string };
-						return {
-							ok: false,
-							stdout: (e.stdout ?? "").toString().trim(),
-							stderr: (e.stderr ?? e.message ?? "unknown error").toString().trim(),
-						};
-					}
-				},
-				deleteBatchState: () => { /* handled once after all repos */ },
-			});
+				const integrationResult = executeIntegration(parsed.mode, resolution as IntegrationContext, {
+					runGit: (gitArgs: string[]) => runGit(gitArgs, repo.root),
+					runCommand: (cmd: string, cmdArgs: string[]) => {
+						try {
+							const stdout = execFileSync(cmd, cmdArgs, {
+								encoding: "utf-8",
+								timeout: 60_000,
+								cwd: repo.root,
+								stdio: ["pipe", "pipe", "pipe"],
+							}).trim();
+							return { ok: true, stdout, stderr: "" };
+						} catch (err: unknown) {
+							const e = err as { stdout?: string; stderr?: string; message?: string };
+							return {
+								ok: false,
+								stdout: (e.stdout ?? "").toString().trim(),
+								stderr: (e.stderr ?? e.message ?? "unknown error").toString().trim(),
+							};
+						}
+					},
+					deleteBatchState: () => { /* handled once after all repos */ },
+				});
 
-			if (!integrationResult.success) {
-				return { message: `❌ Integration failed in ${repo.id}:\n${integrationResult.error}`, error: true };
+				if (!integrationResult.success) {
+					return { ok: false as const, error: `❌ Integration failed in ${repo.id}:\n${integrationResult.error}` };
+				}
+
+				totalCommits += repoCommitsBefore;
+				repoMessages.push(`  ${repo.id}: ${integrationResult.message}`);
 			}
 
-			totalCommits += repoCommitsBefore;
-			repoMessages.push(`  ${repo.id}: ${integrationResult.message}`);
+			return { ok: true as const, totalCommits, repoMessages };
+		});
+		if (!integrationRun.ok) {
+			return { message: integrationRun.error, error: true };
 		}
+		const { totalCommits, repoMessages } = integrationRun;
 
 		// Post-integration cleanup & acceptance
 		const allRepos: { id: string; root: string }[] = [];

@@ -1841,18 +1841,21 @@ export function saveBatchHistory(repoRoot: string, summary: BatchHistorySummary)
 	const filePath = batchHistoryPath(repoRoot);
 	try {
 		const history = loadBatchHistory(repoRoot);
+		// Upsert by batchId so resumed batches replace their earlier partial entry
+		// instead of creating duplicates.
+		const nextHistory = history.filter(entry => entry.batchId !== summary.batchId);
 		// Prepend newest first
-		history.unshift(summary);
+		nextHistory.unshift(summary);
 		// Trim to max
-		if (history.length > BATCH_HISTORY_MAX_ENTRIES) {
-			history.length = BATCH_HISTORY_MAX_ENTRIES;
+		if (nextHistory.length > BATCH_HISTORY_MAX_ENTRIES) {
+			nextHistory.length = BATCH_HISTORY_MAX_ENTRIES;
 		}
 		const dir = dirname(filePath);
 		if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
 		const tmpPath = filePath + ".tmp";
-		writeFileSync(tmpPath, JSON.stringify(history, null, 2));
+		writeFileSync(tmpPath, JSON.stringify(nextHistory, null, 2));
 		renameSync(tmpPath, filePath);
-		execLog("batch", "history", `saved batch summary (${history.length} entries)`);
+		execLog("batch", "history", `saved batch summary (${nextHistory.length} entries)`);
 	} catch (err) {
 		execLog("batch", "history", `failed to save batch history: ${err}`);
 	}
