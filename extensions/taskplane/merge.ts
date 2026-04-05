@@ -602,6 +602,7 @@ export async function spawnMergeAgentV2(
 		systemPrompt,
 		model: config.merge.model || undefined,
 		tools: config.merge.tools || undefined,
+		thinking: config.merge.thinking || undefined,
 		mailboxDir,
 		eventsPath,
 		exitSummaryPath,

@@ -302,6 +302,8 @@ export interface MergeConfig {
 	model: string;
 	/** Merge-agent tool allowlist */
 	tools: string;
+	/** Merge-agent thinking mode (empty = inherit session thinking) */
+	thinking: string;
 	/** Verification commands run after merge operations */
 	verify: string[];
 	/** Lane merge ordering policy */
@@ -602,6 +604,7 @@ export const DEFAULT_ORCHESTRATOR_SECTION: OrchestratorSection = {
 	merge: {
 		model: "",
 		tools: "read,write,edit,bash,grep,find,ls",
+		thinking: "",
 		verify: [],
 		order: "fewest-files-first",
 		timeoutMinutes: 90,

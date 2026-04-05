@@ -129,6 +129,7 @@ export const SECTIONS: SectionDef[] = [
 		fields: [
 			{ configPath: "orchestrator.merge.model", label: "Merge Model", control: "input", layer: "L1+L2", fieldType: "string", prefsKey: "mergeModel", description: "Merge-agent model (inherit = use session model)" },
 			{ configPath: "orchestrator.merge.tools", label: "Merge Tools", control: "input", layer: "L1", fieldType: "string", description: "Merge-agent tool allowlist" },
+			{ configPath: "orchestrator.merge.thinking", label: "Merge Thinking", control: "input", layer: "L1+L2", fieldType: "string", prefsKey: "mergeThinking", description: "Merge-agent thinking mode (empty = inherit session)" },
 			{ configPath: "orchestrator.merge.order", label: "Merge Order", control: "toggle", layer: "L1", fieldType: "enum", values: ["fewest-files-first", "sequential"], description: "Lane merge ordering policy" },
 			{ configPath: "orchestrator.merge.timeoutMinutes", label: "Merge Timeout (minutes)", control: "input", layer: "L1", fieldType: "number", description: "Max time for merge agent to complete. Increase for large batches (default: 10)" },
 		],
