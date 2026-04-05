@@ -10,6 +10,19 @@ const AVAILABLE_MODELS = [
 	{ provider: "openai", id: "gpt-5.3-codex", displayName: "openai/gpt-5.3-codex" },
 ];
 
+const EMPTY_SAVED_DEFAULTS = {
+	defaults: {
+		workerModel: "",
+		reviewerModel: "",
+		mergeModel: "",
+		workerThinking: "",
+		reviewerThinking: "",
+		mergeThinking: "",
+	},
+	hasDefaults: false,
+	prefsPath: "/tmp/preferences.json",
+};
+
 describe("init model picker flow", () => {
 	it("supports 'same model for all' selection with thinking prompt", async () => {
 		const askAnswers = ["3", "2", "2"]; // provider=openai, model=gpt-5.3-codex, thinking=on
@@ -19,6 +32,7 @@ describe("init model picker flow", () => {
 		const config = await collectInitAgentConfig({
 			interactive: true,
 			queryModelsImpl: () => ({ available: true, models: AVAILABLE_MODELS, error: null }),
+			loadInitDefaultsImpl: async () => EMPTY_SAVED_DEFAULTS,
 			confirmImpl: async () => true,
 			askImpl: async (_question: string, defaultValue: string) => askAnswers[askIdx++] ?? defaultValue,
 			logImpl: (msg: string) => logs.push(msg),
@@ -52,6 +66,7 @@ describe("init model picker flow", () => {
 		const config = await collectInitAgentConfig({
 			interactive: true,
 			queryModelsImpl: () => ({ available: true, models: AVAILABLE_MODELS, error: null }),
+			loadInitDefaultsImpl: async () => EMPTY_SAVED_DEFAULTS,
 			confirmImpl: async () => false,
 			askImpl: async (_question: string, defaultValue: string) => askAnswers[askIdx++] ?? defaultValue,
 			logImpl: () => {},
@@ -71,6 +86,7 @@ describe("init model picker flow", () => {
 		const config = await collectInitAgentConfig({
 			interactive: true,
 			queryModelsImpl: () => ({ available: false, models: [], error: "pi unavailable" }),
+			loadInitDefaultsImpl: async () => EMPTY_SAVED_DEFAULTS,
 			confirmImpl: async () => {
 				throw new Error("confirm should not be called when model list is unavailable");
 			},
@@ -88,6 +104,32 @@ describe("init model picker flow", () => {
 			reviewerThinking: "",
 			mergeThinking: "",
 		});
+	});
+
+	it("pre-populates prompts from saved defaults", async () => {
+		const savedDefaults = {
+			defaults: {
+				workerModel: "openai/gpt-5.3-codex",
+				reviewerModel: "openai/gpt-5.3-codex",
+				mergeModel: "openai/gpt-5.3-codex",
+				workerThinking: "off",
+				reviewerThinking: "off",
+				mergeThinking: "off",
+			},
+			hasDefaults: true,
+			prefsPath: "/tmp/preferences.json",
+		};
+
+		const config = await collectInitAgentConfig({
+			interactive: true,
+			queryModelsImpl: () => ({ available: true, models: AVAILABLE_MODELS, error: null }),
+			loadInitDefaultsImpl: async () => savedDefaults,
+			confirmImpl: async (_question: string, defaultYes: boolean) => defaultYes,
+			askImpl: async (_question: string, defaultValue: string) => defaultValue,
+			logImpl: () => {},
+		});
+
+		expect(config).toEqual(savedDefaults.defaults);
 	});
 
 	it("writes model + thinking selections into generated project config", () => {

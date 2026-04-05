@@ -40,6 +40,13 @@ describe("CLI command surface", () => {
 		expect(result.stdout).not.toContain("install-tmux");
 	});
 
+	it("advertises config command in help output", () => {
+		const result = runCli(["help"]);
+		expect(result.exitCode).toBe(0);
+		expect(result.stdout).toContain("config");
+		expect(result.stdout).toContain("--save-as-defaults");
+	});
+
 	it("rejects install-tmux as an unknown command", () => {
 		const result = runCli(["install-tmux"]);
 		expect(result.exitCode).toBe(1);

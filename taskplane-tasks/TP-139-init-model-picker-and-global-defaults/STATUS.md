@@ -1,10 +1,10 @@
 # TP-139: Init Model Picker and Global Defaults — Status
 
-**Current Step:** Step 2: Interactive model selection in init
+**Current Step:** Step 3: Global defaults infrastructure
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-05
 **Review Level:** 2
-**Review Counter:** 4
+**Review Counter:** 6
 **Iteration:** 1
 **Size:** M
 
@@ -39,12 +39,12 @@
 - [x] Graceful fallback if unavailable
 
 ### Step 3: Global defaults infrastructure
-**Status:** ⬜ Not Started
-- [ ] Extend UserPreferences schema
-- [ ] Pre-populate from defaults during init
-- [ ] Add `taskplane config --save-as-defaults` command
-- [ ] Detect global vs local install
-- [ ] Show save confirmation
+**Status:** ✅ Complete
+- [x] Extend UserPreferences schema
+- [x] Pre-populate from defaults during init
+- [x] Add `taskplane config --save-as-defaults` command
+- [x] Detect global vs local install
+- [x] Show save confirmation
 
 ### Step 4: Testing & Verification
 **Status:** ⬜ Not Started
@@ -73,6 +73,8 @@
 | 2 | Code | 1 | REVISE | .reviews/R002-code-step1.md |
 | 3 | Code | 1 | APPROVE | - |
 | 4 | Plan | 2 | APPROVE | - |
+| 5 | Code | 2 | APPROVE | - |
+| 6 | Plan | 3 | APPROVE | - |
 
 ---
 
@@ -97,6 +99,9 @@
 | 2026-04-05 19:15 | Review R003 | code Step 1: APPROVE |
 | 2026-04-05 19:16 | Review R004 | plan Step 2: APPROVE |
 | 2026-04-05 19:23 | Step 2 tests | `tests/init-model-picker.test.ts` + related CLI tests passed (11/11) |
+| 2026-04-05 19:24 | Review R005 | code Step 2: APPROVE |
+| 2026-04-05 19:25 | Review R006 | plan Step 3: APPROVE |
+| 2026-04-05 19:30 | Step 3 tests | config/defaults targeted tests passed (16/16) |
 
 ---
 

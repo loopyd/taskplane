@@ -764,6 +764,31 @@ export function loadUserPreferences(): UserPreferences {
  * Extract only recognized/allowlisted fields from a raw parsed object.
  * Unknown keys are silently dropped — this is the Layer 2 boundary guardrail.
  */
+function normalizePreferenceThinkingMode(value: unknown): string {
+	const cleaned = String(value ?? "").trim().toLowerCase();
+	if (cleaned === "on") return "on";
+	if (cleaned === "off") return "off";
+	return "";
+}
+
+function extractInitAgentDefaults(rawInitDefaults: unknown): UserPreferences["initAgentDefaults"] | undefined {
+	if (!rawInitDefaults || typeof rawInitDefaults !== "object" || Array.isArray(rawInitDefaults)) {
+		return undefined;
+	}
+
+	const raw = rawInitDefaults as Record<string, unknown>;
+	const extracted: NonNullable<UserPreferences["initAgentDefaults"]> = {};
+
+	if (typeof raw.workerModel === "string") extracted.workerModel = raw.workerModel;
+	if (typeof raw.reviewerModel === "string") extracted.reviewerModel = raw.reviewerModel;
+	if (typeof raw.mergeModel === "string") extracted.mergeModel = raw.mergeModel;
+	if (raw.workerThinking !== undefined) extracted.workerThinking = normalizePreferenceThinkingMode(raw.workerThinking);
+	if (raw.reviewerThinking !== undefined) extracted.reviewerThinking = normalizePreferenceThinkingMode(raw.reviewerThinking);
+	if (raw.mergeThinking !== undefined) extracted.mergeThinking = normalizePreferenceThinkingMode(raw.mergeThinking);
+
+	return Object.keys(extracted).length > 0 ? extracted : undefined;
+}
+
 function extractAllowlistedPreferences(raw: Record<string, any>, prefsPath: string): UserPreferences {
 	migrateUserPreferences(raw, prefsPath);
 
@@ -783,6 +808,10 @@ function extractAllowlistedPreferences(raw: Record<string, any>, prefsPath: stri
 	if (typeof raw.supervisorModel === "string") prefs.supervisorModel = raw.supervisorModel;
 	if (typeof raw.dashboardPort === "number" && Number.isFinite(raw.dashboardPort)) {
 		prefs.dashboardPort = raw.dashboardPort;
+	}
+	const initAgentDefaults = extractInitAgentDefaults(raw.initAgentDefaults);
+	if (initAgentDefaults) {
+		prefs.initAgentDefaults = initAgentDefaults;
 	}
 
 	return prefs;
@@ -809,6 +838,7 @@ function extractAllowlistedPreferences(raw: Record<string, any>, prefsPath: stri
  *   prefs.mergeModel    → config.orchestrator.merge.model
  *   prefs.supervisorModel → config.orchestrator.supervisor.model
  *   prefs.dashboardPort → (no config target yet — stored only)
+ *   prefs.initAgentDefaults → (preferences-only; consumed by CLI init flow)
  */
 export function applyUserPreferences(config: TaskplaneConfig, prefs: UserPreferences): TaskplaneConfig {
 	// Helper: only apply non-empty string values
