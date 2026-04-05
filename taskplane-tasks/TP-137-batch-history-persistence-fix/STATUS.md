@@ -55,6 +55,8 @@
 | 2026-04-05 01:47 | Integration persistence hardening | Added `withPreservedBatchHistory(...)` to manual and auto integration paths |
 | 2026-04-05 01:48 | Resume edge-case fix | `saveBatchHistory` now upserts by `batchId` so resumed batches reflect final outcome |
 | 2026-04-05 01:52 | Verification | Targeted tests + full `tests/*.test.ts` suite passed (3152/3152) |
+| 2026-04-05 01:49 | Worker iter 1 | done in 1100s, tools: 134 |
+| 2026-04-05 01:49 | Task complete | .DONE created |
 
 ## Closure Notes
 
