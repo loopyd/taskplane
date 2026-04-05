@@ -4,7 +4,7 @@
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-05
 **Review Level:** 2
-**Review Counter:** 3
+**Review Counter:** 5
 **Iteration:** 1
 **Size:** M
 
@@ -42,6 +42,7 @@
 - [ ] Reuse selectScrollable
 - [ ] Current value marked with ✓
 - [ ] Save to correct destination
+- [ ] Suggest enabling thinking when model changes to a thinking-capable model
 
 ### Step 4: Testing & Verification
 **Status:** ⬜ Not Started
@@ -58,6 +59,11 @@
 
 ---
 
+## Notes
+
+- Reviewer suggestion (R005): keep picker persistence explicit so selecting “inherit” stores/clears as `""` rather than a literal label.
+- Reviewer suggestion (R005): keep the same picker UX pattern across worker/reviewer/merge thinking fields.
+
 ## Execution Log
 
 | Timestamp | Action | Outcome |
@@ -68,3 +74,5 @@
 | 2026-04-05 17:43 | Review R002 | code Step 1: APPROVE |
 | 2026-04-05 17:45 | Review R003 | plan Step 2: APPROVE |
 | 2026-04-05 13:49 | Step 2 verification | Targeted runtime fallback tests passed (task-runner-rpc, lane-runner-v2, process-registry) |
+| 2026-04-05 17:51 | Review R004 | code Step 2: APPROVE |
+| 2026-04-05 17:53 | Review R005 | plan Step 3: REVISE |
