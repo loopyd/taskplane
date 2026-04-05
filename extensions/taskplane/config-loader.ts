@@ -753,6 +753,7 @@ function extractAllowlistedPreferences(raw: Record<string, any>, prefsPath: stri
 	if (typeof raw.workerModel === "string") prefs.workerModel = raw.workerModel;
 	if (typeof raw.reviewerModel === "string") prefs.reviewerModel = raw.reviewerModel;
 	if (typeof raw.mergeModel === "string") prefs.mergeModel = raw.mergeModel;
+	if (typeof raw.mergeThinking === "string") prefs.mergeThinking = raw.mergeThinking;
 	if (typeof raw.supervisorModel === "string") prefs.supervisorModel = raw.supervisorModel;
 	if (typeof raw.dashboardPort === "number" && Number.isFinite(raw.dashboardPort)) {
 		prefs.dashboardPort = raw.dashboardPort;
@@ -794,6 +795,7 @@ export function applyUserPreferences(config: TaskplaneConfig, prefs: UserPrefere
 	applyStr(prefs.workerModel, (v) => { config.taskRunner.worker.model = v; });
 	applyStr(prefs.reviewerModel, (v) => { config.taskRunner.reviewer.model = v; });
 	applyStr(prefs.mergeModel, (v) => { config.orchestrator.merge.model = v; });
+	applyStr(prefs.mergeThinking, (v) => { config.orchestrator.merge.thinking = v; });
 	applyStr(prefs.supervisorModel, (v) => { config.orchestrator.supervisor.model = v; });
 
 	// spawnMode: enum — apply if defined (not a string-empty check)

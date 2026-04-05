@@ -521,6 +521,8 @@ export interface UserPreferences {
 	reviewerModel?: string;
 	/** Merge model override (overrides orchestrator.merge.model) */
 	mergeModel?: string;
+	/** Merge thinking override (overrides orchestrator.merge.thinking) */
+	mergeThinking?: string;
 	/** Supervisor model override (overrides orchestrator.supervisor.model) (TP-041) */
 	supervisorModel?: string;
 	/** Dashboard port (preferences-only; not yet wired into config schema) */
