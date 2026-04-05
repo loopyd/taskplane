@@ -1,4 +1,4 @@
-# TP-138: Agent Model/Thinking UX and Global Defaults — Status
+# TP-138: Agent Thinking UX, Init Model Picker, and Global Defaults — Status
 
 **Current Step:** Not Started
 **Status:** 🔵 Ready for Execution
@@ -6,18 +6,17 @@
 **Review Level:** 2
 **Review Counter:** 0
 **Iteration:** 0
-**Size:** L
+**Size:** M
 
 ---
 
 ### Step 0: Preflight
 **Status:** ⬜ Not Started
 - [ ] Read PROMPT.md and STATUS.md
-- [ ] Read taskplane init flow
+- [ ] Read settings-tui.ts pickModel (v0.24.17)
 - [ ] Read config-schema.ts defaults
 - [ ] Read config-loader.ts preferences
-- [ ] Read Sage model selection reference
-- [ ] Understand pi model registry API
+- [ ] Read bin/taskplane.mjs init flow
 
 ### Step 1: Fix defaults to inherit
 **Status:** ⬜ Not Started
@@ -27,23 +26,23 @@
 - [ ] Update templates
 - [ ] Verify runtime inheritance
 
-### Step 2: Interactive model selection
+### Step 2: Thinking picker in /taskplane-settings
 **Status:** ⬜ Not Started
-- [ ] Query pi model registry
-- [ ] Show enabled models
-- [ ] List selection UX
-- [ ] Per-agent-type selection
-- [ ] "Inherit" as default option
-- [ ] Manual entry fallback
-
-### Step 3: Auto-thinking
-**Status:** ⬜ Not Started
-- [ ] Query thinking capability
-- [ ] Auto-set on selection
-- [ ] Show after model pick
+- [ ] Add thinking-mode picker
+- [ ] Query model thinking capability
+- [ ] Auto-set thinking on model change
+- [ ] Show available thinking levels
+- [ ] Handle non-thinking models
 - [ ] Allow override
-- [ ] Reset on model change
-- [ ] Disable for non-thinking models
+
+### Step 3: Interactive model selection in init
+**Status:** ⬜ Not Started
+- [ ] Query model registry from CLI
+- [ ] Provider → model picker in init
+- [ ] Per-agent-type selection
+- [ ] "Inherit" as default
+- [ ] Fallback if unavailable
+- [ ] Thinking prompt after model
 
 ### Step 4: Global defaults
 **Status:** ⬜ Not Started
@@ -59,7 +58,7 @@
 - [ ] Test init with global defaults
 - [ ] Test save-as-defaults
 - [ ] Test "inherit" alias
-- [ ] Test model selection
+- [ ] Test thinking auto-set
 - [ ] Run full suite, fix failures
 
 ### Step 6: Documentation & Delivery
