@@ -1,10 +1,10 @@
 # TP-140: Global Preferences Architecture — Status
 
-**Current Step:** Step 5: Sparse project config in taskplane init
+**Current Step:** Step 4: Settings TUI — source badges and save behavior
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-05
 **Review Level:** 2
-**Review Counter:** 9
+**Review Counter:** 10
 **Iteration:** 1
 **Size:** L
 
@@ -45,15 +45,17 @@
 - [x] Update tests for new precedence
 
 ### Step 4: Settings TUI — source badges and save behavior
-**Status:** ✅ Complete
+**Status:** 🟨 In Progress
 - [x] Source badges: (global) and (project) only
 - [x] Default save: global preferences
 - [x] Sparse write for project overrides
 - [x] "Remove project override" option
 - [x] Update field layers
+- [ ] Treat destination-picker cancel/escape as skip (no write)
+- [ ] Add tests for cancel semantics and resolveWriteAction remove-project route
 
 ### Step 5: Sparse project config in taskplane init
-**Status:** 🟨 In Progress
+**Status:** ⬜ Not Started
 - [ ] generateProjectConfig writes only project-specific fields
 - [ ] Agent settings NOT included
 - [ ] Existing full configs continue working
@@ -111,6 +113,7 @@
 - Suggestion (R003): consider modeling GlobalPreferences as config deep-partial + preferences-only extension to reduce schema drift.
 - Suggestion (R003): keep allowlist extraction centralized so new config keys are not missed.
 - Suggestion (R005): optionally harden nested override validation against schema/allowlist to prevent unsupported nested keys.
+- Suggestion (R010): clean up stale test names that still mention legacy terms (default/user/project config wording).
 | 2026-04-05 22:07 | Review R001 | plan Step 1: APPROVE |
 | 2026-04-05 22:11 | Review R002 | code Step 1: APPROVE |
 | 2026-04-05 22:13 | Review R003 | plan Step 2: REVISE |
@@ -120,3 +123,4 @@
 | 2026-04-05 22:23 | Review R007 | plan Step 3: APPROVE |
 | 2026-04-05 22:30 | Review R008 | code Step 3: APPROVE |
 | 2026-04-05 22:31 | Review R009 | plan Step 4: APPROVE |
+| 2026-04-05 22:40 | Review R010 | code Step 4: REVISE |
