@@ -1,12 +1,12 @@
-# Task: TP-138 - Agent Thinking UX, Init Model Picker, and Global Defaults
+# Task: TP-138 - Agent Inherit Defaults and Thinking Picker
 
 **Created:** 2026-04-04
 **Size:** M
 
 ## Review Level: 2 (Plan + Code)
 
-**Assessment:** Touches init flow, config schema, and user preferences. Focused scope after model picker was shipped separately in v0.24.17.
-**Score:** 4/8 — Blast radius: 2 (init, config schema, preferences), Pattern novelty: 1, Security: 0, Reversibility: 1
+**Assessment:** Config schema, runtime fallbacks, and settings TUI changes. Multiple interacting defaults need auditing.
+**Score:** 4/8 — Blast radius: 2 (config schema, runtime, settings TUI), Pattern novelty: 1, Security: 0, Reversibility: 1
 
 ## Canonical Task Folder
 
@@ -20,23 +20,20 @@ taskplane-tasks/TP-138-agent-model-thinking-ux-and-global-defaults/
 
 ## Mission
 
-Complete the agent configuration UX overhaul. The interactive model picker in `/taskplane-settings` was shipped in v0.24.17 (Sage-style provider → model selection). This task covers the remaining items:
+Fix agent defaults to "inherit" and add a thinking-mode picker to `/taskplane-settings`.
 
-### Already done (v0.24.17)
-- ✅ Interactive model picker in `/taskplane-settings` (two-level provider → model)
-- ✅ "inherit (use current session model)" as first option
-- ✅ Current model marked with ✓
-- ✅ Falls back to manual input if no models available
+### Already done (prior releases)
+- ✅ Interactive model picker in `/taskplane-settings` (v0.24.17)
+- ✅ Merge agent thinking config field (v0.24.18)
+- ✅ mergeThinking user prefs wiring (v0.24.19)
 
 ### Remaining work
 
-1. **Fix defaults to inherit** — worker thinking defaults to `"off"`, reviewer model hardcodes `openai/gpt-5.3-codex`. Both should default to `""` (inherit). Support explicit `"inherit"` string as alias.
+1. **Fix defaults to inherit** — worker thinking defaults to `"off"` in config-schema.ts, reviewer model hardcodes `"openai/gpt-5.3-codex"`. Both should default to `""` (inherit from session). Support explicit `"inherit"` string as alias for `""`.
 
-2. **Thinking picker in /taskplane-settings** — add a thinking-mode picker (similar to model picker) for the thinking settings. When a model with thinking support is selected, auto-set thinking to `"on"`. Show available thinking levels for the selected model.
+2. **Audit runtime fallbacks** — check `extensions/task-runner.ts`, `extensions/taskplane/lane-runner.ts`, and `extensions/taskplane/agent-host.ts` for `thinking || "off"` or similar fallbacks that override inherit semantics. The goal: when thinking is `""`, NO `--thinking` flag is passed to pi, so the session default is used.
 
-3. **Interactive model selection in `taskplane init`** — bring the same model picker UX to the init flow. Currently init doesn't offer model selection at all. This requires accessing pi's model registry from the CLI context (spawn pi subprocess or read models.json).
-
-4. **Global defaults** — extend `~/.pi/agent/taskplane/preferences.json` with agent config defaults. Add `taskplane config --save-as-defaults` command. Pre-populate during `taskplane init` from global defaults. Detect global vs local install.
+3. **Thinking picker in /taskplane-settings** — add thinking-mode selection (not free-text) for worker, reviewer, and merge thinking settings. Options: "inherit (use session thinking)", "on", "off". When a model is changed to one with thinking support, suggest setting thinking to "on".
 
 ## Dependencies
 
@@ -48,93 +45,72 @@ Complete the agent configuration UX overhaul. The interactive model picker in `/
 - `taskplane-tasks/CONTEXT.md`
 
 **Tier 3:**
-- `extensions/taskplane/settings-tui.ts` — the model picker implementation (v0.24.17)
-- `extensions/taskplane/config-schema.ts` — defaults for all agent configs
-- `extensions/taskplane/config-loader.ts` — config loading chain, user preferences
-- `bin/taskplane.mjs` — init flow, CLI commands
+- `extensions/taskplane/settings-tui.ts` — model picker (v0.24.17) and thinking fields
+- `extensions/taskplane/config-schema.ts` — defaults, `MergeConfig`, `UserPreferences`
+- `extensions/taskplane/config-loader.ts` — config loading chain, prefs application
+- `extensions/taskplane/agent-host.ts` — how thinking flag is passed to pi subprocess
+- `extensions/taskplane/lane-runner.ts` — worker/reviewer spawn, thinking fallback logic
+- `extensions/task-runner.ts` — /task spawn path, may have `thinking || "off"` fallbacks
 
 ## File Scope
 
-- `extensions/taskplane/settings-tui.ts`
 - `extensions/taskplane/config-schema.ts`
 - `extensions/taskplane/config-loader.ts`
-- `bin/taskplane.mjs`
+- `extensions/taskplane/settings-tui.ts`
+- `extensions/taskplane/lane-runner.ts`
+- `extensions/taskplane/agent-host.ts`
+- `extensions/task-runner.ts`
 - `templates/config/task-runner.yaml`
 
 ## Steps
 
 ### Step 0: Preflight
 - [ ] Read PROMPT.md and STATUS.md
-- [ ] Read settings-tui.ts pickModel implementation (v0.24.17)
 - [ ] Read config-schema.ts defaults for worker, reviewer, merger
-- [ ] Read config-loader.ts user preferences loading chain
-- [ ] Read bin/taskplane.mjs init flow
+- [ ] Read settings-tui.ts current thinking field definitions
+- [ ] Read lane-runner.ts and agent-host.ts thinking handling
+- [ ] Read task-runner.ts for thinking fallback patterns
+- [ ] Grep for `thinking || "off"` or `thinking || "on"` across entire codebase
 
 ### Step 1: Fix defaults to inherit
 - [ ] config-schema.ts: worker.thinking `"off"` → `""` (inherit)
 - [ ] config-schema.ts: reviewer.model `"openai/gpt-5.3-codex"` → `""` (inherit)
-- [ ] Support explicit `"inherit"` string as alias for `""` in config-loader (treat identically at runtime)
-- [ ] Update template files (task-runner.yaml, any JSON templates)
-- [ ] Verify: empty model/thinking = pi session's model/thinking used at runtime
+- [ ] config-loader.ts: normalize `"inherit"` to `""` during config loading (treat as alias)
+- [ ] Update template files if they reference old defaults
+- [ ] Verify existing project configs with explicit values still work unchanged
 
-### Step 2: Thinking picker in /taskplane-settings
-- [ ] Add thinking-mode picker for worker, reviewer thinking settings
-- [ ] Query model's thinking capability from registry metadata if possible
-- [ ] When user changes a model to one with thinking support, auto-set thinking to `"on"`
-- [ ] Show available thinking levels (off, on, or budget levels if model supports them)
-- [ ] For models without thinking support, show thinking as disabled/off
-- [ ] Allow user to override (never force thinking on)
+### Step 2: Audit and fix runtime fallbacks
+- [ ] Check lane-runner.ts: does it pass `thinking: config.thinking || "off"`? If so, change to pass `undefined` when empty (let pi inherit)
+- [ ] Check agent-host.ts: ensure empty thinking = no `--thinking` flag passed
+- [ ] Check task-runner.ts: same audit for /task path
+- [ ] Check merge.ts: confirm empty thinking = no flag (already wired in v0.24.18, verify)
+- [ ] Verify: `thinking: ""` → pi subprocess inherits session thinking mode
 
-### Step 3: Interactive model selection in taskplane init
-- [ ] Query pi's model registry from CLI context (spawn pi subprocess or read models.json)
-- [ ] Present the same provider → model picker during init for agent model configuration
-- [ ] Allow per-agent-type model selection (worker, reviewer, merger)
-- [ ] "inherit from session" as default/first option
-- [ ] Fall back to skip/manual entry if model list unavailable
-- [ ] After model selection, prompt for thinking mode
+### Step 3: Thinking picker in /taskplane-settings
+- [ ] Change worker/reviewer/merge thinking fields from `control: "input"` to a picker
+- [ ] Options: "inherit (use session thinking)", "on", "off"
+- [ ] Reuse `selectScrollable()` from the model picker implementation
+- [ ] Current value marked with ✓ in the picker
+- [ ] Save correctly to project config or user prefs (L1+L2 fields)
 
-### Step 4: Global defaults infrastructure
-- [ ] Extend preferences.json schema with agent config defaults section
-- [ ] During `taskplane init`, check for global defaults and pre-populate config
-- [ ] Add `taskplane config --save-as-defaults` command
-- [ ] Detect global vs local install — suppress save-as-defaults for local installs
-- [ ] Show user what was saved and where
+### Step 4: Testing & Verification
+- [ ] Test: empty thinking = no --thinking flag in subprocess
+- [ ] Test: "inherit" string normalized to "" in config
+- [ ] Test: thinking picker saves and loads correctly
+- [ ] Test: reviewer with no model override inherits session model
+- [ ] Run full suite: `cd extensions && node --experimental-strip-types --experimental-test-module-mocks --no-warnings --import ./tests/loader.mjs --test tests/*.test.ts`
 
-### Step 5: Testing & Verification
-- [ ] Test: fresh init with no global defaults → all inherit
-- [ ] Test: fresh init with global defaults → pre-populated
-- [ ] Test: save-as-defaults writes to correct preferences location
-- [ ] Test: explicit "inherit" string treated same as empty string
-- [ ] Test: thinking auto-set when model changes
-- [ ] Run full suite, fix failures
-
-### Step 6: Documentation & Delivery
-- [ ] Update config reference docs
-- [ ] Update README if init flow changed
+### Step 5: Documentation & Delivery
+- [ ] Update config reference docs if defaults changed
 - [ ] Update STATUS.md
-
-## Design Notes
-
-### "inherit" semantics
-- `model: ""` or `model: "inherit"` → don't pass `--model` to pi, use session model
-- `thinking: ""` or `thinking: "inherit"` → don't pass `--thinking` to pi, use session thinking
-- Both treated identically at runtime; "inherit" is a human-readable alias
-
-### Model registry access from CLI
-`taskplane init` runs as a standalone Node script, not inside pi. Options:
-1. Spawn `pi --mode json` to query model list via RPC
-2. Read `~/.pi/models.json` directly (simpler but may not reflect auth state)
-3. Import pi's ModelRegistry if available as a library
-
-Prefer option 1 (RPC query) for accuracy — it checks auth state.
 
 ## Do NOT
 
 - Hardcode any specific model names as defaults
 - Break existing configs (empty string must still work as inherit)
-- Remove per-agent model override capability
-- Make thinking mandatory for models that support it (user can always set to off)
-- Reimplement the model picker (already done in settings-tui.ts — reuse it)
+- Remove per-agent model/thinking override capability
+- Reimplement the model picker (already done in settings-tui.ts)
+- Touch `taskplane init` or global defaults (that's TP-139)
 
 ## Git Commit Convention
 

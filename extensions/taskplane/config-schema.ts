@@ -507,7 +507,23 @@ export interface TaskplaneConfig {
  * | mergeModel         | orchestrator.merge.model             | string  |
  * | supervisorModel    | orchestrator.supervisor.model        | string  |
  * | dashboardPort      | (preferences-only; not yet in schema)| number  |
+ * | initAgentDefaults  | (preferences-only; used by init UX)  | object  |
  */
+export interface InitAgentDefaultsPreferences {
+	/** Worker model default for `taskplane init` prompts (empty = inherit) */
+	workerModel?: string;
+	/** Reviewer model default for `taskplane init` prompts (empty = inherit) */
+	reviewerModel?: string;
+	/** Merger model default for `taskplane init` prompts (empty = inherit) */
+	mergeModel?: string;
+	/** Worker thinking default for `taskplane init` prompts (`""`/`on`/`off`) */
+	workerThinking?: string;
+	/** Reviewer thinking default for `taskplane init` prompts (`""`/`on`/`off`) */
+	reviewerThinking?: string;
+	/** Merger thinking default for `taskplane init` prompts (`""`/`on`/`off`) */
+	mergeThinking?: string;
+}
+
 export interface UserPreferences {
 	/** Operator identifier (overrides orchestrator.orchestrator.operatorId) */
 	operatorId?: string;
@@ -527,6 +543,8 @@ export interface UserPreferences {
 	supervisorModel?: string;
 	/** Dashboard port (preferences-only; not yet wired into config schema) */
 	dashboardPort?: number;
+	/** Saved defaults used to pre-populate `taskplane init` model/thinking prompts */
+	initAgentDefaults?: InitAgentDefaultsPreferences;
 }
 
 /** Default (empty) user preferences — all fields undefined means "no override". */
@@ -553,8 +571,8 @@ export const DEFAULT_TASK_RUNNER_SECTION: TaskRunnerSection = {
 	testing: { commands: {} },
 	standards: { docs: [], rules: [] },
 	standardsOverrides: {},
-	worker: { model: "", tools: "read,write,edit,bash,grep,find,ls", thinking: "off" },
-	reviewer: { model: "openai/gpt-5.3-codex", tools: "read,bash,grep,find,ls", thinking: "on" },
+	worker: { model: "", tools: "read,write,edit,bash,grep,find,ls", thinking: "" },
+	reviewer: { model: "", tools: "read,bash,grep,find,ls", thinking: "on" },
 	context: {
 		workerContextWindow: 0,
 		warnPercent: 85,

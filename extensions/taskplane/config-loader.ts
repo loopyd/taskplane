@@ -116,6 +116,33 @@ function hasOwn(obj: unknown, key: string): boolean {
 	return !!obj && typeof obj === "object" && Object.prototype.hasOwnProperty.call(obj, key);
 }
 
+function normalizeInheritAlias(value: string): string {
+	return value.trim().toLowerCase() === "inherit" ? "" : value;
+}
+
+/**
+ * Normalize explicit "inherit" aliases to empty-string inheritance semantics.
+ *
+ * Empty string is the canonical value meaning "inherit from active session"
+ * for per-agent model/thinking overrides.
+ */
+function normalizeInheritanceAliases(config: TaskplaneConfig): void {
+	const normalizeField = (obj: Record<string, any>, key: string) => {
+		if (typeof obj[key] === "string") {
+			obj[key] = normalizeInheritAlias(obj[key]);
+		}
+	};
+
+	normalizeField(config.taskRunner.worker as Record<string, any>, "model");
+	normalizeField(config.taskRunner.worker as Record<string, any>, "thinking");
+	normalizeField(config.taskRunner.reviewer as Record<string, any>, "model");
+	normalizeField(config.taskRunner.reviewer as Record<string, any>, "thinking");
+	normalizeField(config.orchestrator.merge as Record<string, any>, "model");
+	normalizeField(config.orchestrator.merge as Record<string, any>, "thinking");
+	normalizeField(config.orchestrator.supervisor as Record<string, any>, "model");
+	normalizeField(config.taskRunner.qualityGate as Record<string, any>, "reviewModel");
+}
+
 // throwLegacyFieldError removed — replaced by auto-migration functions that fix config in-place
 
 /**
@@ -738,6 +765,31 @@ export function loadUserPreferences(): UserPreferences {
  * Extract only recognized/allowlisted fields from a raw parsed object.
  * Unknown keys are silently dropped — this is the Layer 2 boundary guardrail.
  */
+function normalizePreferenceThinkingMode(value: unknown): string {
+	const cleaned = String(value ?? "").trim().toLowerCase();
+	if (cleaned === "on") return "on";
+	if (cleaned === "off") return "off";
+	return "";
+}
+
+function extractInitAgentDefaults(rawInitDefaults: unknown): UserPreferences["initAgentDefaults"] | undefined {
+	if (!rawInitDefaults || typeof rawInitDefaults !== "object" || Array.isArray(rawInitDefaults)) {
+		return undefined;
+	}
+
+	const raw = rawInitDefaults as Record<string, unknown>;
+	const extracted: NonNullable<UserPreferences["initAgentDefaults"]> = {};
+
+	if (typeof raw.workerModel === "string") extracted.workerModel = raw.workerModel;
+	if (typeof raw.reviewerModel === "string") extracted.reviewerModel = raw.reviewerModel;
+	if (typeof raw.mergeModel === "string") extracted.mergeModel = raw.mergeModel;
+	if (raw.workerThinking !== undefined) extracted.workerThinking = normalizePreferenceThinkingMode(raw.workerThinking);
+	if (raw.reviewerThinking !== undefined) extracted.reviewerThinking = normalizePreferenceThinkingMode(raw.reviewerThinking);
+	if (raw.mergeThinking !== undefined) extracted.mergeThinking = normalizePreferenceThinkingMode(raw.mergeThinking);
+
+	return Object.keys(extracted).length > 0 ? extracted : undefined;
+}
+
 function extractAllowlistedPreferences(raw: Record<string, any>, prefsPath: string): UserPreferences {
 	migrateUserPreferences(raw, prefsPath);
 
@@ -757,6 +809,10 @@ function extractAllowlistedPreferences(raw: Record<string, any>, prefsPath: stri
 	if (typeof raw.supervisorModel === "string") prefs.supervisorModel = raw.supervisorModel;
 	if (typeof raw.dashboardPort === "number" && Number.isFinite(raw.dashboardPort)) {
 		prefs.dashboardPort = raw.dashboardPort;
+	}
+	const initAgentDefaults = extractInitAgentDefaults(raw.initAgentDefaults);
+	if (initAgentDefaults) {
+		prefs.initAgentDefaults = initAgentDefaults;
 	}
 
 	return prefs;
@@ -783,6 +839,7 @@ function extractAllowlistedPreferences(raw: Record<string, any>, prefsPath: stri
  *   prefs.mergeModel    → config.orchestrator.merge.model
  *   prefs.supervisorModel → config.orchestrator.supervisor.model
  *   prefs.dashboardPort → (no config target yet — stored only)
+ *   prefs.initAgentDefaults → (preferences-only; consumed by CLI init flow)
  */
 export function applyUserPreferences(config: TaskplaneConfig, prefs: UserPreferences): TaskplaneConfig {
 	// Helper: only apply non-empty string values
@@ -935,6 +992,7 @@ export function loadProjectConfig(cwd: string, pointerConfigRoot?: string): Task
 	// No second migrateProjectConfig call needed — idempotency guard + prefs
 	// can’t re-introduce tmux fields (migrateUserPreferences already ran).
 
+	normalizeInheritanceAliases(config);
 	return config;
 }
 
@@ -958,6 +1016,7 @@ export function loadLayer1Config(cwd: string, pointerConfigRoot?: string): Taskp
 	const jsonConfig = loadJsonConfig(configRoot);
 	if (jsonConfig !== null) {
 		migrateProjectConfig(jsonConfig, configRoot);
+		normalizeInheritanceAliases(jsonConfig);
 		return jsonConfig;
 	}
 
@@ -972,6 +1031,7 @@ export function loadLayer1Config(cwd: string, pointerConfigRoot?: string): Taskp
 		...(workspace ? { workspace } : {}),
 	};
 	migrateProjectConfig(config, configRoot);
+	normalizeInheritanceAliases(config);
 	return config;
 }
 

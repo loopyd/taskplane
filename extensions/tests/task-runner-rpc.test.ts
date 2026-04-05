@@ -40,4 +40,19 @@ describe("task-runner subprocess-only spawn contracts", () => {
 		expect(block).toContain("const spawned = spawnAgent({");
 		expect(block).not.toContain("spawnSync(\"tmux\"");
 	});
+
+	it("does not pass --thinking when thinking is empty", () => {
+		const spawnBlock = extractRegion(src, "function spawnAgent(opts:");
+		expect(spawnBlock).toContain("if (opts.thinking) args.push(\"--thinking\", opts.thinking);");
+		expect(spawnBlock).not.toContain("\"--thinking\", opts.thinking,");
+		expect(src).toContain("thinking: config.worker.thinking || undefined");
+		expect(src).toContain("thinking: config.reviewer.thinking || undefined");
+	});
+
+	it("does not pass --model when reviewer/worker overrides are empty", () => {
+		const spawnBlock = extractRegion(src, "function spawnAgent(opts:");
+		expect(spawnBlock).toContain("if (opts.model) args.push(\"--model\", opts.model);");
+		expect(src).toContain(": (config.worker.model || workerDef?.model || \"\")");
+		expect(src).toContain(": (config.reviewer.model || reviewerDef?.model || \"\")");
+	});
 });
