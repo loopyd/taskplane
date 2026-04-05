@@ -23,8 +23,10 @@
 **Status:** 🟨 In Progress
 > ⚠️ Hydrate: Approach depends on Step 0 investigation of pi's model registry API
 
-- [ ] Implement model query with graceful fallback
-- [ ] Return structured model list
+- [ ] Implement CLI model discovery helper using `pi --list-models`
+- [ ] Parse provider/model output into `{ provider, id, displayName }[]`
+- [ ] Handle missing `pi`/query failures with graceful fallback behavior
+- [ ] Add targeted tests for model discovery parsing + fallback
 
 ### Step 2: Interactive model selection in init
 **Status:** ⬜ Not Started
