@@ -1,10 +1,10 @@
 # TP-138: Agent Inherit Defaults and Thinking Picker — Status
 
-**Current Step:** Step 2: Audit and fix runtime fallbacks
+**Current Step:** Step 3: Thinking picker in /taskplane-settings
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-05
 **Review Level:** 2
-**Review Counter:** 1
+**Review Counter:** 3
 **Iteration:** 1
 **Size:** M
 
@@ -28,15 +28,15 @@
 - [x] Verify existing configs unaffected
 
 ### Step 2: Audit and fix runtime fallbacks
-**Status:** 🟨 In Progress
-- [ ] Check lane-runner.ts thinking fallback
-- [ ] Check agent-host.ts flag passing
-- [ ] Check task-runner.ts /task path
-- [ ] Check merge.ts (verify v0.24.18 wiring)
-- [ ] Verify empty thinking = session inheritance
+**Status:** ✅ Complete
+- [x] Check lane-runner.ts thinking fallback
+- [x] Check agent-host.ts flag passing
+- [x] Check task-runner.ts /task path
+- [x] Check merge.ts (verify v0.24.18 wiring)
+- [x] Verify empty thinking = session inheritance
 
 ### Step 3: Thinking picker in /taskplane-settings
-**Status:** ⬜ Not Started
+**Status:** 🟨 In Progress
 - [ ] Change thinking fields to picker control
 - [ ] Options: inherit/on/off
 - [ ] Reuse selectScrollable
@@ -65,3 +65,6 @@
 | 2026-04-05 17:34 | Step 0 started | Preflight |
 |-----------|--------|---------|
 | 2026-04-05 17:37 | Review R001 | plan Step 1: APPROVE |
+| 2026-04-05 17:43 | Review R002 | code Step 1: APPROVE |
+| 2026-04-05 17:45 | Review R003 | plan Step 2: APPROVE |
+| 2026-04-05 13:49 | Step 2 verification | Targeted runtime fallback tests passed (task-runner-rpc, lane-runner-v2, process-registry) |

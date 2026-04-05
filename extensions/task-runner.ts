@@ -210,7 +210,7 @@ const DEFAULT_CONFIG: TaskConfig = {
 	standards: { docs: [], rules: [] },
 	standards_overrides: {},
 	task_areas: {},
-	worker: { model: "", tools: "read,write,edit,bash,grep,find,ls", thinking: "off" },
+	worker: { model: "", tools: "read,write,edit,bash,grep,find,ls", thinking: "" },
 	reviewer: { model: "", tools: "read,bash,grep,find,ls", thinking: "on" },
 	context: {
 		worker_context_window: 0, warn_percent: 85, kill_percent: 95,
@@ -967,7 +967,7 @@ function processReviewVerdict(
 // ── Subagent Spawner ─────────────────────────────────────────────────
 
 function spawnAgent(opts: {
-	model: string; tools: string; thinking: string;
+	model?: string; tools: string; thinking?: string;
 	systemPrompt: string; prompt: string;
 	contextWindow?: number; warnPct?: number; killPct?: number;
 	wrapUpFile?: string;
@@ -990,12 +990,14 @@ function spawnAgent(opts: {
 		const args = [
 			"-p", "--mode", "json",
 			"--no-session", "--no-extensions", "--no-skills",
-			"--model", opts.model,
 			"--tools", opts.tools,
-			"--thinking", opts.thinking,
+		];
+		if (opts.model) args.push("--model", opts.model);
+		if (opts.thinking) args.push("--thinking", opts.thinking);
+		args.push(
 			"--append-system-prompt", sysTmpFile,
 			`@${promptTmpFile}`,
-		];
+		);
 
 		const proc = spawn("pi", args, {
 			stdio: ["ignore", "pipe", "pipe"],
@@ -1625,7 +1627,7 @@ export default function (pi: ExtensionAPI) {
 				const reviewerModelFallback = process.env.TASKPLANE_MODEL_FALLBACK === "1";
 				const reviewerModel = reviewerModelFallback
 					? (ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "anthropic/claude-sonnet-4-20250514")
-					: (config.reviewer.model || reviewerDef?.model || (ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "anthropic/claude-sonnet-4-20250514"));
+					: (config.reviewer.model || reviewerDef?.model || "");
 				const reviewerPrompt = reviewerDef?.systemPrompt || "You are a code reviewer. Read the request and write your review to the specified output file.";
 				const systemPrompt = reviewerPrompt + "\n\n" + buildProjectContext(config, task.taskFolder);
 				const promptContent = readFileSync(requestPath, "utf-8");
@@ -1648,7 +1650,7 @@ export default function (pi: ExtensionAPI) {
 				const spawned = spawnAgent({
 					model: reviewerModel,
 					tools: config.reviewer.tools || reviewerDef?.tools || "read,write,bash,grep,find,ls",
-					thinking: config.reviewer.thinking || "on",
+					thinking: config.reviewer.thinking || undefined,
 					systemPrompt,
 					prompt: promptContent,
 					onToolCall: (toolName, args) => {
@@ -2174,9 +2176,7 @@ export default function (pi: ExtensionAPI) {
 		const modelFallbackActive = process.env.TASKPLANE_MODEL_FALLBACK === "1";
 		const model = modelFallbackActive
 			? (ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "anthropic/claude-sonnet-4-20250514")
-			: (config.worker.model
-				|| workerDef?.model
-				|| (ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "anthropic/claude-sonnet-4-20250514"));
+			: (config.worker.model || workerDef?.model || "");
 
 		const promptLines = [
 			`Read your task instructions at: ${task.promptPath}`,
@@ -2235,7 +2235,7 @@ export default function (pi: ExtensionAPI) {
 		const spawned = spawnAgent({
 			model,
 			tools: config.worker.tools || workerDef?.tools || "read,write,edit,bash,grep,find,ls",
-			thinking: config.worker.thinking || "off",
+			thinking: config.worker.thinking || undefined,
 			systemPrompt,
 			prompt,
 			contextWindow,
@@ -2316,7 +2316,7 @@ export default function (pi: ExtensionAPI) {
 		const reviewerModelFallback2 = process.env.TASKPLANE_MODEL_FALLBACK === "1";
 		const reviewerModel = reviewerModelFallback2
 			? (ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "anthropic/claude-sonnet-4-20250514")
-			: (config.reviewer.model || reviewerDef?.model || (ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "anthropic/claude-sonnet-4-20250514"));
+			: (config.reviewer.model || reviewerDef?.model || "");
 		const reviewerPrompt = reviewerDef?.systemPrompt || "You are a code reviewer. Read the request and write your review to the specified output file.";
 		const systemPrompt = reviewerPrompt + "\n\n" + buildProjectContext(config, task.taskFolder);
 
@@ -2336,7 +2336,7 @@ export default function (pi: ExtensionAPI) {
 		const spawned = spawnAgent({
 			model: reviewerModel,
 			tools: config.reviewer.tools || reviewerDef?.tools || "read,write,bash,grep,find,ls",
-			thinking: config.reviewer.thinking || "on",
+			thinking: config.reviewer.thinking || undefined,
 			systemPrompt,
 			prompt: promptContent,
 			onToolCall: (toolName, args) => {
@@ -2425,7 +2425,7 @@ export default function (pi: ExtensionAPI) {
 			: (config.quality_gate.review_model
 				|| config.reviewer.model
 				|| reviewerDef?.model
-				|| (ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "anthropic/claude-sonnet-4-20250514"));
+				|| "");
 
 		const reviewerPrompt = reviewerDef?.systemPrompt
 			|| "You are a quality gate reviewer. Read the review request and write your JSON verdict to the specified file.";
@@ -2449,7 +2449,7 @@ export default function (pi: ExtensionAPI) {
 			const spawned = spawnAgent({
 				model: reviewModel,
 				tools: config.reviewer.tools || reviewerDef?.tools || "read,write,bash,grep,find,ls",
-				thinking: config.reviewer.thinking || "on",
+				thinking: config.reviewer.thinking || undefined,
 				systemPrompt,
 				prompt,
 				onToolCall: (toolName, args) => {
@@ -2568,7 +2568,7 @@ export default function (pi: ExtensionAPI) {
 		const fixModelFallback = process.env.TASKPLANE_MODEL_FALLBACK === "1";
 		const fixModel = fixModelFallback
 			? (ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "anthropic/claude-sonnet-4-20250514")
-			: (config.worker.model || workerDef?.model || "anthropic/claude-sonnet-4-20250514");
+			: (config.worker.model || workerDef?.model || "");
 
 		const basePrompt = workerDef?.systemPrompt
 			|| "You are a fix agent addressing quality gate findings. Read the feedback and make targeted code fixes.";
@@ -2601,7 +2601,7 @@ export default function (pi: ExtensionAPI) {
 			const spawned = spawnAgent({
 				model: fixModel,
 				tools: config.worker.tools || workerDef?.tools || "read,write,edit,bash,grep,find,ls",
-				thinking: config.worker.thinking || "off",
+				thinking: config.worker.thinking || undefined,
 				systemPrompt,
 				prompt: fixPrompt,
 				onToolCall: (toolName, args) => {
@@ -2699,7 +2699,7 @@ export default function (pi: ExtensionAPI) {
 		ctx.ui.notify(
 			`Starting: ${state.task.taskId} — ${state.task.taskName}\n` +
 			`Review Level: ${state.task.reviewLevel} · Size: ${state.task.size} · Steps: ${state.task.steps.length}\n` +
-			`Worker model: ${state.config.worker.model || "inherit"} · Reviewer: ${state.config.reviewer.model}`,
+			`Worker model: ${state.config.worker.model || "inherit"} · Reviewer: ${state.config.reviewer.model || "inherit"}`,
 			"info",
 		);
 
