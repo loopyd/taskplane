@@ -1,10 +1,10 @@
 # TP-137: Batch History Persistence Fix — Status
 
-**Current Step:** Step 3: Tests
+**Current Step:** Step 4: Documentation & Delivery
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-05
 **Review Level:** 1
-**Review Counter:** 2
+**Review Counter:** 3
 **Iteration:** 1
 **Size:** S
 
@@ -30,14 +30,14 @@
 - [x] Handle resumed batch edge case
 
 ### Step 3: Tests
-**Status:** 🟨 In Progress
-- [ ] Test history written on completion
-- [ ] Test history survives integration
-- [ ] Test dashboard loadHistory
-- [ ] Run full suite, fix failures
+**Status:** ✅ Complete
+- [x] Test history written on completion
+- [x] Test history survives integration
+- [x] Test dashboard loadHistory
+- [x] Run full suite, fix failures
 
 ### Step 4: Documentation & Delivery
-**Status:** ⬜ Not Started
+**Status:** 🟨 In Progress
 - [ ] Update STATUS.md
 - [ ] Close #423
 
@@ -51,3 +51,4 @@
 |-----------|--------|---------|
 | 2026-04-05 01:38 | Review R001 | plan Step 1: APPROVE |
 | 2026-04-05 01:41 | Review R002 | plan Step 2: APPROVE |
+| 2026-04-05 01:43 | Review R003 | plan Step 3: APPROVE |
