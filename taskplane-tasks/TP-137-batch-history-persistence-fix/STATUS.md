@@ -1,10 +1,10 @@
 # TP-137: Batch History Persistence Fix — Status
 
-**Current Step:** Step 2: Ensure history survives integration
+**Current Step:** Step 3: Tests
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-05
 **Review Level:** 1
-**Review Counter:** 1
+**Review Counter:** 2
 **Iteration:** 1
 **Size:** S
 
@@ -24,13 +24,13 @@
 - [x] Verify history written correctly
 
 ### Step 2: Ensure history survives integration
-**Status:** 🟨 In Progress
-- [ ] Verify after orch_integrate
-- [ ] Post-integration hook if needed
-- [ ] Handle resumed batch edge case
+**Status:** ✅ Complete
+- [x] Verify after orch_integrate
+- [x] Post-integration hook if needed
+- [x] Handle resumed batch edge case
 
 ### Step 3: Tests
-**Status:** ⬜ Not Started
+**Status:** 🟨 In Progress
 - [ ] Test history written on completion
 - [ ] Test history survives integration
 - [ ] Test dashboard loadHistory
@@ -50,3 +50,4 @@
 | 2026-04-05 01:30 | Step 0 started | Preflight |
 |-----------|--------|---------|
 | 2026-04-05 01:38 | Review R001 | plan Step 1: APPROVE |
+| 2026-04-05 01:41 | Review R002 | plan Step 2: APPROVE |

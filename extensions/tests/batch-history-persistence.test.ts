@@ -58,6 +58,22 @@ describe("batch history persistence", () => {
 		}
 	});
 
+	it("saveBatchHistory upserts resumed batches by batchId", () => {
+		const root = mkdtempSync(join(tmpdir(), "tp-137-resume-"));
+		try {
+			saveBatchHistory(root, makeSummary("batch-resume", "partial", 1000));
+			saveBatchHistory(root, makeSummary("batch-resume", "completed", 2000));
+
+			const history = loadBatchHistory(root);
+			expect(history).toHaveLength(1);
+			expect(history[0].batchId).toBe("batch-resume");
+			expect(history[0].status).toBe("completed");
+			expect(history[0].startedAt).toBe(2000);
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
 	it("withPreservedBatchHistory restores pre-integration history snapshot", () => {
 		const root = mkdtempSync(join(tmpdir(), "tp-137-preserve-"));
 		const piDir = join(root, ".pi");
