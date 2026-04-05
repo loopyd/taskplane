@@ -420,4 +420,9 @@ describe("9.x: Agent-host option and event attribution contract", () => {
 		expect(hostSrc).toContain("assistantMessageEnds === 1 || assistantMessageEnds % STATS_REFRESH_EVERY_ASSISTANT_MESSAGES === 0");
 		expect(hostSrc).toContain("{ type: \"get_session_stats\" }");
 	});
+
+	it("9.9: --model and --thinking flags are omitted for empty inherit values", () => {
+		expect(hostSrc).toContain('if (opts.model) piArgs.push("--model", opts.model);');
+		expect(hostSrc).toContain('if (opts.thinking) piArgs.push("--thinking", opts.thinking);');
+	});
 });

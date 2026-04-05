@@ -127,6 +127,10 @@ describe("2.x: Lane-runner execution contract", () => {
 		expect(laneRunnerSrc).toContain("clearInterval(reviewerRefresh)");
 		expect(laneRunnerSrc).toContain("Snapshot refresh disabled");
 	});
+
+	it("2.13: empty thinking is forwarded as undefined to inherit session defaults", () => {
+		expect(laneRunnerSrc).toContain("thinking: config.workerThinking || undefined");
+	});
 });
 
 // ── 3. executeLaneV2 integration ────────────────────────────────────
