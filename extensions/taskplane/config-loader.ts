@@ -1,19 +1,16 @@
 /**
- * Unified config loader for taskplane-config.json with YAML fallback
- * and global preferences (Layer 2) merge.
+ * Unified config loader for taskplane-config.json with YAML fallback.
  *
- * Layer 1 — Project config precedence:
- *   1. `.pi/taskplane-config.json` exists and is valid → use it
- *   2. `.pi/taskplane-config.json` exists but malformed → throw with clear error
- *   3. `.pi/taskplane-config.json` exists but unsupported configVersion → throw
- *   4. JSON absent + one/both YAML files present → read YAML, map to unified shape
- *   5. None present → return cloned defaults
+ * Effective precedence:
+ *   1. Schema defaults (internal)
+ *   2. Global preferences (`~/.pi/agent/taskplane/preferences.json`)
+ *   3. Project overrides (`taskplane-config.json` or YAML fallback)
  *
- * Layer 2 — Global preferences:
- *   After loading Layer 1, reads `~/.pi/agent/taskplane/preferences.json`
- *   (or `$PI_CODING_AGENT_DIR/taskplane/preferences.json`) and applies
- *   allowlisted global-preference fields on top. Unknown top-level keys are ignored.
- *   Malformed preferences fall back to defaults silently.
+ * Project config is treated as sparse overrides. Missing project fields
+ * fall through to global preferences, then schema defaults.
+ *
+ * Global preferences parsing is allowlist-based. Unknown top-level keys are
+ * ignored, and malformed preferences fall back to defaults silently.
  *
  * Path resolution:
  *   Resolves config paths relative to `configRoot`. Callers should pass
@@ -33,8 +30,6 @@ import {
 	CONFIG_VERSION,
 	PROJECT_CONFIG_FILENAME,
 	DEFAULT_PROJECT_CONFIG,
-	DEFAULT_TASK_RUNNER_SECTION,
-	DEFAULT_ORCHESTRATOR_SECTION,
 	DEFAULT_GLOBAL_PREFERENCES,
 	GLOBAL_PREFERENCES_FILENAME,
 	GLOBAL_PREFERENCES_SUBDIR,
@@ -152,82 +147,6 @@ function normalizeInheritanceAliases(config: TaskplaneConfig): void {
  */
 /** Track whether project config migration has already run for this load cycle. */
 let _projectMigrationDone = false;
-
-/**
- * Auto-migrate legacy TMUX fields in project config.
- *
- * Precedence: if both `sessionPrefix` and `tmuxPrefix` exist, the new
- * key (`sessionPrefix`) wins. `tmuxPrefix` is only used when `sessionPrefix`
- * is absent. This matches the principle that explicit new-format config
- * takes priority over legacy fields.
- *
- * Writes back to disk atomically (tmp + rename) on first migration.
- * Idempotent — safe to call multiple times per load cycle (skips after first).
- *
- * @returns true if any migrations were applied
- */
-function migrateProjectConfig(config: TaskplaneConfig, configRoot: string): boolean {
-	if (_projectMigrationDone) return false;
-
-	let migrated = false;
-	const orchestratorCore = config.orchestrator?.orchestrator as Record<string, unknown> | undefined;
-	if (orchestratorCore && hasOwn(orchestratorCore, "tmuxPrefix")) {
-		// Use tmuxPrefix if sessionPrefix is absent, undefined, or still the default.
-		// An explicit non-default sessionPrefix takes priority over legacy tmuxPrefix.
-		const currentPrefix = orchestratorCore.sessionPrefix;
-		const isDefault = currentPrefix === undefined || currentPrefix === "orch";
-		if (isDefault) {
-			(orchestratorCore as any).sessionPrefix = orchestratorCore.tmuxPrefix;
-		}
-		delete orchestratorCore.tmuxPrefix;
-		console.error(`[taskplane] Auto-migrated: orchestrator.orchestrator.tmuxPrefix → sessionPrefix`);
-		migrated = true;
-	}
-	if (orchestratorCore?.spawnMode === "tmux") {
-		(orchestratorCore as any).spawnMode = "subprocess";
-		console.error(`[taskplane] Auto-migrated: orchestrator.orchestrator.spawnMode "tmux" → "subprocess"`);
-		migrated = true;
-	}
-	const workerConfig = config.taskRunner?.worker as Record<string, unknown> | undefined;
-	if (workerConfig?.spawnMode === "tmux") {
-		(workerConfig as any).spawnMode = "subprocess";
-		console.error(`[taskplane] Auto-migrated: taskRunner.worker.spawnMode "tmux" → "subprocess"`);
-		migrated = true;
-	}
-
-	if (migrated) {
-		// Write back atomically (tmp + rename) to prevent corruption
-		try {
-			const jsonPath = join(configRoot, ".pi", "taskplane-config.json");
-			if (existsSync(jsonPath)) {
-				const raw = JSON.parse(readFileSync(jsonPath, "utf-8"));
-				// Apply same renames to the raw JSON (consistent precedence)
-				if (raw.orchestrator?.orchestrator?.tmuxPrefix !== undefined) {
-					const rawPrefix = raw.orchestrator.orchestrator.sessionPrefix;
-					if (rawPrefix === undefined || rawPrefix === "orch") {
-						raw.orchestrator.orchestrator.sessionPrefix = raw.orchestrator.orchestrator.tmuxPrefix;
-					}
-					delete raw.orchestrator.orchestrator.tmuxPrefix;
-				}
-				if (raw.orchestrator?.orchestrator?.spawnMode === "tmux") {
-					raw.orchestrator.orchestrator.spawnMode = "subprocess";
-				}
-				if (raw.taskRunner?.worker?.spawnMode === "tmux") {
-					raw.taskRunner.worker.spawnMode = "subprocess";
-				}
-				const tmpPath = jsonPath + ".migration-tmp";
-				writeFileSync(tmpPath, JSON.stringify(raw, null, 2) + "\n");
-				renameSync(tmpPath, jsonPath);
-				console.error(`[taskplane] Config file updated: ${jsonPath}`);
-			}
-		} catch (err) {
-			console.error(`[taskplane] Warning: could not persist config migration to disk: ${err instanceof Error ? err.message : err}`);
-		}
-	}
-
-	_projectMigrationDone = true;
-	return migrated;
-}
 
 /**
  * Auto-migrate legacy TMUX fields in global preferences.
@@ -542,7 +461,7 @@ function resolveConfigFilePath(configRoot: string, filename: string): string {
  * Returns the parsed config or null if the file doesn't exist.
  * Throws ConfigLoadError for malformed JSON or unsupported versions.
  */
-function loadJsonConfig(configRoot: string): TaskplaneConfig | null {
+function loadJsonConfig(configRoot: string): Partial<TaskplaneConfig> | null {
 	const jsonPath = resolveConfigFilePath(configRoot, PROJECT_CONFIG_FILENAME);
 	if (!existsSync(jsonPath)) return null;
 
@@ -580,22 +499,21 @@ function loadJsonConfig(configRoot: string): TaskplaneConfig | null {
 		);
 	}
 
-	// Deep merge with cloned defaults
-	const config = deepClone(DEFAULT_PROJECT_CONFIG);
-	if (parsed.taskRunner) {
-		deepMerge(config.taskRunner, parsed.taskRunner);
+	const overrides: Partial<TaskplaneConfig> = {};
+	if (parsed.taskRunner && typeof parsed.taskRunner === "object" && !Array.isArray(parsed.taskRunner)) {
+		overrides.taskRunner = deepClone(parsed.taskRunner);
 	}
-	if (parsed.orchestrator) {
-		deepMerge(config.orchestrator, parsed.orchestrator);
+	if (parsed.orchestrator && typeof parsed.orchestrator === "object" && !Array.isArray(parsed.orchestrator)) {
+		overrides.orchestrator = deepClone(parsed.orchestrator);
 	}
 	if (parsed.workspace) {
 		const normalizedWorkspace = normalizeWorkspaceSection(parsed.workspace, jsonPath);
 		if (normalizedWorkspace) {
-			config.workspace = normalizedWorkspace;
+			overrides.workspace = normalizedWorkspace;
 		}
 	}
 
-	return config;
+	return overrides;
 }
 
 
@@ -608,28 +526,24 @@ function loadJsonConfig(configRoot: string): TaskplaneConfig | null {
  * flat layout (`<root>/task-runner.yaml`) — see `resolveConfigFilePath`.
  * Maps snake_case YAML keys to the camelCase TaskRunnerSection shape.
  * Uses section-aware mapping that preserves user-defined record keys.
- * Returns cloned defaults if the file doesn't exist or is malformed.
+ * Returns sparse overrides (empty object when missing/malformed).
  */
-function loadTaskRunnerYaml(configRoot: string): TaskRunnerSection {
+function loadTaskRunnerYaml(configRoot: string): Partial<TaskRunnerSection> {
 	const yamlPath = resolveConfigFilePath(configRoot, "task-runner.yaml");
-	if (!existsSync(yamlPath)) return deepClone(DEFAULT_TASK_RUNNER_SECTION);
+	if (!existsSync(yamlPath)) return {};
 
 	try {
 		const raw = readFileSync(yamlPath, "utf-8");
 		const loaded = yamlParse(raw) as any;
-		if (!loaded || typeof loaded !== "object") return deepClone(DEFAULT_TASK_RUNNER_SECTION);
+		if (!loaded || typeof loaded !== "object") return {};
 
 		// Section-aware mapping: structural keys → camelCase, record keys → preserved
 		const mapped = mapTaskRunnerYaml(loaded);
 
-		// Deep merge with cloned defaults
-		const section = deepClone(DEFAULT_TASK_RUNNER_SECTION);
-		deepMerge(section, mapped);
-
 		// Post-process taskAreas: trim repoId, drop whitespace-only values
 		// (matches legacy loadTaskRunnerConfig behavior from config.ts)
-		if (section.taskAreas) {
-			for (const area of Object.values(section.taskAreas)) {
+		if (mapped.taskAreas) {
+			for (const area of Object.values(mapped.taskAreas)) {
 				if (area.repoId !== undefined) {
 					const trimmed = typeof area.repoId === "string" ? area.repoId.trim() : "";
 					if (trimmed) {
@@ -641,9 +555,9 @@ function loadTaskRunnerYaml(configRoot: string): TaskRunnerSection {
 			}
 		}
 
-		return section;
+		return mapped;
 	} catch {
-		return deepClone(DEFAULT_TASK_RUNNER_SECTION);
+		return {};
 	}
 }
 
@@ -654,27 +568,21 @@ function loadTaskRunnerYaml(configRoot: string): TaskRunnerSection {
  * flat layout (`<root>/task-orchestrator.yaml`) — see `resolveConfigFilePath`.
  * Maps snake_case YAML keys to the camelCase OrchestratorSection shape.
  * Uses section-aware mapping that preserves user-defined record keys.
- * Returns cloned defaults if the file doesn't exist or is malformed.
+ * Returns sparse overrides (empty object when missing/malformed).
  */
-function loadOrchestratorYaml(configRoot: string): OrchestratorSection {
+function loadOrchestratorYaml(configRoot: string): Partial<OrchestratorSection> {
 	const yamlPath = resolveConfigFilePath(configRoot, "task-orchestrator.yaml");
-	if (!existsSync(yamlPath)) return deepClone(DEFAULT_ORCHESTRATOR_SECTION);
+	if (!existsSync(yamlPath)) return {};
 
 	try {
 		const raw = readFileSync(yamlPath, "utf-8");
 		const loaded = yamlParse(raw) as any;
-		if (!loaded || typeof loaded !== "object") return deepClone(DEFAULT_ORCHESTRATOR_SECTION);
+		if (!loaded || typeof loaded !== "object") return {};
 
 		// Section-aware mapping: structural keys → camelCase, record keys → preserved
-		const mapped = mapOrchestratorYaml(loaded);
-
-		// Deep merge with cloned defaults
-		const section = deepClone(DEFAULT_ORCHESTRATOR_SECTION);
-		deepMerge(section, mapped);
-
-		return section;
+		return mapOrchestratorYaml(loaded);
 	} catch {
-		return deepClone(DEFAULT_ORCHESTRATOR_SECTION);
+		return {};
 	}
 }
 
@@ -977,105 +885,142 @@ export function resolveConfigRoot(cwd: string, pointerConfigRoot?: string): stri
 	return cwd;
 }
 
+function mergeProjectOverrides(config: TaskplaneConfig, overrides: Partial<TaskplaneConfig>): void {
+	if (overrides.taskRunner) {
+		deepMerge(config.taskRunner as Record<string, any>, overrides.taskRunner as Record<string, any>);
+	}
+	if (overrides.orchestrator) {
+		deepMerge(config.orchestrator as Record<string, any>, overrides.orchestrator as Record<string, any>);
+	}
+	if (overrides.workspace) {
+		if (!config.workspace || typeof config.workspace !== "object") {
+			config.workspace = {} as TaskplaneConfig["workspace"];
+		}
+		deepMerge(config.workspace as Record<string, any>, overrides.workspace as Record<string, any>);
+	}
+}
+
+function migrateProjectOverrides(overrides: Partial<TaskplaneConfig>, configRoot: string): boolean {
+	if (_projectMigrationDone) return false;
+
+	let migrated = false;
+	const orchestratorCore = overrides.orchestrator?.orchestrator as Record<string, unknown> | undefined;
+	if (orchestratorCore && hasOwn(orchestratorCore, "tmuxPrefix")) {
+		const currentPrefix = orchestratorCore.sessionPrefix;
+		const isDefault = currentPrefix === undefined || currentPrefix === "orch";
+		if (isDefault) {
+			(orchestratorCore as any).sessionPrefix = orchestratorCore.tmuxPrefix;
+		}
+		delete orchestratorCore.tmuxPrefix;
+		console.error(`[taskplane] Auto-migrated: orchestrator.orchestrator.tmuxPrefix → sessionPrefix`);
+		migrated = true;
+	}
+	if (orchestratorCore?.spawnMode === "tmux") {
+		(orchestratorCore as any).spawnMode = "subprocess";
+		console.error(`[taskplane] Auto-migrated: orchestrator.orchestrator.spawnMode "tmux" → "subprocess"`);
+		migrated = true;
+	}
+
+	const workerConfig = overrides.taskRunner?.worker as Record<string, unknown> | undefined;
+	if (workerConfig?.spawnMode === "tmux") {
+		(workerConfig as any).spawnMode = "subprocess";
+		console.error(`[taskplane] Auto-migrated: taskRunner.worker.spawnMode "tmux" → "subprocess"`);
+		migrated = true;
+	}
+
+	if (migrated) {
+		try {
+			const jsonPath = resolveConfigFilePath(configRoot, PROJECT_CONFIG_FILENAME);
+			if (existsSync(jsonPath)) {
+				const raw = JSON.parse(readFileSync(jsonPath, "utf-8"));
+				if (raw.orchestrator?.orchestrator?.tmuxPrefix !== undefined) {
+					const rawPrefix = raw.orchestrator.orchestrator.sessionPrefix;
+					if (rawPrefix === undefined || rawPrefix === "orch") {
+						raw.orchestrator.orchestrator.sessionPrefix = raw.orchestrator.orchestrator.tmuxPrefix;
+					}
+					delete raw.orchestrator.orchestrator.tmuxPrefix;
+				}
+				if (raw.orchestrator?.orchestrator?.spawnMode === "tmux") {
+					raw.orchestrator.orchestrator.spawnMode = "subprocess";
+				}
+				if (raw.taskRunner?.worker?.spawnMode === "tmux") {
+					raw.taskRunner.worker.spawnMode = "subprocess";
+				}
+
+				const tmpPath = jsonPath + ".migration-tmp";
+				writeFileSync(tmpPath, JSON.stringify(raw, null, 2) + "\n");
+				renameSync(tmpPath, jsonPath);
+				console.error(`[taskplane] Config file updated: ${jsonPath}`);
+			}
+		} catch (err) {
+			console.error(`[taskplane] Warning: could not persist config migration to disk: ${err instanceof Error ? err.message : err}`);
+		}
+	}
+
+	_projectMigrationDone = true;
+	return migrated;
+}
+
+function loadProjectOverrides(configRoot: string): Partial<TaskplaneConfig> {
+	const jsonOverrides = loadJsonConfig(configRoot);
+	if (jsonOverrides !== null) {
+		return jsonOverrides;
+	}
+
+	const taskRunner = loadTaskRunnerYaml(configRoot);
+	const orchestrator = loadOrchestratorYaml(configRoot);
+	const workspace = loadWorkspaceYaml(configRoot);
+
+	const overrides: Partial<TaskplaneConfig> = {};
+	if (Object.keys(taskRunner).length > 0) overrides.taskRunner = taskRunner;
+	if (Object.keys(orchestrator).length > 0) overrides.orchestrator = orchestrator;
+	if (workspace) overrides.workspace = workspace;
+	return overrides;
+}
+
 /**
  * Load the unified project configuration.
  *
  * Precedence (layered):
- *   Layer 1 — Project config:
- *     1. `.pi/taskplane-config.json` — JSON-first (new format)
- *     2. `.pi/task-runner.yaml` + `.pi/task-orchestrator.yaml` — YAML fallback
- *        (+ optional `.pi/taskplane-workspace.yaml` workspace section mapping)
- *     3. Defaults — if no config files exist
+ *   1. Schema defaults
+ *   2. Global preferences (`~/.pi/agent/taskplane/preferences.json`)
+ *   3. Project overrides (`taskplane-config.json` or YAML fallback)
  *
- *   Layer 2 — Global preferences (applied on top of Layer 1):
- *     Reads `~/.pi/agent/taskplane/preferences.json` and overrides only
- *     allowlisted global-preference fields. See `applyGlobalPreferences()` for
- *     the field mapping.
- *
- * Config root resolution order:
- *   1. cwd has config files → use cwd (local override)
- *   2. pointerConfigRoot has config files → use it (pointer redirect, workspace mode)
- *   3. TASKPLANE_WORKSPACE_ROOT has config files → use it (legacy fallback)
- *   4. Fall back to cwd (loaders will return defaults)
- *
- * @param cwd - Current working directory (project root or worktree)
- * @param pointerConfigRoot - Resolved config root from pointer file (optional).
- *   Callers in workspace mode should resolve the pointer via `resolvePointer()`
- *   and pass `result.configRoot` here. In repo mode, omit or pass undefined.
- * @returns Unified TaskplaneConfig — always a fresh deep-cloned object
- * @throws ConfigLoadError if JSON exists but is malformed or has unsupported version
+ * Project config is treated as sparse overrides. Missing fields in project
+ * config fall through to global preferences, then schema defaults.
  */
 export function loadProjectConfig(cwd: string, pointerConfigRoot?: string): TaskplaneConfig {
 	const configRoot = resolveConfigRoot(cwd, pointerConfigRoot);
+	const config = deepClone(DEFAULT_PROJECT_CONFIG);
 
-	// Layer 1: Project config
-	let config: TaskplaneConfig;
-
-	// Try JSON first
-	const jsonConfig = loadJsonConfig(configRoot);
-	if (jsonConfig !== null) {
-		config = jsonConfig;
-	} else {
-		// Fall back to YAML
-		const taskRunner = loadTaskRunnerYaml(configRoot);
-		const orchestrator = loadOrchestratorYaml(configRoot);
-		const workspace = loadWorkspaceYaml(configRoot);
-		config = {
-			configVersion: CONFIG_VERSION,
-			taskRunner,
-			orchestrator,
-			...(workspace ? { workspace } : {}),
-		};
-	}
-
-	_projectMigrationDone = false; // Reset guard for each top-level load
-	migrateProjectConfig(config, configRoot);
-
-	// Layer 2: Global preferences (allowlisted fields + legacy aliases)
+	// Layer 2 baseline: global preferences on top of defaults
 	const prefs = loadGlobalPreferences();
 	applyGlobalPreferences(config, prefs);
-	// No second migrateProjectConfig call needed — project migration already ran.
-	// Layer 2 applies its own tmux normalization for both flat and nested prefs.
+
+	// Layer 1 project overrides: sparse config merged on top
+	const overrides = loadProjectOverrides(configRoot);
+	_projectMigrationDone = false;
+	migrateProjectOverrides(overrides, configRoot);
+	mergeProjectOverrides(config, overrides);
 
 	normalizeInheritanceAliases(config);
 	return config;
 }
 
 /**
- * Load Layer 1 config only (project config without global preferences).
- *
- * Returns the project config merged with defaults, but WITHOUT applying
- * Layer 2 global preferences. Used by the settings TUI write-back to
- * bootstrap a JSON config file from YAML-only projects without
- * accidentally embedding global preferences into the project config.
- *
- * @param cwd - Current working directory (project root or worktree)
- * @param pointerConfigRoot - Optional pointer-resolved config root (workspace mode)
- * @returns Layer 1 TaskplaneConfig — always a fresh deep-cloned object
- * @throws ConfigLoadError if JSON exists but is malformed or has unsupported version
+ * Load project overrides merged with schema defaults, without applying
+ * global preferences. Used by settings write-back code paths that must
+ * avoid embedding global baseline values into project config.
  */
 export function loadLayer1Config(cwd: string, pointerConfigRoot?: string): TaskplaneConfig {
 	const configRoot = resolveConfigRoot(cwd, pointerConfigRoot);
+	const config = deepClone(DEFAULT_PROJECT_CONFIG);
+	const overrides = loadProjectOverrides(configRoot);
 
-	// Try JSON first
-	const jsonConfig = loadJsonConfig(configRoot);
-	if (jsonConfig !== null) {
-		migrateProjectConfig(jsonConfig, configRoot);
-		normalizeInheritanceAliases(jsonConfig);
-		return jsonConfig;
-	}
+	_projectMigrationDone = false;
+	migrateProjectOverrides(overrides, configRoot);
+	mergeProjectOverrides(config, overrides);
 
-	// Fall back to YAML
-	const taskRunner = loadTaskRunnerYaml(configRoot);
-	const orchestrator = loadOrchestratorYaml(configRoot);
-	const workspace = loadWorkspaceYaml(configRoot);
-	const config: TaskplaneConfig = {
-		configVersion: CONFIG_VERSION,
-		taskRunner,
-		orchestrator,
-		...(workspace ? { workspace } : {}),
-	};
-	migrateProjectConfig(config, configRoot);
 	normalizeInheritanceAliases(config);
 	return config;
 }

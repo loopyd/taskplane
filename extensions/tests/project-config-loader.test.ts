@@ -273,6 +273,65 @@ describe("loadProjectConfig precedence/error matrix", () => {
 		// Task runner should be defaults
 		expect(config.taskRunner).toEqual(DEFAULT_TASK_RUNNER_SECTION);
 	});
+
+	it("1.12: sparse project config falls through to global preferences, then defaults", () => {
+		const dir = makeTestDir("sparse-fallthrough");
+		const agentDir = process.env.PI_CODING_AGENT_DIR!;
+		writeFileSync(join(agentDir, "taskplane", "preferences.json"), JSON.stringify({
+			taskRunner: {
+				worker: { model: "global-worker" },
+				reviewer: { tools: "read,bash" },
+			},
+			orchestrator: {
+				orchestrator: { maxLanes: 9 },
+			},
+		}, null, 2), "utf-8");
+
+		writeJsonConfig(dir, {
+			configVersion: 1,
+			taskRunner: {
+				project: { name: "SparseProject" },
+			},
+		});
+
+		const config = loadProjectConfig(dir);
+		expect(config.taskRunner.project.name).toBe("SparseProject");
+		expect(config.taskRunner.worker.model).toBe("global-worker");
+		expect(config.taskRunner.reviewer.tools).toBe("read,bash");
+		expect(config.orchestrator.orchestrator.maxLanes).toBe(9);
+	});
+
+	it("1.13: project overrides win over global preferences with deep merge semantics", () => {
+		const dir = makeTestDir("project-wins-over-global");
+		const agentDir = process.env.PI_CODING_AGENT_DIR!;
+		writeFileSync(join(agentDir, "taskplane", "preferences.json"), JSON.stringify({
+			taskRunner: {
+				worker: { model: "global-worker", tools: "read,bash" },
+				reviewer: { thinking: "off", tools: "read,bash" },
+			},
+			orchestrator: {
+				orchestrator: { maxLanes: 9 },
+			},
+		}, null, 2), "utf-8");
+
+		writeJsonConfig(dir, {
+			configVersion: 1,
+			taskRunner: {
+				worker: { model: "project-worker" },
+				reviewer: { thinking: "on" },
+			},
+			orchestrator: {
+				orchestrator: { maxLanes: 4 },
+			},
+		});
+
+		const config = loadProjectConfig(dir);
+		expect(config.taskRunner.worker.model).toBe("project-worker");
+		expect(config.taskRunner.worker.tools).toBe("read,bash");
+		expect(config.taskRunner.reviewer.thinking).toBe("on");
+		expect(config.taskRunner.reviewer.tools).toBe("read,bash");
+		expect(config.orchestrator.orchestrator.maxLanes).toBe(4);
+	});
 });
 
 // ── 2.x: Workspace root resolution ──────────────────────────────────

@@ -603,7 +603,7 @@ describe("Layer 2 merge integration", () => {
 		expect(config.taskRunner.project.name).toBe("YamlProject");
 	});
 
-	it("8.3: loadProjectConfig e2e — integrates global preferences with JSON config", () => {
+	it("8.3: loadProjectConfig e2e — project JSON overrides win over global preferences", () => {
 		// Set up temp agent dir for preferences isolation
 		const agentDir = makeTestDir("e2e-json-agent");
 		process.env.PI_CODING_AGENT_DIR = agentDir;
@@ -630,9 +630,9 @@ describe("Layer 2 merge integration", () => {
 
 		const config = loadProjectConfig(projectDir);
 
-		// User prefs should win for allowlisted fields
-		expect(config.orchestrator.orchestrator.operatorId).toBe("e2e-user");
-		expect(config.taskRunner.worker.model).toBe("e2e-worker-model");
+		// Project overrides should win for explicitly set fields
+		expect(config.orchestrator.orchestrator.operatorId).toBe("project-operator");
+		expect(config.taskRunner.worker.model).toBe("project-worker-model");
 
 		// Non-allowlisted Layer 1 fields preserved
 		expect(config.taskRunner.project.name).toBe("E2EProject");
@@ -642,7 +642,7 @@ describe("Layer 2 merge integration", () => {
 		expect((config as any).dashboardPort).toBeUndefined();
 	});
 
-	it("8.4: loadProjectConfig e2e — integrates global preferences with YAML config", () => {
+	it("8.4: loadProjectConfig e2e — project YAML overrides win over global preferences", () => {
 		// Set up temp agent dir for preferences isolation
 		const agentDir = makeTestDir("e2e-yaml-agent");
 		process.env.PI_CODING_AGENT_DIR = agentDir;
@@ -673,9 +673,9 @@ describe("Layer 2 merge integration", () => {
 
 		const config = loadProjectConfig(projectDir);
 
-		// User prefs should win for allowlisted fields
-		expect(config.taskRunner.reviewer.model).toBe("e2e-reviewer");
-		expect(config.orchestrator.orchestrator.sessionPrefix).toBe("e2e-prefix");
+		// Project overrides should win for explicitly set fields
+		expect(config.taskRunner.reviewer.model).toBe("yaml-reviewer-model");
+		expect(config.orchestrator.orchestrator.sessionPrefix).toBe("yaml-prefix");
 		expect(config.orchestrator.orchestrator.spawnMode).toBe("subprocess");
 
 		// Non-allowlisted Layer 1 fields preserved
@@ -759,7 +759,7 @@ describe("Layer 2 merge integration", () => {
 		expect(config.taskRunner.reviewer.model).toBe("non-empty-reviewer");
 	});
 
-	it("8.8: loadProjectConfig e2e — applies nested global overrides and preserves preferences-only keys", () => {
+	it("8.8: loadProjectConfig e2e — nested project overrides win while missing fields fall through to global", () => {
 		const agentDir = makeTestDir("e2e-nested-agent");
 		process.env.PI_CODING_AGENT_DIR = agentDir;
 
@@ -783,13 +783,14 @@ describe("Layer 2 merge integration", () => {
 			},
 			orchestrator: {
 				orchestrator: { maxLanes: 2 },
-				failure: { stallTimeout: 20 },
 			},
 		}));
 
 		const config = loadProjectConfig(projectDir);
-		expect(config.taskRunner.reviewer.thinking).toBe("off");
-		expect(config.orchestrator.orchestrator.maxLanes).toBe(11);
+		// Project overrides should win when explicitly set
+		expect(config.taskRunner.reviewer.thinking).toBe("on");
+		expect(config.orchestrator.orchestrator.maxLanes).toBe(2);
+		// Missing project field should fall through to global preference
 		expect(config.orchestrator.failure.stallTimeout).toBe(150);
 
 		// Preferences-only keys are intentionally not merged into runtime config

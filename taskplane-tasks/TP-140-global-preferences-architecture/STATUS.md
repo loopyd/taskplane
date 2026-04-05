@@ -1,10 +1,10 @@
 # TP-140: Global Preferences Architecture — Status
 
-**Current Step:** Step 3: Flip config loading precedence
+**Current Step:** Step 4: Settings TUI — source badges and save behavior
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-05
 **Review Level:** 2
-**Review Counter:** 5
+**Review Counter:** 7
 **Iteration:** 1
 **Size:** L
 
@@ -38,14 +38,14 @@
 - [x] Add regression tests for nested orchestrator/worker spawnMode migration and update stale migration comment
 
 ### Step 3: Flip config loading precedence
-**Status:** 🟨 In Progress
-- [ ] Rewrite loadProjectConfig: schema → global → project
-- [ ] Implement deep merge for sparse project config
-- [ ] Update loadLayer1Config similarly
-- [ ] Update tests for new precedence
+**Status:** ✅ Complete
+- [x] Rewrite loadProjectConfig: schema → global → project
+- [x] Implement deep merge for sparse project config
+- [x] Update loadLayer1Config similarly
+- [x] Update tests for new precedence
 
 ### Step 4: Settings TUI — source badges and save behavior
-**Status:** ⬜ Not Started
+**Status:** 🟨 In Progress
 - [ ] Source badges: (global) and (project) only
 - [ ] Default save: global preferences
 - [ ] Sparse write for project overrides
@@ -116,3 +116,5 @@
 | 2026-04-05 22:13 | Review R003 | plan Step 2: REVISE |
 | 2026-04-05 22:13 | Review R004 | plan Step 2: APPROVE |
 | 2026-04-05 22:19 | Review R005 | code Step 2: REVISE |
+| 2026-04-05 22:22 | Review R006 | code Step 2: APPROVE |
+| 2026-04-05 22:23 | Review R007 | plan Step 3: APPROVE |
