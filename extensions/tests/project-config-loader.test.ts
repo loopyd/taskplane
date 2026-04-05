@@ -51,6 +51,7 @@ import { loadConfig as taskRunnerLoadConfig } from "../task-runner.ts";
 
 let testRoot: string;
 let counter = 0;
+let savedAgentDir: string | undefined;
 
 function makeTestDir(suffix?: string): string {
 	counter++;
@@ -85,10 +86,22 @@ beforeEach(() => {
 	counter = 0;
 	// Clear workspace root env var to avoid cross-test contamination
 	delete process.env.TASKPLANE_WORKSPACE_ROOT;
+	// Isolate from real user preferences — point to empty temp dir
+	savedAgentDir = process.env.PI_CODING_AGENT_DIR;
+	const isolatedAgentDir = join(testRoot, "agent-isolation");
+	mkdirSync(join(isolatedAgentDir, "taskplane"), { recursive: true });
+	writeFileSync(join(isolatedAgentDir, "taskplane", "preferences.json"), "{}\n", "utf-8");
+	process.env.PI_CODING_AGENT_DIR = isolatedAgentDir;
 });
 
 afterEach(() => {
 	delete process.env.TASKPLANE_WORKSPACE_ROOT;
+	// Restore original agent dir
+	if (savedAgentDir === undefined) {
+		delete process.env.PI_CODING_AGENT_DIR;
+	} else {
+		process.env.PI_CODING_AGENT_DIR = savedAgentDir;
+	}
 	try {
 		rmSync(testRoot, { recursive: true, force: true });
 	} catch {

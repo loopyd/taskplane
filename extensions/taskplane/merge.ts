@@ -609,8 +609,19 @@ export async function spawnMergeAgentV2(
 		timeoutMs: (config.merge.timeout_minutes ?? 10) * 60 * 1000,
 		stateRoot: stateRoot ?? repoRoot,
 		packet: null,
-		env: { ORCH_BATCH_ID: bid },
+		env: {
+			ORCH_BATCH_ID: bid,
+			// Isolate merge agent from operator's user preferences to prevent
+			// verification test contamination (e.g., stale reviewerModel pref
+			// overriding schema defaults in deep-equal assertions).
+			PI_CODING_AGENT_DIR: join(sidecarRoot, "runtime", bid, "merge-agent-env"),
+		},
 	};
+
+	// Ensure isolated agent dir exists with empty preferences
+	const isolatedAgentDir = join(sidecarRoot, "runtime", bid, "merge-agent-env", "taskplane");
+	mkdirSync(isolatedAgentDir, { recursive: true });
+	try { writeFileSync(join(isolatedAgentDir, "preferences.json"), "{}\n", { flag: "wx" }); } catch { /* already exists */ }
 
 	const { promise, kill } = spawnAgent(opts);
 
