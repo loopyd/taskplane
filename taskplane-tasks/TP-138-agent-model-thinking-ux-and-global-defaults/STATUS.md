@@ -1,8 +1,8 @@
-# TP-138: Agent Thinking UX, Init Model Picker, and Global Defaults — Status
+# TP-138: Agent Inherit Defaults and Thinking Picker — Status
 
 **Current Step:** Not Started
 **Status:** 🔵 Ready for Execution
-**Last Updated:** 2026-04-04
+**Last Updated:** 2026-04-05
 **Review Level:** 2
 **Review Counter:** 0
 **Iteration:** 0
@@ -13,58 +13,47 @@
 ### Step 0: Preflight
 **Status:** ⬜ Not Started
 - [ ] Read PROMPT.md and STATUS.md
-- [ ] Read settings-tui.ts pickModel (v0.24.17)
 - [ ] Read config-schema.ts defaults
-- [ ] Read config-loader.ts preferences
-- [ ] Read bin/taskplane.mjs init flow
+- [ ] Read settings-tui.ts thinking fields
+- [ ] Read lane-runner.ts and agent-host.ts thinking handling
+- [ ] Read task-runner.ts fallback patterns
+- [ ] Grep for thinking fallbacks across codebase
 
 ### Step 1: Fix defaults to inherit
 **Status:** ⬜ Not Started
 - [ ] Worker thinking "off" → "" (inherit)
 - [ ] Reviewer model hardcode → "" (inherit)
-- [ ] Support "inherit" string alias
+- [ ] Normalize "inherit" to "" in config-loader
 - [ ] Update templates
-- [ ] Verify runtime inheritance
+- [ ] Verify existing configs unaffected
 
-### Step 2: Thinking picker in /taskplane-settings
+### Step 2: Audit and fix runtime fallbacks
 **Status:** ⬜ Not Started
-- [ ] Add thinking-mode picker
-- [ ] Query model thinking capability
-- [ ] Auto-set thinking on model change
-- [ ] Show available thinking levels
-- [ ] Handle non-thinking models
-- [ ] Allow override
+- [ ] Check lane-runner.ts thinking fallback
+- [ ] Check agent-host.ts flag passing
+- [ ] Check task-runner.ts /task path
+- [ ] Check merge.ts (verify v0.24.18 wiring)
+- [ ] Verify empty thinking = session inheritance
 
-### Step 3: Interactive model selection in init
+### Step 3: Thinking picker in /taskplane-settings
 **Status:** ⬜ Not Started
-- [ ] Query model registry from CLI
-- [ ] Provider → model picker in init
-- [ ] Per-agent-type selection
-- [ ] "Inherit" as default
-- [ ] Fallback if unavailable
-- [ ] Thinking prompt after model
+- [ ] Change thinking fields to picker control
+- [ ] Options: inherit/on/off
+- [ ] Reuse selectScrollable
+- [ ] Current value marked with ✓
+- [ ] Save to correct destination
 
-### Step 4: Global defaults
+### Step 4: Testing & Verification
 **Status:** ⬜ Not Started
-- [ ] Extend preferences schema
-- [ ] Pre-populate from defaults during init
-- [ ] Add --save-as-defaults command
-- [ ] Detect global vs local install
-- [ ] Show save confirmation
+- [ ] Test empty thinking = no flag
+- [ ] Test "inherit" normalization
+- [ ] Test thinking picker save/load
+- [ ] Test reviewer model inheritance
+- [ ] Run full test suite
 
-### Step 5: Testing & Verification
-**Status:** ⬜ Not Started
-- [ ] Test fresh init no defaults
-- [ ] Test init with global defaults
-- [ ] Test save-as-defaults
-- [ ] Test "inherit" alias
-- [ ] Test thinking auto-set
-- [ ] Run full suite, fix failures
-
-### Step 6: Documentation & Delivery
+### Step 5: Documentation & Delivery
 **Status:** ⬜ Not Started
 - [ ] Update config docs
-- [ ] Update README
 - [ ] Update STATUS.md
 
 ---
