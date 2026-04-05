@@ -48,6 +48,8 @@ import {
 	getAdvancedItems,
 	getDefaultWriteDestination,
 	resolveWriteAction,
+	buildThinkingSuggestionForModelChange,
+	modelSupportsThinking,
 	SECTIONS,
 } from "../taskplane/settings-tui.ts";
 import type { FieldDef, FieldSource } from "../taskplane/settings-tui.ts";
@@ -565,6 +567,29 @@ describe("12. SECTIONS schema coverage", () => {
 				paths.add(field.configPath);
 			}
 		}
+	});
+
+	it("12.7 thinking fields use picker controls", () => {
+		const thinkingPaths = [
+			"taskRunner.worker.thinking",
+			"taskRunner.reviewer.thinking",
+			"orchestrator.merge.thinking",
+		];
+		for (const path of thinkingPaths) {
+			const field = SECTIONS.flatMap((section) => section.fields).find((f) => f.configPath === path);
+			expect(field).toBeDefined();
+			expect(field!.control).toBe("picker");
+		}
+	});
+
+	it("12.8 merge thinking remains L1+L2 with prefs destination", () => {
+		const mergeThinking = SECTIONS
+			.flatMap((section) => section.fields)
+			.find((f) => f.configPath === "orchestrator.merge.thinking");
+		expect(mergeThinking).toBeDefined();
+		expect(mergeThinking!.layer).toBe("L1+L2");
+		expect(mergeThinking!.prefsKey).toBe("mergeThinking");
+		expect(getDefaultWriteDestination(mergeThinking!)).toBe(null);
 	});
 });
 
@@ -1519,5 +1544,68 @@ describe("18. Advanced section discoverability", () => {
 				expect(advancedPaths.has(field.configPath)).toBe(false);
 			}
 		}
+	});
+});
+
+// ── 19.x Model-change thinking suggestion helpers (TP-138) ─────────
+
+describe("19. model-change thinking suggestion helpers", () => {
+	function makeModelCtx(models: any[]): any {
+		return {
+			modelRegistry: {
+				getAvailable: () => models,
+			},
+		};
+	}
+
+	it("19.1 modelSupportsThinking detects direct and nested capability flags", () => {
+		expect(modelSupportsThinking({ supportsThinking: true })).toBe(true);
+		expect(modelSupportsThinking({ capabilities: { reasoningEffort: ["low", "medium"] } })).toBe(true);
+		expect(modelSupportsThinking({ id: "plain-model" })).toBe(false);
+	});
+
+	it("19.2 buildThinkingSuggestionForModelChange suggests enabling thinking when supported", () => {
+		const ctx = makeModelCtx([{ provider: "openai", id: "gpt-5", supportsThinking: true }]);
+		const config = cloneConfig();
+		config.taskRunner.worker.thinking = "";
+
+		const field = makeL1L2StringField({
+			configPath: "taskRunner.worker.model",
+			label: "Worker Model",
+			prefsKey: "workerModel",
+		});
+
+		const suggestion = buildThinkingSuggestionForModelChange(
+			ctx,
+			field,
+			"openai/gpt-4.1",
+			"openai/gpt-5",
+			config,
+		);
+
+		expect(suggestion).toContain("Worker model supports thinking");
+		expect(suggestion).toContain("Worker Thinking");
+	});
+
+	it("19.3 buildThinkingSuggestionForModelChange is suppressed when already on", () => {
+		const ctx = makeModelCtx([{ provider: "openai", id: "gpt-5", supportsThinking: true }]);
+		const config = cloneConfig();
+		config.taskRunner.worker.thinking = "on";
+
+		const field = makeL1L2StringField({
+			configPath: "taskRunner.worker.model",
+			label: "Worker Model",
+			prefsKey: "workerModel",
+		});
+
+		const suggestion = buildThinkingSuggestionForModelChange(
+			ctx,
+			field,
+			"openai/gpt-4.1",
+			"openai/gpt-5",
+			config,
+		);
+
+		expect(suggestion).toBe(null);
 	});
 });

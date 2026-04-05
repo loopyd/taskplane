@@ -49,7 +49,7 @@ export type FieldSource = "default" | "project" | "user";
 export type FieldLayer = "L1" | "L2" | "L1+L2";
 
 /** UI control type for a field */
-export type FieldControl = "toggle" | "input";
+export type FieldControl = "toggle" | "input" | "picker";
 
 /** Field definition for the settings TUI */
 export interface FieldDef {
@@ -129,7 +129,7 @@ export const SECTIONS: SectionDef[] = [
 		fields: [
 			{ configPath: "orchestrator.merge.model", label: "Merge Model", control: "input", layer: "L1+L2", fieldType: "string", prefsKey: "mergeModel", description: "Merge-agent model (inherit = use session model)" },
 			{ configPath: "orchestrator.merge.tools", label: "Merge Tools", control: "input", layer: "L1", fieldType: "string", description: "Merge-agent tool allowlist" },
-			{ configPath: "orchestrator.merge.thinking", label: "Merge Thinking", control: "input", layer: "L1+L2", fieldType: "string", prefsKey: "mergeThinking", description: "Merge-agent thinking mode (empty = inherit session)" },
+			{ configPath: "orchestrator.merge.thinking", label: "Merge Thinking", control: "picker", layer: "L1+L2", fieldType: "string", prefsKey: "mergeThinking", description: "Merge-agent thinking mode" },
 			{ configPath: "orchestrator.merge.order", label: "Merge Order", control: "toggle", layer: "L1", fieldType: "enum", values: ["fewest-files-first", "sequential"], description: "Lane merge ordering policy" },
 			{ configPath: "orchestrator.merge.timeoutMinutes", label: "Merge Timeout (minutes)", control: "input", layer: "L1", fieldType: "number", description: "Max time for merge agent to complete. Increase for large batches (default: 10)" },
 		],
@@ -162,7 +162,7 @@ export const SECTIONS: SectionDef[] = [
 		fields: [
 			{ configPath: "taskRunner.worker.model", label: "Worker Model", control: "input", layer: "L1+L2", fieldType: "string", prefsKey: "workerModel", description: "Worker model (inherit = use session model)" },
 			{ configPath: "taskRunner.worker.tools", label: "Worker Tools", control: "input", layer: "L1", fieldType: "string", description: "Worker tool allowlist" },
-			{ configPath: "taskRunner.worker.thinking", label: "Worker Thinking", control: "input", layer: "L1", fieldType: "string", description: "Worker thinking mode" },
+			{ configPath: "taskRunner.worker.thinking", label: "Worker Thinking", control: "picker", layer: "L1", fieldType: "string", description: "Worker thinking mode" },
 			{ configPath: "taskRunner.worker.spawnMode", label: "Spawn Mode", control: "toggle", layer: "L1", fieldType: "enum", values: ["subprocess"], optional: true, description: "How /task spawns workers and reviewers. Runtime V2 supports subprocess only." },
 		],
 	},
@@ -171,7 +171,7 @@ export const SECTIONS: SectionDef[] = [
 		fields: [
 			{ configPath: "taskRunner.reviewer.model", label: "Reviewer Model", control: "input", layer: "L1+L2", fieldType: "string", prefsKey: "reviewerModel", description: "Reviewer model (inherit = use session model)" },
 			{ configPath: "taskRunner.reviewer.tools", label: "Reviewer Tools", control: "input", layer: "L1", fieldType: "string", description: "Reviewer tool allowlist" },
-			{ configPath: "taskRunner.reviewer.thinking", label: "Reviewer Thinking", control: "input", layer: "L1", fieldType: "string", description: "Reviewer thinking mode" },
+			{ configPath: "taskRunner.reviewer.thinking", label: "Reviewer Thinking", control: "picker", layer: "L1", fieldType: "string", description: "Reviewer thinking mode" },
 		],
 	},
 	{
@@ -1003,6 +1003,131 @@ async function pickModel(ctx: ExtensionContext, currentModel: string): Promise<s
 	}
 }
 
+type ThinkingModeValue = "" | "on" | "off";
+
+const THINKING_MODE_OPTIONS: Array<{ value: ThinkingModeValue; label: string }> = [
+	{ value: "", label: "inherit (use session thinking)" },
+	{ value: "on", label: "on" },
+	{ value: "off", label: "off" },
+];
+
+function normalizeThinkingMode(value: unknown): ThinkingModeValue {
+	const cleaned = String(value ?? "").trim().toLowerCase();
+	if (cleaned === "on") return "on";
+	if (cleaned === "off") return "off";
+	return "";
+}
+
+async function pickThinkingMode(
+	ctx: ExtensionContext,
+	currentThinking: string,
+): Promise<ThinkingModeValue | undefined> {
+	const current = normalizeThinkingMode(currentThinking);
+	const optionToValue = new Map<string, ThinkingModeValue>();
+	const optionLabels: string[] = [];
+
+	for (const option of THINKING_MODE_OPTIONS) {
+		const label = `${option.label}${option.value === current ? "  ✓ current" : ""}`;
+		optionLabels.push(label);
+		optionToValue.set(label, option.value);
+	}
+
+	const selected = await selectScrollable(ctx, "Choose thinking mode", optionLabels, 8);
+	if (!selected) return undefined;
+	return optionToValue.get(selected);
+}
+
+const MODEL_THINKING_PATH_MAP: Record<string, { thinkingPath: string; label: string }> = {
+	"taskRunner.worker.model": { thinkingPath: "taskRunner.worker.thinking", label: "Worker" },
+	"taskRunner.reviewer.model": { thinkingPath: "taskRunner.reviewer.thinking", label: "Reviewer" },
+	"orchestrator.merge.model": { thinkingPath: "orchestrator.merge.thinking", label: "Merge" },
+};
+
+function resolveModelRecord(ctx: ExtensionContext, modelRef: string): any | undefined {
+	const trimmed = modelRef.trim();
+	if (!trimmed) return undefined;
+
+	const available = ctx.modelRegistry.getAvailable();
+	const lower = trimmed.toLowerCase();
+	const slashIdx = trimmed.indexOf("/");
+
+	if (slashIdx > 0) {
+		const provider = trimmed.slice(0, slashIdx).toLowerCase();
+		const id = trimmed.slice(slashIdx + 1).toLowerCase();
+		return available.find((m: any) =>
+			String(m?.provider ?? "").toLowerCase() === provider
+			&& String(m?.id ?? "").toLowerCase() === id,
+		);
+	}
+
+	return available.find((m: any) =>
+		String(m?.id ?? "").toLowerCase() === lower
+		|| `${String(m?.provider ?? "").toLowerCase()}/${String(m?.id ?? "").toLowerCase()}` === lower,
+	);
+}
+
+export function modelSupportsThinking(model: any): boolean {
+	if (!model || typeof model !== "object") return false;
+
+	const boolFlags = [
+		"supportsThinking",
+		"thinking",
+		"supportsReasoning",
+		"supportsReasoningEffort",
+		"supportsReasoningTokens",
+		"reasoning",
+	];
+	const capabilityKeys = [
+		"reasoningEffort",
+		"reasoningTokens",
+		"thinkingModes",
+		"thinkingMode",
+		"reasoning_effort",
+		"reasoning_tokens",
+	];
+
+	const candidateObjects = [
+		model,
+		model.capabilities,
+		model.features,
+		model.metadata,
+	].filter((entry) => entry && typeof entry === "object");
+
+	for (const candidate of candidateObjects) {
+		for (const key of boolFlags) {
+			if (typeof candidate[key] === "boolean" && candidate[key]) return true;
+		}
+		for (const key of capabilityKeys) {
+			if (candidate[key] !== undefined && candidate[key] !== null) return true;
+		}
+	}
+
+	return false;
+}
+
+export function buildThinkingSuggestionForModelChange(
+	ctx: ExtensionContext,
+	field: FieldDef,
+	previousModelValue: string,
+	nextModelValue: string,
+	mergedConfig: TaskplaneConfig,
+): string | null {
+	const mapping = MODEL_THINKING_PATH_MAP[field.configPath];
+	if (!mapping) return null;
+
+	const previousNormalized = previousModelValue.trim().toLowerCase();
+	const nextNormalized = nextModelValue.trim().toLowerCase();
+	if (!nextNormalized || previousNormalized === nextNormalized) return null;
+
+	const modelRecord = resolveModelRecord(ctx, nextModelValue);
+	if (!modelRecord || !modelSupportsThinking(modelRecord)) return null;
+
+	const currentThinking = normalizeThinkingMode(getNestedValue(mergedConfig, mapping.thinkingPath));
+	if (currentThinking === "on") return null;
+
+	return `${mapping.label} model supports thinking. Consider setting ${mapping.label} Thinking to \"on\".`;
+}
+
 /**
  * Scrollable select list for model/provider picking.
  * Uses pi's TUI custom widget API.
@@ -1247,20 +1372,26 @@ async function showSectionSettingsLoop(
 		const field = section.fields.find((f) => f.configPath === result.fieldId);
 		if (!field) continue;  // Safety: field not found
 
-		// Input fields: the submenu returned a sentinel — use ctx.ui.input() for actual editing
-		if (result.rawValue === "__EDIT_REQUESTED__" && field.control === "input") {
+		let previousModelValue = "";
+
+		// Input/picker fields: the submenu returned a sentinel — open the editor picker.
+		if (result.rawValue === "__EDIT_REQUESTED__" && (field.control === "input" || field.control === "picker")) {
+			const state = loadConfigState(configRoot, pointerConfigRoot);
+			const currentDisplay = getFieldDisplayValue(field, state.mergedConfig, state.prefs);
+			const currentClean = String(currentDisplay).replace(/\s+\((?:default|project|user)\)$/, "");
+			const normalizedCurrent = currentClean === "(inherit)" ? "" : currentClean;
+
 			// Model fields: use interactive provider → model picker instead of free-text
 			if (field.configPath.endsWith(".model")) {
-				const state = loadConfigState(configRoot, pointerConfigRoot);
-				const currentDisplay = getFieldDisplayValue(field, state.mergedConfig, state.prefs);
-				const currentClean = String(currentDisplay).replace(/\s+\((?:default|project|user)\)$/, "");
-				const selected = await pickModel(ctx, currentClean === "(inherit)" ? "" : currentClean);
+				previousModelValue = normalizedCurrent;
+				const selected = await pickModel(ctx, normalizedCurrent);
+				if (selected === undefined) continue;  // Cancelled
+				result.rawValue = selected;
+			} else if (field.control === "picker" && field.configPath.endsWith(".thinking")) {
+				const selected = await pickThinkingMode(ctx, normalizedCurrent);
 				if (selected === undefined) continue;  // Cancelled
 				result.rawValue = selected;
 			} else {
-				const state = loadConfigState(configRoot, pointerConfigRoot);
-				const currentDisplay = getFieldDisplayValue(field, state.mergedConfig, state.prefs);
-				const currentClean = String(currentDisplay).replace(/\s+\((?:default|project|user)\)$/, "");
 				const placeholder = currentClean === "(not set)" || currentClean === "(inherit)" ? "" : currentClean;
 
 				const newValue = await ctx.ui.input(
@@ -1327,6 +1458,18 @@ async function showSectionSettingsLoop(
 				`ℹ Restart session to apply changes.`,
 				"info",
 			);
+
+			const refreshedState = loadConfigState(configRoot, pointerConfigRoot);
+			const suggestion = buildThinkingSuggestionForModelChange(
+				ctx,
+				field,
+				previousModelValue,
+				String(result.rawValue ?? ""),
+				refreshedState.mergedConfig,
+			);
+			if (suggestion) {
+				ctx.ui.notify(`💡 ${suggestion}`, "info");
+			}
 		} catch (err: any) {
 			ctx.ui.notify(`❌ Failed to save: ${err.message}`, "error");
 		}
@@ -1375,7 +1518,7 @@ async function showSectionSettingsOnce(
 		// The inline submenu approach freezes on Windows/tmux (issue #57).
 		// We set a single sentinel value so pressing Enter/Space triggers onChange,
 		// which exits the TUI. The caller then uses ctx.ui.input() for actual editing.
-		if (field.control === "input") {
+		if (field.control === "input" || field.control === "picker") {
 			item.values = [`__EDIT_REQUESTED__`];
 		}
 

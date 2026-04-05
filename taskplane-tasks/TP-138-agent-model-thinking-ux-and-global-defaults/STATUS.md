@@ -1,10 +1,10 @@
 # TP-138: Agent Inherit Defaults and Thinking Picker — Status
 
-**Current Step:** Step 3: Thinking picker in /taskplane-settings
+**Current Step:** Step 4: Testing & Verification
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-05
 **Review Level:** 2
-**Review Counter:** 5
+**Review Counter:** 6
 **Iteration:** 1
 **Size:** M
 
@@ -36,16 +36,16 @@
 - [x] Verify empty thinking = session inheritance
 
 ### Step 3: Thinking picker in /taskplane-settings
-**Status:** 🟨 In Progress
-- [ ] Change thinking fields to picker control
-- [ ] Options: inherit/on/off
-- [ ] Reuse selectScrollable
-- [ ] Current value marked with ✓
-- [ ] Save to correct destination
-- [ ] Suggest enabling thinking when model changes to a thinking-capable model
+**Status:** ✅ Complete
+- [x] Change thinking fields to picker control
+- [x] Options: inherit/on/off
+- [x] Reuse selectScrollable
+- [x] Current value marked with ✓
+- [x] Save to correct destination
+- [x] Suggest enabling thinking when model changes to a thinking-capable model
 
 ### Step 4: Testing & Verification
-**Status:** ⬜ Not Started
+**Status:** 🟨 In Progress
 - [ ] Test empty thinking = no flag
 - [ ] Test "inherit" normalization
 - [ ] Test thinking picker save/load
@@ -76,3 +76,4 @@
 | 2026-04-05 13:49 | Step 2 verification | Targeted runtime fallback tests passed (task-runner-rpc, lane-runner-v2, process-registry) |
 | 2026-04-05 17:51 | Review R004 | code Step 2: APPROVE |
 | 2026-04-05 17:53 | Review R005 | plan Step 3: REVISE |
+| 2026-04-05 17:54 | Review R006 | plan Step 3: APPROVE |
