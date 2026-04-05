@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.24.17] - 2026-04-04
+
+### New
+- **Interactive model picker in `/taskplane-settings`** — Model selection now uses a two-level provider → model picker instead of free-text input. First option is "inherit (use current session model)". Current model marked with ✓. Falls back to manual input if no models available.
+
 ## [0.24.16] - 2026-04-04
 
 ### Fixed
