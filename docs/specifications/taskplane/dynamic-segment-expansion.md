@@ -101,10 +101,10 @@ agents. Only available when the task has a segment plan (workspace mode).
   rationale: string;                   // required
 
   /** Where new segments should execute relative to current segment.
-   *  "after-current" (default): new segments depend on the current segment.
-   *  "end": new segments added at the end of the segment chain.
-   *  "after:<segmentId>": new segments depend on the specified segment. */
-  placement?: string;
+   *  "after-current" (default): inserted after the completing segment,
+   *    before its existing successors.
+   *  "end": appended after all existing segments (no successor rewiring). */
+  placement?: "after-current" | "end";
 
   /** Optional edges between newly requested repos (if ordering matters) */
   edges?: Array<{ from: string; to: string }>;
@@ -172,7 +172,7 @@ engine when spawning agents with mailbox support.
 
 ```typescript
 interface SegmentExpansionRequest {
-  /** Unique request ID */
+  /** Unique request ID — format: `exp-{timestamp}-{random5}` (lexicographically sortable) */
   requestId: string;
 
   /** Task ID making the request */
@@ -188,7 +188,7 @@ interface SegmentExpansionRequest {
   rationale: string;
 
   /** Placement directive */
-  placement: "after-current" | "end" | `after:${string}`;
+  placement: "after-current" | "end";
 
   /** Optional inter-segment edges for new repos */
   edges: Array<{ from: string; to: string }>;
@@ -221,8 +221,7 @@ When the engine finds expansion request files after a segment completes:
    create a cycle in the segment DAG.
 3. **Task not terminal:** The task must still be in an active (non-terminal)
    state.
-4. **Placement target valid:** If placement is `after:<segmentId>`, that
-   segment must exist in the plan.
+4. **Placement valid:** Must be `"after-current"` or `"end"`.
 5. **Request idempotency:** If a request with the same `requestId` was already
    processed, skip it (replay-safe on resume).
 
@@ -243,20 +242,42 @@ Engine performs the graph mutation:
 
 1. **Create new `TaskSegmentNode`** entries for each approved repo.
 
-2. **Create edges with successor rewiring:**
-   - Add edge from placement anchor to each new segment.
-   - **Critical:** Rewire existing successors of the anchor to depend on the
-     new segment(s) instead. Without this, downstream segments could execute
-     before the expansion.
-   - Example: plan is `A → B → C`, expansion adds `X` after `B`.
-     - Add edge `B → X`
-     - Rewire: remove edge `B → C`, add edge `X → C`
-     - Result: `A → B → X → C`
-   - For multiple new segments with inter-edges (e.g., `X → Y`):
-     - Add edges `B → X`, `X → Y`
-     - Rewire `C` to depend on the last new segment: `Y → C`
-     - Result: `A → B → X → Y → C`
-   - For `placement: "end"`: no successor rewiring needed (append only).
+2. **Create edges with successor rewiring (formal algorithm):**
+
+   Let `anchor` = the completing segment, `N` = set of new segment nodes,
+   `S_old` = existing successor set of `anchor` (segments that depend on it).
+
+   ```
+   roots(N)  = nodes in N with no incoming edges from other N nodes
+   sinks(N)  = nodes in N with no outgoing edges to other N nodes
+
+   if placement == "after-current":
+     for each r in roots(N): add edge anchor → r
+     for each s in S_old:
+       remove edge anchor → s
+       for each k in sinks(N): add edge k → s
+
+   if placement == "end":
+     terminals = segments with no successors in the current DAG
+     for each t in terminals: add edge t → roots(N)[0]
+     (no successor rewiring needed)
+   ```
+
+   Examples:
+   - Linear: `A → B → C`, expand `X` after `B`.
+     roots={X}, sinks={X}, S_old={C}.
+     Result: `A → B → X → C` ✓
+
+   - Multi-insert: `A → B → C`, expand `X → Y` after `B`.
+     roots={X}, sinks={Y}, S_old={C}.
+     Result: `A → B → X → Y → C` ✓
+
+   - Fan-out anchor: `A → {B, C}`, expand `X` after `A`.
+     roots={X}, sinks={X}, S_old={B, C}.
+     Result: `A → X → {B, C}` ✓
+
+   - End placement: `A → B → C`, expand `X` at end.
+     terminals={C}. Result: `A → B → C → X` ✓
 
 3. **Re-topologize `orderedSegments`** from the updated DAG. The array is
    rebuilt via topological sort (not spliced), ensuring deterministic ordering.
@@ -298,6 +319,11 @@ Request files transition through states via file extension:
 | Processed | `.processed` | Engine approved and applied |
 | Rejected | `.rejected` | Engine validation failed |
 | Discarded | `.discarded` | Originating segment failed |
+| Invalid | `.invalid` | File unparseable or schema violation |
+
+**Malformed request files** (JSON parse error, missing required fields,
+unknown schema) are renamed to `.invalid` with a log entry. They do not
+block processing of other valid requests at the same boundary.
 
 ### Supervisor role
 
@@ -330,6 +356,11 @@ orch_reject_expansion(requestId, reason)
 is supported. Supervised/interactive gating is deferred to a follow-up.
 This avoids the complexity of task-level pause without blocking the feature.
 
+**Non-autonomous guard (V1):** In supervised/interactive mode, the
+`request_segment_expansion` tool returns `accepted: false` with message
+"Segment expansion requires autonomous supervisor mode." The tool is
+registered but hard-disabled — not silently auto-approved.
+
 ---
 
 ## 3a. Repeat-Repo Segments
@@ -355,8 +386,11 @@ TP-005::api-service::2   ← second pass (expansion)
 TP-005::api-service::3   ← third pass (if needed)
 ```
 
-The suffix is assigned by the engine at approval time. `buildSegmentId()` is
-extended to accept an optional sequence number.
+The suffix is assigned by the engine at approval time as
+`max(existing sequences for this task+repo) + 1`. This is resume-safe —
+the sequence is derived from persisted segment records, not runtime state.
+
+`buildSegmentId()` is extended to accept an optional sequence number.
 
 ### Default placement: run next
 
@@ -408,10 +442,14 @@ If the segment that requested expansion fails:
 - Rationale: if the originating segment failed, its assessment of what other
   repos need changes may be invalid.
 
-### What if the worker requests expansion for a repo it already has access to?
+### What if the worker requests expansion for a repo that already has a segment?
 
-The tool rejects immediately (repo already in segment plan). The worker should
-use its existing segment for that repo.
+This is allowed — the engine creates a repeat-repo segment with a
+disambiguated ID (e.g., `TP-005::api-service::2`). See section 3a.
+
+The worker's current segment can only write to the active segment repo.
+If it needs a *second pass* at a previously-completed repo, expansion is
+the correct mechanism.
 
 ---
 
@@ -595,6 +633,26 @@ TP-005: 2 segments planned + 1 expanded (web-client, approved)
 13. **Failure discard produces audit trail:**
     Segment fails after requesting expansion. Request file renamed to
     `.discarded`. Supervisor alert emitted with discard reason.
+
+14. **Fan-out anchor rewiring:**
+    Plan `A → {B, C}`, expand X after A.
+    Expect: `A → X → {B, C}` (both B and C depend on X).
+
+15. **"end" placement with multiple terminals:**
+    Plan has terminals {B, C} (no successors). Expand X at end.
+    Expect: both B and C gain edge to X.
+
+16. **Non-autonomous mode rejects tool call:**
+    Supervisor autonomy is "supervised". Worker calls tool.
+    Expect: `accepted: false`, message explains autonomous required.
+
+17. **Malformed request file handled gracefully:**
+    Invalid JSON in outbox. Expect: renamed to `.invalid`, no crash,
+    other valid requests still processed.
+
+18. **Repeat-repo sequence assignment after resume:**
+    Task has `api::1` (done) and `api::2` (done, from expansion).
+    New expansion for api. Expect: sequence = 3.
 
 ---
 
