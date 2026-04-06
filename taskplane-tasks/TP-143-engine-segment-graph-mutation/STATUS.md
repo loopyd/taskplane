@@ -1,10 +1,10 @@
 # TP-143: Engine Segment Graph Mutation — Status
 
-**Current Step:** Step 1: Outbox consumption (R002 revisions)
+**Current Step:** Step 2: Engine validation
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-06
 **Review Level:** 2
-**Review Counter:** 2
+**Review Counter:** 4
 **Iteration:** 1
 **Size:** M
 
@@ -19,7 +19,7 @@
 - [x] Understand segment lifecycle
 
 ### Step 1: Outbox consumption
-**Status:** 🟨 In Progress
+**Status:** ✅ Complete
 - [x] Check for request files after segment completes
 - [x] Parse SegmentExpansionRequest
 - [x] Handle malformed files (.invalid)
@@ -30,12 +30,15 @@
 - [x] R002: reject empty requestedRepoIds as malformed (.invalid)
 
 ### Step 2: Engine validation
-**Status:** ⬜ Not Started
+**Status:** 🟨 In Progress
 - [ ] Repo existence check
 - [ ] Cycle detection
 - [ ] Task not terminal
 - [ ] Placement valid
 - [ ] Idempotency guard
+- [ ] Validation failure path: rename to .rejected and emit segment-expansion-rejected alert
+- [ ] Validation success path: hand off to graph-mutation path
+- [ ] Validation branch smoke coverage (reject + accept)
 
 ### Step 3: DAG mutation with rewiring
 **Status:** ⬜ Not Started
@@ -80,6 +83,8 @@
 ## Notes
 
 - Reviewer suggestion (R002): consider extracting boundary outbox consumption into a dedicated helper for readability/testability.
+- Reviewer suggestion (R004): keep Step 2 validation in `processSegmentExpansionRequestAtBoundary(...)` for ordering/scoping continuity.
+- Reviewer suggestion (R004): consider validating request edges against requested repos before cycle checks for clearer rejection reasons.
 
 ## Execution Log
 
@@ -94,3 +99,6 @@
 | 2026-04-06 03:41 | Step 2 started | Engine validation |
 | 2026-04-06 03:14 | Review R001 | plan Step 1: APPROVE |
 | 2026-04-06 03:22 | Review R002 | code Step 1: REVISE |
+| 2026-04-06 03:49 | Review R003 | code Step 1: APPROVE |
+| 2026-04-06 03:28 | Review R003 | code Step 1: APPROVE |
+| 2026-04-06 03:30 | Review R004 | plan Step 2: REVISE |
