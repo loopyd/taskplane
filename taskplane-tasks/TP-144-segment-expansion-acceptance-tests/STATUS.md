@@ -4,7 +4,7 @@
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-06
 **Review Level:** 1
-**Review Counter:** 5
+**Review Counter:** 6
 **Iteration:** 3
 **Size:** S
 
@@ -38,6 +38,7 @@
 
 ### Step 3: Repeat-repo expansion test
 **Status:** 🟨 In Progress
+- [ ] Formalize steering-based scope amendment in PROMPT.md (defer live TP-008 polyrepo e2e due merge-agent issue #439 and align Step 3 acceptance wording)
 - [ ] Add unit coverage for repeat-repo expansion that creates `shared-libs::2` after `api-service` second-pass request
 - [ ] Add unit coverage for repeat-repo dependency wiring so second-pass segment depends on `api-service` and rewires downstream dependents
 - [ ] Add unit coverage for repeat-repo persistence metadata using orch-branch provisioning for the `::2` segment
@@ -89,3 +90,4 @@
 
 - R002 suggestion retained for traceability; Step 2 evidence is captured via targeted expansion unit test run output.
 - Live polyrepo execution for TP-144 was deferred in this session due known merge-agent thinking hang issue (#439), per supervisor steering.
+| 2026-04-06 09:03 | Review R006 | plan Step 3: REVISE |
