@@ -1,10 +1,10 @@
 # TP-144: Segment Expansion Acceptance Tests — Status
 
-**Current Step:** Step 3: Repeat-repo expansion test
+**Current Step:** Step 4: Resume after expansion test
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-06
 **Review Level:** 1
-**Review Counter:** 6
+**Review Counter:** 7
 **Iteration:** 3
 **Size:** S
 
@@ -37,12 +37,12 @@
 - [x] Run targeted expansion unit tests and capture passing evidence for Step 2
 
 ### Step 3: Repeat-repo expansion test
-**Status:** 🟨 In Progress
-- [ ] Formalize steering-based scope amendment in PROMPT.md (defer live TP-008 polyrepo e2e due merge-agent issue #439 and align Step 3 acceptance wording)
-- [ ] Add unit coverage for repeat-repo expansion that creates `shared-libs::2` after `api-service` second-pass request
-- [ ] Add unit coverage for repeat-repo dependency wiring so second-pass segment depends on `api-service` and rewires downstream dependents
-- [ ] Add unit coverage for repeat-repo persistence metadata using orch-branch provisioning for the `::2` segment
-- [ ] Run targeted repeat-repo expansion unit tests and capture passing evidence
+**Status:** ✅ Complete
+- [x] Formalize steering-based scope amendment in PROMPT.md (defer live TP-008 polyrepo e2e due merge-agent issue #439 and align Step 3 acceptance wording)
+- [x] Add unit coverage for repeat-repo expansion that creates `shared-libs::2` after `api-service` second-pass request
+- [x] Add unit coverage for repeat-repo dependency wiring so second-pass segment depends on `api-service` and rewires downstream dependents
+- [x] Add unit coverage for repeat-repo persistence metadata using orch-branch provisioning for the `::2` segment
+- [x] Run targeted repeat-repo expansion unit tests and capture passing evidence
 
 ### Step 4: Resume after expansion
 **Status:** ⬜ Not Started
@@ -85,9 +85,14 @@
 | 2026-04-06 09:00 | Steering received | Pivoted remaining acceptance validation to unit-test coverage; defer live polyrepo execution due merge-agent thinking issue (#439) |
 | 2026-04-06 09:02 | Review R005 | plan Step 2: REVISE (requested live e2e evidence; superseded by steering override to unit approach) |
 | 2026-04-06 09:08 | Step 2 targeted tests | `tests/segment-expansion-tool.test.ts` + `tests/engine-segment-frontier.test.ts` passed (29/29) |
+| 2026-04-06 09:12 | Review R006 | plan Step 3: REVISE |
+| 2026-04-06 09:14 | Prompt amendment | Added formal scope deferral for live polyrepo e2e (issue #439) and unit-based substitution criteria |
+| 2026-04-06 09:18 | Step 3 targeted tests | `tests/engine-segment-frontier.test.ts` passed (21/21) |
+| 2026-04-06 09:19 | Review R007 | plan Step 3: APPROVE |
 
 ## Notes
 
 - R002 suggestion retained for traceability; Step 2 evidence is captured via targeted expansion unit test run output.
 - Live polyrepo execution for TP-144 was deferred in this session due known merge-agent thinking hang issue (#439), per supervisor steering.
 | 2026-04-06 09:03 | Review R006 | plan Step 3: REVISE |
+| 2026-04-06 09:06 | Review R007 | plan Step 3: APPROVE |

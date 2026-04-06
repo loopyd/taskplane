@@ -422,6 +422,127 @@ describe("segment expansion graph mutation", () => {
 		expect(result.insertedSegmentIds).toEqual(["TP-302::api::4"]);
 	});
 
+	it("TP-008-style repeat-repo expansion creates shared-libs::2 from api-service boundary", () => {
+		const segmentState: any = {
+			taskId: "TP-008",
+			orderedSegments: [
+				{ segmentId: "TP-008::shared-libs", taskId: "TP-008", repoId: "shared-libs", order: 0 },
+				{ segmentId: "TP-008::api-service", taskId: "TP-008", repoId: "api-service", order: 1 },
+			],
+			nextSegmentIndex: 2,
+			statusBySegmentId: new Map([
+				["TP-008::shared-libs", "succeeded"],
+				["TP-008::api-service", "succeeded"],
+			]),
+			dependsOnBySegmentId: new Map([
+				["TP-008::shared-libs", []],
+				["TP-008::api-service", ["TP-008::shared-libs"]],
+			]),
+			terminalStatus: "pending",
+		};
+		const request = makeExpansionRequest({
+			requestId: "exp-tp008-repeat",
+			taskId: "TP-008",
+			fromSegmentId: "TP-008::api-service",
+			requestedRepoIds: ["shared-libs"],
+			placement: "after-current",
+		});
+
+		const mutation = applySegmentExpansionMutation(segmentState, request, "TP-008::api-service");
+		expect(mutation.insertedSegmentIds).toEqual(["TP-008::shared-libs::2"]);
+		expect(segmentState.orderedSegments.map((segment: any) => segment.segmentId)).toEqual([
+			"TP-008::shared-libs",
+			"TP-008::api-service",
+			"TP-008::shared-libs::2",
+		]);
+		expect(segmentState.dependsOnBySegmentId.get("TP-008::shared-libs::2")).toEqual(["TP-008::api-service"]);
+	});
+
+	it("TP-008 repeat-repo insertion rewires downstream dependents through shared-libs::2", () => {
+		const segmentState: any = {
+			taskId: "TP-008",
+			orderedSegments: [
+				{ segmentId: "TP-008::shared-libs", taskId: "TP-008", repoId: "shared-libs", order: 0 },
+				{ segmentId: "TP-008::api-service", taskId: "TP-008", repoId: "api-service", order: 1 },
+				{ segmentId: "TP-008::web-client", taskId: "TP-008", repoId: "web-client", order: 2 },
+			],
+			nextSegmentIndex: 2,
+			statusBySegmentId: new Map([
+				["TP-008::shared-libs", "succeeded"],
+				["TP-008::api-service", "succeeded"],
+				["TP-008::web-client", "pending"],
+			]),
+			dependsOnBySegmentId: new Map([
+				["TP-008::shared-libs", []],
+				["TP-008::api-service", ["TP-008::shared-libs"]],
+				["TP-008::web-client", ["TP-008::api-service"]],
+			]),
+			terminalStatus: "pending",
+		};
+		const request = makeExpansionRequest({
+			requestId: "exp-tp008-rewire",
+			taskId: "TP-008",
+			fromSegmentId: "TP-008::api-service",
+			requestedRepoIds: ["shared-libs"],
+			placement: "after-current",
+		});
+
+		const mutation = applySegmentExpansionMutation(segmentState, request, "TP-008::api-service");
+		expect(mutation.insertedSegmentIds).toEqual(["TP-008::shared-libs::2"]);
+		expect(segmentState.dependsOnBySegmentId.get("TP-008::shared-libs::2")).toEqual(["TP-008::api-service"]);
+		expect(segmentState.dependsOnBySegmentId.get("TP-008::web-client")).toEqual(["TP-008::shared-libs::2"]);
+	});
+
+	it("TP-008 repeat-repo persistence uses orch-branch provisioning metadata for shared-libs::2", () => {
+		const segmentState: any = {
+			taskId: "TP-008",
+			orderedSegments: [
+				{ segmentId: "TP-008::shared-libs", taskId: "TP-008", repoId: "shared-libs", order: 0 },
+				{ segmentId: "TP-008::api-service", taskId: "TP-008", repoId: "api-service", order: 1 },
+			],
+			nextSegmentIndex: 2,
+			statusBySegmentId: new Map([
+				["TP-008::shared-libs", "succeeded"],
+				["TP-008::api-service", "succeeded"],
+			]),
+			dependsOnBySegmentId: new Map([
+				["TP-008::shared-libs", []],
+				["TP-008::api-service", ["TP-008::shared-libs"]],
+			]),
+			terminalStatus: "pending",
+		};
+		const request = makeExpansionRequest({
+			requestId: "exp-tp008-persist",
+			taskId: "TP-008",
+			fromSegmentId: "TP-008::api-service",
+			requestedRepoIds: ["shared-libs"],
+			placement: "after-current",
+		});
+		const mutation = applySegmentExpansionMutation(segmentState, request, "TP-008::api-service");
+		const task = makeTask("TP-008", "api-service");
+		const batchState: any = { orchBranch: "orch/tp-008", segments: [] };
+
+		const changed = upsertPendingExpandedSegmentRecords(
+			batchState,
+			task,
+			segmentState,
+			mutation.insertedSegmentIds,
+			"TP-008::api-service",
+			request.requestId,
+			batchState.orchBranch,
+		);
+		expect(changed).toBe(true);
+
+		const secondPassRecord = batchState.segments.find((record: any) => record.segmentId === "TP-008::shared-libs::2");
+		expect(secondPassRecord).toBeTruthy();
+		expect(secondPassRecord.repoId).toBe("shared-libs");
+		expect(secondPassRecord.branch).toBe("orch/tp-008");
+		expect(secondPassRecord.status).toBe("pending");
+		expect(secondPassRecord.dependsOnSegmentIds).toEqual(["TP-008::api-service"]);
+		expect(secondPassRecord.expandedFrom).toBe("TP-008::api-service");
+		expect(secondPassRecord.expansionRequestId).toBe("exp-tp008-persist");
+	});
+
 	it("continuation round insertion keeps expanded tasks executable before the next planned task wave", () => {
 		const runtimeRounds = [
 			["TP-400"],
