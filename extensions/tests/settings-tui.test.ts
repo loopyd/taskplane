@@ -49,6 +49,7 @@ import {
 	getDefaultWriteDestination,
 	resolveWriteAction,
 	buildThinkingSuggestionForModelChange,
+	buildThinkingUnsupportedNoteForThinkingField,
 	modelSupportsThinking,
 	SECTIONS,
 } from "../taskplane/settings-tui.ts";
@@ -1625,9 +1626,11 @@ describe("19. model-change thinking suggestion helpers", () => {
 		};
 	}
 
-	it("19.1 modelSupportsThinking detects direct and nested capability flags", () => {
+	it("19.1 modelSupportsThinking detects boolean, nested, and string thinking flags", () => {
 		expect(modelSupportsThinking({ supportsThinking: true })).toBe(true);
 		expect(modelSupportsThinking({ capabilities: { reasoningEffort: ["low", "medium"] } })).toBe(true);
+		expect(modelSupportsThinking({ thinking: "yes" })).toBe(true);
+		expect(modelSupportsThinking({ thinking: "no" })).toBe(false);
 		expect(modelSupportsThinking({ id: "plain-model" })).toBe(false);
 	});
 
@@ -1652,12 +1655,13 @@ describe("19. model-change thinking suggestion helpers", () => {
 
 		expect(suggestion).toContain("Worker model supports thinking");
 		expect(suggestion).toContain("Worker Thinking");
+		expect(suggestion).toContain("high");
 	});
 
-	it("19.3 buildThinkingSuggestionForModelChange is suppressed when already on", () => {
+	it("19.3 buildThinkingSuggestionForModelChange is suppressed when already high", () => {
 		const ctx = makeModelCtx([{ provider: "openai", id: "gpt-5", supportsThinking: true }]);
 		const config = cloneConfig();
-		config.taskRunner.worker.thinking = "on";
+		config.taskRunner.worker.thinking = "high";
 
 		const field = makeL1L2StringField({
 			configPath: "taskRunner.worker.model",
@@ -1674,5 +1678,22 @@ describe("19. model-change thinking suggestion helpers", () => {
 		);
 
 		expect(suggestion).toBe(null);
+	});
+
+	it("19.4 buildThinkingUnsupportedNoteForThinkingField warns but does not block", () => {
+		const ctx = makeModelCtx([{ provider: "openai", id: "gpt-5", supportsThinking: false }]);
+		const config = cloneConfig();
+		config.taskRunner.worker.model = "openai/gpt-5";
+
+		const thinkingField = makeL1Field({
+			configPath: "taskRunner.worker.thinking",
+			label: "Worker Thinking",
+			control: "picker",
+			fieldType: "string",
+		});
+
+		const note = buildThinkingUnsupportedNoteForThinkingField(ctx, thinkingField, config);
+		expect(note).toContain("does not advertise thinking support");
+		expect(note).toContain("still set thinking");
 	});
 });

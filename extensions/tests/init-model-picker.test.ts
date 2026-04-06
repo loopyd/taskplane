@@ -29,7 +29,7 @@ const CONFIGURED_SAVED_DEFAULTS = {
 		workerModel: "openai/gpt-5.3-codex",
 		reviewerModel: "anthropic/claude-sonnet-4-6",
 		mergeModel: "anthropic/claude-sonnet-4-6",
-		workerThinking: "on",
+		workerThinking: "high",
 		reviewerThinking: "off",
 		mergeThinking: "off",
 	},
@@ -40,7 +40,7 @@ const CONFIGURED_SAVED_DEFAULTS = {
 
 describe("init model picker flow", () => {
 	it("supports 'same model for all' selection with thinking prompt", async () => {
-		const askAnswers = ["3", "2", "2"]; // provider=openai, model=gpt-5.3-codex, thinking=on
+		const askAnswers = ["3", "2", "6"]; // provider=openai, model=gpt-5.3-codex, thinking=high
 		let askIdx = 0;
 		let confirmCalls = 0;
 		const logs: string[] = [];
@@ -61,9 +61,9 @@ describe("init model picker flow", () => {
 			workerModel: "openai/gpt-5.3-codex",
 			reviewerModel: "openai/gpt-5.3-codex",
 			mergeModel: "openai/gpt-5.3-codex",
-			workerThinking: "on",
-			reviewerThinking: "on",
-			mergeThinking: "on",
+			workerThinking: "high",
+			reviewerThinking: "high",
+			mergeThinking: "high",
 		});
 
 		expect(logs.some((line) => line.includes("1. inherit (use current session model)"))).toBe(true);
@@ -71,7 +71,7 @@ describe("init model picker flow", () => {
 	});
 
 	it("first init with multiple providers guides cross-provider reviewer/merger and persists defaults", async () => {
-		const askAnswers = ["3", "2", "2"]; // worker=openai/gpt-5.3-codex, worker thinking=on, then defaults
+		const askAnswers = ["3", "2", "6"]; // worker=openai/gpt-5.3-codex, worker thinking=high, then defaults
 		let askIdx = 0;
 		const prompts: Array<{ question: string; defaultValue: string }> = [];
 		const logs: string[] = [];
@@ -101,10 +101,37 @@ describe("init model picker flow", () => {
 		expect(savedConfig).toEqual(config);
 		expect(logs.some((line) => line.includes("First-run recommendation"))).toBe(true);
 
+		const workerThinkingPrompt = prompts.find((entry) => entry.question.includes("Worker thinking"));
 		const reviewerProviderPrompt = prompts.find((entry) => entry.question.includes("Reviewer provider"));
 		const mergerProviderPrompt = prompts.find((entry) => entry.question.includes("Merger provider"));
+		expect(workerThinkingPrompt?.defaultValue).toBe("6");
 		expect(reviewerProviderPrompt?.defaultValue).toBe("2");
 		expect(mergerProviderPrompt?.defaultValue).toBe("2");
+	});
+
+	it("shows unsupported-thinking note but still allows selecting a thinking level", async () => {
+		const modelsWithoutThinking = [
+			{ provider: "openai", id: "gpt-5.3-codex", displayName: "openai/gpt-5.3-codex", supportsThinking: false },
+		];
+		const logs: string[] = [];
+		const config = await collectInitAgentConfig({
+			interactive: true,
+			queryModelsImpl: () => ({ available: true, models: modelsWithoutThinking, error: null }),
+			loadInitDefaultsImpl: async () => CONFIGURED_SAVED_DEFAULTS,
+			confirmImpl: async () => true,
+			askImpl: async (_question: string, defaultValue: string) => {
+				if (defaultValue === "6") return "7"; // xhigh
+				if (defaultValue === "1") return "2"; // select provider/model instead of inherit
+				return defaultValue;
+			},
+			logImpl: (msg: string) => logs.push(msg),
+		});
+
+		expect(config.workerThinking).toBe("xhigh");
+		expect(config.reviewerThinking).toBe("xhigh");
+		expect(config.mergeThinking).toBe("xhigh");
+		expect(logs.some((line) => line.includes("does not advertise thinking support"))).toBe(true);
+		expect(logs.some((line) => line.includes("ignore it at runtime"))).toBe(true);
 	});
 
 	it("single-provider first init skips cross-provider guidance with an info message", async () => {
@@ -164,10 +191,10 @@ describe("init model picker flow", () => {
 			"1", // worker thinking -> inherit
 			"2", // reviewer provider -> anthropic
 			"2", // reviewer model -> claude-sonnet-4-6
-			"2", // reviewer thinking -> on
+			"6", // reviewer thinking -> high
 			"3", // merger provider -> openai
 			"2", // merger model -> gpt-5.3-codex
-			"3", // merger thinking -> off
+			"2", // merger thinking -> off
 		];
 		let askIdx = 0;
 
@@ -185,7 +212,7 @@ describe("init model picker flow", () => {
 			reviewerModel: "anthropic/claude-sonnet-4-6",
 			mergeModel: "openai/gpt-5.3-codex",
 			workerThinking: "",
-			reviewerThinking: "on",
+			reviewerThinking: "high",
 			mergeThinking: "off",
 		});
 	});

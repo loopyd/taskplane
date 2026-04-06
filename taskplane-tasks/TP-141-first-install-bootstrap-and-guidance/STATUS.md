@@ -4,7 +4,7 @@
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-06
 **Review Level:** 2
-**Review Counter:** 5
+**Review Counter:** 6
 **Iteration:** 1
 **Size:** M
 
@@ -39,13 +39,13 @@
 
 ### Step 3: Thinking level picker enhancement
 **Status:** ⬜ Not Started
-- [ ] Settings TUI: all pi levels (off→xhigh) + inherit
-- [ ] CLI init: same levels
-- [ ] Default selection: high
-- [ ] Thinking column from pi --list-models
-- [ ] Unsupported-thinking models: show info note only (do not block selection)
-- [ ] Add targeted test for unsupported-thinking permissive behavior
-- [ ] Run targeted tests
+- [x] Settings TUI: all pi levels (off→xhigh) + inherit
+- [x] CLI init: same levels
+- [x] Default selection: high
+- [x] Thinking column from pi --list-models
+- [x] Unsupported-thinking models: show info note only (do not block selection)
+- [x] Add targeted test for unsupported-thinking permissive behavior
+- [x] Run targeted tests
 
 ### Step 4: Testing & Verification
 **Status:** ⬜ Not Started
@@ -107,3 +107,4 @@
 | 2026-04-06 00:49 | Review R003 | plan Step 2: APPROVE |
 | 2026-04-06 00:56 | Review R004 | code Step 2: APPROVE |
 | 2026-04-06 00:57 | Review R005 | plan Step 3: REVISE |
+| 2026-04-06 00:58 | Review R006 | plan Step 3: APPROVE |

@@ -148,28 +148,56 @@ export function parsePiListModelsOutput(rawOutput) {
 
 	const rows = rawOutput.split(/\r?\n/);
 	const parsed = new Map();
+	let providerCol = 0;
+	let modelCol = 1;
+	let thinkingCol = -1;
 
 	for (const row of rows) {
 		const trimmed = row.trim();
 		if (!trimmed) continue;
-		if (/^provider\s+model\b/i.test(trimmed)) continue;
 
 		const parts = trimmed.split(/\s+/);
 		if (parts.length < 2) continue;
 
-		const provider = parts[0].trim();
-		const id = parts[1].trim();
+		if (/^provider\b/i.test(trimmed)) {
+			const lowerHeader = parts.map((part) => part.trim().toLowerCase());
+			const providerIdx = lowerHeader.indexOf("provider");
+			const modelIdx = lowerHeader.indexOf("model");
+			const thinkingIdx = lowerHeader.indexOf("thinking");
+			if (providerIdx >= 0) providerCol = providerIdx;
+			if (modelIdx >= 0) modelCol = modelIdx;
+			thinkingCol = thinkingIdx;
+			continue;
+		}
+
+		const provider = String(parts[providerCol] ?? parts[0] ?? "").trim();
+		const id = String(parts[modelCol] ?? parts[1] ?? "").trim();
 		if (!provider || !id) continue;
 		if (!/^[a-z0-9][a-z0-9._-]*$/i.test(provider)) continue;
 		if (!/^[^\s]+$/.test(id)) continue;
 
+		const thinkingToken = thinkingCol >= 0 ? String(parts[thinkingCol] ?? "").trim().toLowerCase() : "";
+		const supportsThinking = (() => {
+			if (!thinkingToken) return undefined;
+			if (["yes", "true", "on", "supported"].includes(thinkingToken)) return true;
+			if (["no", "false", "off", "unsupported"].includes(thinkingToken)) return false;
+			return undefined;
+		})();
+
 		const key = `${provider.toLowerCase()}/${id.toLowerCase()}`;
-		if (parsed.has(key)) continue;
+		const existing = parsed.get(key);
+		if (existing) {
+			if (existing.supportsThinking === undefined && supportsThinking !== undefined) {
+				existing.supportsThinking = supportsThinking;
+			}
+			continue;
+		}
 
 		parsed.set(key, {
 			provider,
 			id,
 			displayName: `${provider}/${id}`,
+			...(supportsThinking !== undefined ? { supportsThinking } : {}),
 		});
 	}
 
@@ -534,6 +562,18 @@ function splitModelReference(modelRef) {
 	return { provider, id };
 }
 
+function findModelInDiscovery(models, modelRef) {
+	if (!Array.isArray(models) || !modelRef) return null;
+	const ref = splitModelReference(modelRef);
+	if (!ref) return null;
+	const provider = ref.provider.toLowerCase();
+	const id = ref.id.toLowerCase();
+	return models.find((model) =>
+		String(model?.provider ?? "").toLowerCase() === provider
+		&& String(model?.id ?? "").toLowerCase() === id,
+	) || null;
+}
+
 function allValuesEqual(values) {
 	if (!Array.isArray(values) || values.length === 0) return true;
 	const first = values[0];
@@ -671,14 +711,28 @@ async function promptThinkingForRole(roleLabel, {
 	askImpl = ask,
 	logImpl = console.log,
 	currentThinking = "",
+	currentModel = "",
+	availableModels = [],
 } = {}) {
 	const thinkingOptions = [
 		{ value: "", label: "inherit (use current session thinking)", aliases: ["inherit"] },
-		{ value: "on", label: "on" },
 		{ value: "off", label: "off" },
+		{ value: "minimal", label: "minimal" },
+		{ value: "low", label: "low" },
+		{ value: "medium", label: "medium" },
+		{ value: "high", label: "high" },
+		{ value: "xhigh", label: "xhigh" },
 	];
+
+	const selectedModel = findModelInDiscovery(availableModels, currentModel);
+	if (selectedModel?.supportsThinking === false) {
+		logImpl(`  ${INFO} ${roleLabel} model does not advertise thinking support (pi says thinking=no).`);
+		logImpl(`     ${c.dim}You can still set a thinking level; unsupported models ignore it at runtime.${c.reset}`);
+	}
+
 	const normalized = normalizeThinkingMode(currentThinking);
-	const defaultIndex = Math.max(0, thinkingOptions.findIndex((option) => option.value === normalized));
+	const preferredDefault = normalized || "high";
+	const defaultIndex = Math.max(0, thinkingOptions.findIndex((option) => option.value === preferredDefault));
 
 	return promptMenuChoice({
 		title: `${roleLabel}: choose thinking mode`,
@@ -769,6 +823,8 @@ export async function collectInitAgentConfig({
 			askImpl,
 			logImpl,
 			currentThinking: sameThinkingDefaults ? thinkingDefaults[0] : "",
+			currentModel: selectedModel,
+			availableModels: discovery.models,
 		});
 		for (const role of INIT_AGENT_ROLES) {
 			initAgentConfig[role.modelKey] = selectedModel;
@@ -802,6 +858,8 @@ export async function collectInitAgentConfig({
 			askImpl,
 			logImpl,
 			currentThinking: initAgentConfig[role.thinkingKey],
+			currentModel: initAgentConfig[role.modelKey],
+			availableModels: discovery.models,
 		});
 	}
 
