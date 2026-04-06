@@ -90,8 +90,10 @@ The tool performs lightweight validation before writing the request:
 
 1. `requestedRepoIds` is non-empty
 2. Each repo ID matches `^[a-z0-9][a-z0-9._-]*$`
-3. No duplicate repo IDs in the request
-4. None of the requested repos already exist in the task's segment plan
+3. No duplicate repo IDs within the same request
+
+Note: requesting a repo that already has a segment is **allowed**. This creates
+a second-pass segment for that repo (see "Repeat-repo segments" below).
 
 If validation fails, the tool returns `accepted: false` with rejection details.
 The request file is NOT written. The worker can adjust and retry.
@@ -166,14 +168,15 @@ When the engine finds expansion request files after a segment completes:
 ### Validation (engine-level, authoritative)
 
 1. **Repo existence:** Each requested repo ID must exist in `workspace.repos`.
-2. **No duplicates:** Requested repos must not already be in the task's
-   `orderedSegments`.
-3. **No cycles:** Adding the new segments with the requested edges must not
+2. **No cycles:** Adding the new segments with the requested edges must not
    create a cycle in the segment DAG.
-4. **Task not terminal:** The task must still be in an active (non-terminal)
+3. **Task not terminal:** The task must still be in an active (non-terminal)
    state.
-5. **Placement target valid:** If placement is `after:<segmentId>`, that
+4. **Placement target valid:** If placement is `after:<segmentId>`, that
    segment must exist in the plan.
+
+Note: requesting a repo that already has a completed or planned segment is
+valid — see "Repeat-repo segments" below.
 
 ### On validation failure
 
@@ -221,6 +224,63 @@ For supervised/interactive modes, a new supervisor tool is needed:
 orch_approve_expansion(requestId)
 orch_reject_expansion(requestId, reason)
 ```
+
+---
+
+## 3a. Repeat-Repo Segments
+
+A worker may discover during segment execution that a previously-completed
+repo needs additional changes. For example:
+
+- Task plan: `Seg1(repoA) → Seg2(repoB) → Seg3(repoC)`
+- During Seg2, worker realizes repoA needs further modifications
+- Worker requests expansion for repoA
+
+This is **allowed**. The engine creates a second-pass segment for the same
+repo with a disambiguated segment ID.
+
+### Segment ID for repeat repos
+
+The standard segment ID format `taskId::repoId` would collide with the
+existing segment. Repeat-repo segments use a sequence suffix:
+
+```
+TP-005::api-service      ← original (Seg1)
+TP-005::api-service::2   ← second pass (expansion)
+TP-005::api-service::3   ← third pass (if needed)
+```
+
+The suffix is assigned by the engine at approval time. `buildSegmentId()` is
+extended to accept an optional sequence number.
+
+### Default placement: run next
+
+When a worker requests a repeat-repo segment, the default placement is
+**immediately after the current segment** (not at the end of the chain).
+Rationale: if the worker discovered that a previously-visited repo needs
+more work, those changes are likely prerequisites for downstream segments.
+
+Using the example above:
+- Original plan: `Seg1(repoA) → Seg2(repoB) → Seg3(repoC)`
+- After Seg2 requests repoA expansion: `Seg1(repoA) → Seg2(repoB) → Seg2a(repoA::2) → Seg3(repoC)`
+
+The worker can override this with the `placement` field if different ordering
+is needed, but "after-current" is the default and the common case.
+
+### Worktree for repeat-repo segments
+
+The repeat segment gets a **fresh worktree** branched from the current orch
+branch state (which includes the original segment's merged work). This ensures
+the second-pass worker sees all prior changes.
+
+The original segment's worktree may have been cleaned up after its wave's
+merge. The repeat segment provisions a new one, same as any other segment.
+
+### STATUS.md continuity
+
+The worker in the repeat segment reads STATUS.md (packet home repo) and sees
+all notes from prior segments, including the original repo A segment and the
+repo B segment that triggered the expansion. This preserves full task context.
 
 ---
 
@@ -291,7 +351,7 @@ If a new repo was added via expansion that wasn't in the original plan:
 New segments are persisted immediately after approval:
 
 ```typescript
-// Added to segments[] array
+// Added to segments[] array (new repo)
 {
   segmentId: "TP-005::web-client",
   taskId: "TP-005",
@@ -368,9 +428,10 @@ TP-005: 2 segments planned + 1 expanded (web-client, approved)
    Given task with segments [A], request for repo B after A.
    Expect: segments become [A, B], B depends on A.
 
-2. **Expansion to existing repo → rejection:**
-   Given task with segments [A, B], request for repo B.
-   Expect: rejected, plan unchanged.
+2. **Repeat-repo expansion → second-pass segment created:**
+   Given task with segments [A, B], worker in B requests repo A.
+   Expect: segments become [A, B, A::2], A::2 depends on B, uses
+   disambiguated segment ID.
 
 3. **Expansion to unknown repo → rejection:**
    Given workspace with repos [api, web], request for repo "unknown".
