@@ -1654,6 +1654,7 @@ export async function resumeOrchBatch(
 	// ── 9. Persist state after reconciliation ────────────────────
 	// Track state for persistence
 	const wavePlan = runtimeWavePlan;
+	persistedState.wavePlan = wavePlan;
 	if (batchState.totalWaves < wavePlan.length) {
 		batchState.totalWaves = wavePlan.length;
 	}
@@ -2442,7 +2443,7 @@ export async function resumeOrchBatch(
 		// Hoisted outside the if-block so unsafeBranches is accessible to the
 		// reset loop below — both blocks share the same guard condition.
 		let ppUnsafeBranches = new Set<string>();
-		if (waveIdx < wavePlan.length - 1 && !batchState.pauseSignal.paused) {
+		if (waveIdx < persistedState.wavePlan.length - 1 && !batchState.pauseSignal.paused) {
 			const ppOpId = resolveOperatorId(orchConfig);
 			const ppResult = preserveFailedLaneProgress(
 				latestAllocatedLanes,
@@ -2483,7 +2484,7 @@ export async function resumeOrchBatch(
 			applyPartialProgressToOutcomes(ppResult, allTaskOutcomes);
 		}
 
-		if (waveIdx < wavePlan.length - 1 && !batchState.pauseSignal.paused) {
+		if (waveIdx < persistedState.wavePlan.length - 1 && !batchState.pauseSignal.paused) {
 			const wtPrefix = orchConfig.orchestrator.worktree_prefix;
 			const resetOpId = resolveOperatorId(orchConfig);
 			// TP-029 R006: Track worktrees that failed reset AND removal
