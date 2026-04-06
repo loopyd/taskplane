@@ -1,6 +1,6 @@
 # Dynamic Segment Expansion — Implementation Specification
 
-**Status:** Draft
+**Status:** Draft (Sage-reviewed, hardened)
 **Parent:** `multi-repo-task-execution.md` (post-MVP section)
 **Created:** 2026-04-05
 **Author:** Supervisor (reviewed with operator)
@@ -35,6 +35,51 @@ lifetime. This spec extends that model.
 
 4. **Fail-safe defaults.** Invalid requests (unknown repos, cycles) are
    rejected silently with worker notification. No batch state corruption.
+
+---
+
+## 0. SegmentId Grammar and Parsing
+
+The current `SegmentId` type is `${taskId}::${repoId}`. Dynamic expansion
+introduces repeat-repo segments with a sequence suffix: `taskId::repoId::N`.
+
+### Canonical grammar
+
+```
+SegmentId := <taskId> "::" <repoId> [ "::" <sequenceNumber> ]
+
+taskId        := [A-Z]+-[0-9]+        (e.g., "TP-005")
+repoId        := [a-z0-9][a-z0-9._-]*  (e.g., "api-service")
+sequenceNumber := [2-9][0-9]*          (omitted for first segment, starts at 2)
+```
+
+Examples:
+- `TP-005::api-service` — original segment
+- `TP-005::api-service::2` — first expansion (second pass)
+- `TP-005::web-client` — original segment in different repo
+
+### Parsing rule
+
+**`SegmentId` is opaque.** Code must NEVER infer `repoId` by string-splitting
+a segment ID. The `repoId` field is always available on the structured
+`TaskSegmentNode` and `PersistedSegmentRecord` objects. Use those.
+
+`buildSegmentId()` in `types.ts` is extended to accept an optional sequence:
+
+```typescript
+export function buildSegmentId(
+  taskId: string,
+  repoId: string,
+  sequence?: number,
+): SegmentId {
+  if (sequence && sequence >= 2) {
+    return `${taskId}::${repoId}::${sequence}` as SegmentId;
+  }
+  return `${taskId}::${repoId}` as SegmentId;
+}
+```
+
+All existing callers pass no sequence and behave identically.
 
 ---
 
@@ -116,8 +161,12 @@ current segment work and note in STATUS.md that expansion was requested.
 ### Request file location
 
 ```
-.pi/runtime/{batchId}/agents/{agentId}/outbox/segment-expansion-{requestId}.json
+.pi/mailbox/{batchId}/{agentId}/outbox/segment-expansion-{requestId}.json
 ```
+
+This aligns with the existing mailbox layout used by agent replies and
+steering messages. The `outbox/` directory is already created by the
+engine when spawning agents with mailbox support.
 
 ### Request file schema
 
@@ -174,9 +223,11 @@ When the engine finds expansion request files after a segment completes:
    state.
 4. **Placement target valid:** If placement is `after:<segmentId>`, that
    segment must exist in the plan.
+5. **Request idempotency:** If a request with the same `requestId` was already
+   processed, skip it (replay-safe on resume).
 
-Note: requesting a repo that already has a completed or planned segment is
-valid — see "Repeat-repo segments" below.
+Repeat-repo requests (repo already in plan) are valid — the engine creates a
+second-pass segment with a disambiguated ID. See "Repeat-repo segments" below.
 
 ### On validation failure
 
@@ -191,21 +242,62 @@ valid — see "Repeat-repo segments" below.
 Engine performs the graph mutation:
 
 1. **Create new `TaskSegmentNode`** entries for each approved repo.
-2. **Create edges** from the placement anchor to the new segments.
-3. **Insert into `orderedSegments`** at the correct position (respecting
-   topological order of the updated DAG).
+
+2. **Create edges with successor rewiring:**
+   - Add edge from placement anchor to each new segment.
+   - **Critical:** Rewire existing successors of the anchor to depend on the
+     new segment(s) instead. Without this, downstream segments could execute
+     before the expansion.
+   - Example: plan is `A → B → C`, expansion adds `X` after `B`.
+     - Add edge `B → X`
+     - Rewire: remove edge `B → C`, add edge `X → C`
+     - Result: `A → B → X → C`
+   - For multiple new segments with inter-edges (e.g., `X → Y`):
+     - Add edges `B → X`, `X → Y`
+     - Rewire `C` to depend on the last new segment: `Y → C`
+     - Result: `A → B → X → Y → C`
+   - For `placement: "end"`: no successor rewiring needed (append only).
+
+3. **Re-topologize `orderedSegments`** from the updated DAG. The array is
+   rebuilt via topological sort (not spliced), ensuring deterministic ordering.
+
 4. **Update `SegmentFrontierTaskState`:**
    - Add new segments to `statusBySegmentId` (status: `"pending"`)
    - Add new entries to `dependsOnBySegmentId`
-   - Do NOT change `nextSegmentIndex` (it still points to the next segment
-     to execute, which may now be a newly-inserted one)
-5. **Persist to batch state:**
+   - Recalculate `nextSegmentIndex` to point to the first pending segment
+     in the re-topologized array (may be a newly-inserted one)
+
+5. **Persist to batch state (atomic):**
    - Update `segments[]` array with new `PersistedSegmentRecord` entries
    - Update task's `segmentIds[]`
+   - Record processed `requestId` in expansion audit (idempotency guard)
    - Record expansion event in `resilience.repairHistory` with full audit
+   - Note: `wavePlan` and `totalWaves` are NOT modified — segment expansion
+     is intra-task, within the existing wave. The wave contains the task ID;
+     the task's segment frontier handles the expanded segment set internally.
+
 6. **Emit supervisor alert:** `segment-expansion-approved` with the resulting
-   DAG change.
+   DAG change (before/after segment lists, new edges).
+
 7. **Rename request file** to `.processed`.
+
+### Multiple requests at the same boundary
+
+If a segment completes with multiple pending expansion requests, they are
+processed in `requestId` order (lexicographic, which is timestamp-based).
+Each request's successor rewiring operates on the already-mutated graph
+from prior requests. This is deterministic and replay-safe.
+
+### Request lifecycle states
+
+Request files transition through states via file extension:
+
+| State | File suffix | Meaning |
+|-------|------------|--------|
+| Pending | `.json` | Written by tool, awaiting processing |
+| Processed | `.processed` | Engine approved and applied |
+| Rejected | `.rejected` | Engine validation failed |
+| Discarded | `.discarded` | Originating segment failed |
 
 ### Supervisor role
 
@@ -214,16 +306,29 @@ The engine performs validation and graph mutation directly. The supervisor is
 
 | Autonomy Level | Behavior |
 |---------------|----------|
-| Autonomous | Engine auto-approves if validation passes. Supervisor notified. |
-| Supervised | Engine pauses task, emits alert. Supervisor approves/rejects via tool. |
-| Interactive | Engine pauses task, emits alert. Operator must approve. |
+| Autonomous | Engine auto-approves if validation passes. Supervisor notified after. |
+| Supervised | Engine queues request, emits alert. Supervisor approves/rejects. Other tasks/lanes continue. |
+| Interactive | Engine queues request, emits alert. Operator must approve. Other tasks/lanes continue. |
 
-For supervised/interactive modes, a new supervisor tool is needed:
+**Pause semantics (supervised/interactive):** Only the requesting task's
+segment frontier is paused — it will not advance to the next segment until
+the expansion is approved or rejected. Other tasks in the same wave and other
+lanes continue unaffected. This is NOT a batch pause or lane pause.
+
+Implementation: the engine sets a `pendingExpansion` flag on the task's
+`SegmentFrontierTaskState`. The segment advancement check skips this task
+until the flag is cleared (by approval or rejection).
+
+For supervised/interactive modes, new supervisor tools are needed:
 
 ```
 orch_approve_expansion(requestId)
 orch_reject_expansion(requestId, reason)
 ```
+
+**V1 simplification:** For the initial implementation, only autonomous mode
+is supported. Supervised/interactive gating is deferred to a follow-up.
+This avoids the complexity of task-level pause without blocking the feature.
 
 ---
 
@@ -460,15 +565,36 @@ TP-005: 2 segments planned + 1 expanded (web-client, approved)
    Task has 3 segments [A(done), B(expanded, pending), C(original, pending)].
    Interrupt and resume. B and C execute correctly with proper dependencies.
 
+### Mutation safety tests
+
+7. **"after-current" rewires successors correctly:**
+   Given plan `A → B → C`, expansion adds X after B.
+   Expect: result is `A → B → X → C` (C now depends on X, not B).
+
+8. **Duplicate request ID is idempotent:**
+   Process same requestId twice. Expect: second processing is a no-op.
+
+9. **Multiple requests at same boundary, conflicting placements:**
+   Segment B completes with two requests: add X after-current, add Y at end.
+   Expect: X inserted after B (with successor rewiring), Y appended at end.
+
+10. **Resume after approved-but-unexecuted expansion:**
+    Expansion approved, new segment persisted as pending, batch interrupted.
+    Resume reconstructs frontier with expanded segments, executes them.
+
 ### Regression tests
 
-9. **Existing polyrepo tests pass unchanged:**
-   All 6 existing polyrepo test tasks (3 single-repo + 3 multi-repo) must
-   continue to pass. No behavioral change for tasks without expansion.
+11. **Existing polyrepo tests pass unchanged:**
+    All 6 existing polyrepo test tasks (3 single-repo + 3 multi-repo) must
+    continue to pass. No behavioral change for tasks without expansion.
 
-10. **Single-repo tasks unaffected:**
+12. **Single-repo tasks unaffected:**
     `request_segment_expansion` tool not registered for repo-mode tasks.
     Expansion only available in workspace mode.
+
+13. **Failure discard produces audit trail:**
+    Segment fails after requesting expansion. Request file renamed to
+    `.discarded`. Supervisor alert emitted with discard reason.
 
 ---
 
