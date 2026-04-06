@@ -641,7 +641,7 @@ export const DEFAULT_ORCHESTRATOR_SECTION: OrchestratorSection = {
 	merge: {
 		model: "",
 		tools: "read,write,edit,bash,grep,find,ls",
-		thinking: "",
+		thinking: "off",
 		verify: [],
 		order: "fewest-files-first",
 		timeoutMinutes: 90,
