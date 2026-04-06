@@ -1,7 +1,7 @@
 # TP-144: Segment Expansion Acceptance Tests — Status
 
 **Current Step:** Step 6: Documentation & Delivery
-**Status:** 🟡 In Progress
+**Status:** ✅ Complete
 **Last Updated:** 2026-04-06
 **Review Level:** 1
 **Review Counter:** 9
@@ -59,10 +59,10 @@
 - [x] Full unit suite passing
 
 ### Step 6: Documentation & Delivery
-**Status:** 🟨 In Progress
-- [ ] Document results
-- [ ] Update spec if needed
-- [ ] Update STATUS.md
+**Status:** ✅ Complete
+- [x] Document results
+- [x] Update spec if needed
+- [x] Update STATUS.md
 
 ---
 
@@ -95,8 +95,25 @@
 | 2026-04-06 09:26 | Step 5 expansion tests | `segment-expansion-tool/engine/frontier` targeted run passed (39/39) |
 | 2026-04-06 09:27 | Step 5 regression tests | `tests/polyrepo-regression.test.ts` passed (48/48) |
 | 2026-04-06 09:30 | Step 5 full suite | `tests/*.test.ts` passed (3231/3231) |
+| 2026-04-06 09:33 | Step 6 delivery | Documented results + spec impact; task marked complete under steering override for issue #439 |
 
 ## Notes
 
 - R002 suggestion retained for traceability; Step 2 evidence is captured via targeted expansion unit test run output.
 - Live polyrepo execution for TP-144 was deferred in this session due known merge-agent thinking hang issue (#439), per supervisor steering.
+
+## Results Summary
+
+- Added TP-007-style expansion tool coverage for outbox payload generation (`api-service` → `web-client`, `after-current`).
+- Added expansion DAG + persistence coverage for inserted segment ordering and pending-segment upsert metadata.
+- Added TP-008-style repeat-repo coverage for `shared-libs::2`, dependency rewiring, and orch-branch persistence metadata.
+- Added resume coverage for approved-but-unexecuted expansion segments and resume-time duplicate-request suppression.
+- Validation runs:
+  - Targeted expansion tests: 39/39 passing
+  - Polyrepo regression unit suite: 48/48 passing
+  - Full unit suite: 3231/3231 passing
+
+## Spec Impact
+
+- No behavioral divergence from dynamic segment expansion design was found.
+- No spec update required; only execution strategy changed (live e2e deferred in-session per issue #439 steering override).
