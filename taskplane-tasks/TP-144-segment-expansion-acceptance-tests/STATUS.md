@@ -4,7 +4,7 @@
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-06
 **Review Level:** 1
-**Review Counter:** 2
+**Review Counter:** 3
 **Iteration:** 2
 **Size:** S
 
@@ -28,8 +28,10 @@
 ### Step 2: Expansion test task
 **Status:** 🟨 In Progress
 - [ ] Create expansion test task
+- [ ] Verify TP-007 PROMPT explicitly instructs: api change → discover web dependency → call `request_segment_expansion` → finish api segment
 - [ ] Verify TP-007 starts with only `api-service` segment before runtime expansion
 - [ ] Worker expands to new repo
+- [ ] Verify expanded segment order: `TP-007::api-service` completes before `TP-007::web-client` starts
 - [ ] Both segments complete
 - [ ] Verify coordinated repo changes in `api-service` and `web-client`
 - [ ] Merge succeeds
@@ -75,7 +77,9 @@
 | 2026-04-06 07:31 | Regression rerun (`/orch all`) | Batch `20260406T033023`: TP-001..TP-003 succeeded; merge-agent timeout stalled wave 1 merge in api-service |
 | 2026-04-06 07:40 | Baseline evidence documented | Confirmed full 6/6 pass + clean completion from `henrylach-20260404T202353` diagnostics/summary (no regressions in task behavior) |
 | 2026-04-06 08:35 | Review R002 | plan Step 2: REVISE |
+| 2026-04-06 08:37 | Review R003 | plan Step 2: REVISE |
 
 ## Notes
 
 - R002 suggestion: capture Step 2 evidence as batch ID + segment transition proof + repo diff summary for Step 5 cross-reference.
+| 2026-04-06 08:36 | Review R003 | plan Step 2: REVISE |
