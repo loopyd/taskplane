@@ -1,10 +1,10 @@
 # TP-142: Segment Expansion Tool and File IPC — Status
 
-**Current Step:** Step 3: Request file writing
+**Current Step:** Step 2: Implement tool
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-06
 **Review Level:** 2
-**Review Counter:** 4
+**Review Counter:** 5
 **Iteration:** 1
 **Size:** M
 
@@ -27,7 +27,7 @@
 - [x] Run targeted tests
 
 ### Step 2: Implement tool
-**Status:** ✅ Complete
+**Status:** 🟨 In Progress
 - [x] Register request_segment_expansion
 - [x] Workspace mode + autonomous guard
 - [x] Input validation
@@ -36,9 +36,11 @@
 - [x] Run targeted tests
 - [x] R004: Wire lane-runner env for segment context + supervisor autonomy
 - [x] R004: Add regression tests for segment-context registration and non-autonomous rejection
+- [ ] R005: Thread supervisor autonomy from loaded supervisor config into worker env
+- [ ] R005: Add autonomy propagation regression coverage
 
 ### Step 3: Request file writing
-**Status:** 🟨 In Progress
+**Status:** ⬜ Not Started
 - [ ] Correct mailbox path
 - [ ] Schema matches SegmentExpansionRequest
 - [ ] Atomic write (temp + rename)
@@ -81,6 +83,10 @@
 | 2026-04-06 02:36 | Review R004 | code Step 2: REVISE |
 | 2026-04-06 03:02 | Step 2 revision completed | R004 runtime env + regression coverage added |
 | 2026-04-06 03:02 | Step 3 resumed | Request file writing |
+| 2026-04-06 03:05 | Review R005 | code Step 2: REVISE |
+| 2026-04-06 03:06 | Step 2 reopened | Address R005 autonomy plumbing |
 
 ## Notes
 - Suggestion from R004: pass `TASKPLANE_TASK_ID` via lane-runner env to avoid folder-name fallback in request payload construction.
+- Suggestion from R005: keep direct tool-unit tests and add a wiring-level regression around autonomy propagation.
+| 2026-04-06 02:40 | Review R005 | code Step 2: REVISE |
