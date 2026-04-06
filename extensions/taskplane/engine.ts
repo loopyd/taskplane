@@ -670,6 +670,97 @@ function ensureSegmentRecords(batchState: OrchBatchRuntimeState): PersistedSegme
 	return batchState.segments;
 }
 
+function upsertPendingExpandedSegmentRecords(
+	batchState: OrchBatchRuntimeState,
+	task: ParsedTask,
+	segmentState: SegmentFrontierTaskState,
+	insertedSegmentIds: string[],
+	expandedFrom: string,
+	expansionRequestId: string,
+	fallbackBranch: string,
+): boolean {
+	if (insertedSegmentIds.length === 0) return false;
+	const segmentRecords = ensureSegmentRecords(batchState);
+	let changed = false;
+
+	for (const segmentId of insertedSegmentIds) {
+		const segment = segmentState.orderedSegments.find((candidate) => candidate.segmentId === segmentId);
+		if (!segment) continue;
+		const dependsOnSegmentIds = segmentState.dependsOnBySegmentId.get(segmentId) ?? [];
+		const existing = segmentRecords.find((record) => record.segmentId === segmentId);
+		const next: PersistedSegmentRecord = {
+			segmentId,
+			taskId: task.taskId,
+			repoId: segment.repoId,
+			status: "pending",
+			laneId: existing?.laneId ?? "",
+			sessionName: existing?.sessionName ?? "",
+			worktreePath: existing?.worktreePath ?? "",
+			branch: existing?.branch ?? fallbackBranch,
+			startedAt: null,
+			endedAt: null,
+			retries: existing?.retries ?? 0,
+			exitReason: existing?.exitReason ?? "Segment pending",
+			dependsOnSegmentIds,
+			expandedFrom,
+			expansionRequestId,
+		};
+
+		if (!existing) {
+			segmentRecords.push(next);
+			changed = true;
+			continue;
+		}
+
+		const recordChanged =
+			existing.taskId !== next.taskId
+			|| existing.repoId !== next.repoId
+			|| existing.status !== next.status
+			|| existing.laneId !== next.laneId
+			|| existing.sessionName !== next.sessionName
+			|| existing.worktreePath !== next.worktreePath
+			|| existing.branch !== next.branch
+			|| existing.startedAt !== next.startedAt
+			|| existing.endedAt !== next.endedAt
+			|| existing.retries !== next.retries
+			|| existing.exitReason !== next.exitReason
+			|| existing.dependsOnSegmentIds.length !== next.dependsOnSegmentIds.length
+			|| existing.dependsOnSegmentIds.some((depSegmentId, idx) => depSegmentId !== next.dependsOnSegmentIds[idx])
+			|| existing.expandedFrom !== next.expandedFrom
+			|| existing.expansionRequestId !== next.expansionRequestId;
+
+		if (recordChanged) {
+			Object.assign(existing, next);
+			changed = true;
+		}
+	}
+
+	return changed;
+}
+
+function recordProcessedSegmentExpansionRequestId(
+	batchState: OrchBatchRuntimeState,
+	requestId: string,
+	status: "succeeded" | "failed" | "skipped",
+): boolean {
+	if (!batchState.resilience) {
+		batchState.resilience = defaultResilienceState();
+	}
+	const history = batchState.resilience.repairHistory;
+	if (history.some((entry) => entry.strategy === "segment-expansion-request" && entry.id === requestId)) {
+		return false;
+	}
+	const now = Date.now();
+	history.push({
+		id: requestId,
+		strategy: "segment-expansion-request",
+		status,
+		startedAt: now,
+		endedAt: now,
+	});
+	return true;
+}
+
 function upsertRunningSegmentRecord(
 	batchState: OrchBatchRuntimeState,
 	task: ParsedTask,
@@ -714,6 +805,8 @@ function upsertRunningSegmentRecord(
 		exitDiagnostic: existing?.status === "running"
 			? existing.exitDiagnostic
 			: undefined,
+		expandedFrom: existing?.expandedFrom,
+		expansionRequestId: existing?.expansionRequestId,
 	};
 
 	if (!existing) {
@@ -735,7 +828,9 @@ function upsertRunningSegmentRecord(
 		|| existing.exitReason !== next.exitReason
 		|| existing.dependsOnSegmentIds.length !== next.dependsOnSegmentIds.length
 		|| existing.dependsOnSegmentIds.some((segmentId, idx) => segmentId !== next.dependsOnSegmentIds[idx])
-		|| existing.exitDiagnostic !== next.exitDiagnostic;
+		|| existing.exitDiagnostic !== next.exitDiagnostic
+		|| existing.expandedFrom !== next.expandedFrom
+		|| existing.expansionRequestId !== next.expansionRequestId;
 
 	if (changed) {
 		Object.assign(existing, next);
@@ -782,6 +877,8 @@ function upsertTerminalSegmentRecord(
 			: "Segment skipped"),
 		dependsOnSegmentIds,
 		exitDiagnostic: nextExitDiagnostic,
+		expandedFrom: existing?.expandedFrom,
+		expansionRequestId: existing?.expansionRequestId,
 	};
 
 	if (!existing) {
@@ -803,7 +900,9 @@ function upsertTerminalSegmentRecord(
 		|| existing.exitReason !== next.exitReason
 		|| existing.dependsOnSegmentIds.length !== next.dependsOnSegmentIds.length
 		|| existing.dependsOnSegmentIds.some((depSegmentId, idx) => depSegmentId !== next.dependsOnSegmentIds[idx])
-		|| existing.exitDiagnostic !== next.exitDiagnostic;
+		|| existing.exitDiagnostic !== next.exitDiagnostic
+		|| existing.expandedFrom !== next.expandedFrom
+		|| existing.expansionRequestId !== next.expansionRequestId;
 
 	if (changed) {
 		Object.assign(existing, next);
@@ -1797,7 +1896,11 @@ export async function executeOrchBatch(
 	// Segment frontier runtime state keyed by parent task ID.
 	let segmentStateByTask = new Map<string, SegmentFrontierTaskState>();
 	// Processed segment-expansion request IDs (idempotency guard).
-	const processedSegmentExpansionRequestIds = new Set<string>();
+	const processedSegmentExpansionRequestIds = new Set<string>(
+		(batchState.resilience?.repairHistory ?? [])
+			.filter((entry) => entry.strategy === "segment-expansion-request")
+			.map((entry) => entry.id),
+	);
 	// Tasks that have reached terminal status at segment frontier level.
 	const terminalSegmentTasks = new Set<string>();
 	// Reference to discovery result for enriching taskFolder paths.
@@ -2388,6 +2491,7 @@ export async function executeOrchBatch(
 						let rejectedCount = 0;
 						let acceptedCount = 0;
 						for (const pendingRequest of scopedRequests) {
+							const requestId = pendingRequest.request.requestId;
 							const processingResult = processSegmentExpansionRequestAtBoundary(
 								batchState.batchId,
 								taskId,
@@ -2400,29 +2504,34 @@ export async function executeOrchBatch(
 							);
 							if (!processingResult.ok) {
 								rejectedCount += 1;
-								processedSegmentExpansionRequestIds.add(pendingRequest.request.requestId);
-								markSegmentExpansionRequestFile(pendingRequest.filePath, "rejected");
+								processedSegmentExpansionRequestIds.add(requestId);
+								const recordedRequestId = recordProcessedSegmentExpansionRequestId(batchState, requestId, "failed");
+								if (recordedRequestId) {
+									persistRuntimeState("segment-expansion-rejected", batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discoveryRef, stateRoot);
+								}
+								const renamedRejected = markSegmentExpansionRequestFile(pendingRequest.filePath, "rejected");
 								emitAlert({
 									category: "segment-expansion-rejected",
 									summary:
 										`❌ Segment expansion rejected\n` +
 										`  Task: ${taskId}\n` +
 										`  Segment: ${activeSegmentId}\n` +
-										`  Request: ${pendingRequest.request.requestId}\n` +
-										`  Reason: ${processingResult.reason}`,
+										`  Request: ${requestId}\n` +
+										`  Reason: ${processingResult.reason}\n` +
+										`  File state: ${renamedRejected ? ".rejected" : "rename failed"}`,
 									context: {
 										taskId,
 										segmentId: activeSegmentId,
 										agentId: workerAgentId,
-										expansionRequestId: pendingRequest.request.requestId,
+										expansionRequestId: requestId,
 										exitReason: processingResult.reason,
 									},
 								});
 								continue;
 							}
 
-							acceptedCount += 1;
-							handoffSegmentExpansionToMutation(
+							const beforeSegmentIds = segmentState.orderedSegments.map((segment) => segment.segmentId);
+							const mutation = handoffSegmentExpansionToMutation(
 								batchState.batchId,
 								taskId,
 								activeSegmentId,
@@ -2430,6 +2539,41 @@ export async function executeOrchBatch(
 								pendingRequest,
 								segmentState,
 							);
+							task.segmentIds = segmentState.orderedSegments.map((segment) => segment.segmentId);
+							const afterSegmentIds = [...task.segmentIds];
+							const persistedInsertedSegments = upsertPendingExpandedSegmentRecords(
+								batchState,
+								task,
+								segmentState,
+								mutation.insertedSegmentIds,
+								activeSegmentId,
+								requestId,
+								batchState.orchBranch,
+							);
+							const recordedRequestId = recordProcessedSegmentExpansionRequestId(batchState, requestId, "succeeded");
+							if (persistedInsertedSegments || recordedRequestId || mutation.insertedSegmentIds.length > 0) {
+								persistRuntimeState("segment-expansion-approved", batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discoveryRef, stateRoot);
+							}
+							const renamedProcessed = markSegmentExpansionRequestFile(pendingRequest.filePath, "processed");
+							emitAlert({
+								category: "segment-expansion-approved",
+								summary:
+									`✅ Segment expansion approved\n` +
+									`  Task: ${taskId}\n` +
+									`  Segment: ${activeSegmentId}\n` +
+									`  Request: ${requestId}\n` +
+									`  Before: ${beforeSegmentIds.join(", ")}\n` +
+									`  After: ${afterSegmentIds.join(", ")}\n` +
+									`  Inserted: ${mutation.insertedSegmentIds.join(", ")}\n` +
+									`  File state: ${renamedProcessed ? ".processed" : "rename failed"}`,
+								context: {
+									taskId,
+									segmentId: activeSegmentId,
+									agentId: workerAgentId,
+									expansionRequestId: requestId,
+								},
+							});
+							acceptedCount += 1;
 						}
 						execLog("batch", batchState.batchId, `segment ${activeSegmentId} completed with ${pendingExpansionFiles.length} pending expansion request(s)`, {
 							taskId,
@@ -2488,9 +2632,14 @@ export async function executeOrchBatch(
 						let ignoredCount = 0;
 						for (const requestFile of parsedRequests.valid) {
 							if (requestFile.request.taskId === taskId && requestFile.request.fromSegmentId === activeSegmentId) {
+								const requestId = requestFile.request.requestId;
+								processedSegmentExpansionRequestIds.add(requestId);
+								const recordedRequestId = recordProcessedSegmentExpansionRequestId(batchState, requestId, "skipped");
+								if (recordedRequestId) {
+									persistRuntimeState("segment-expansion-discarded", batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discoveryRef, stateRoot);
+								}
 								if (markSegmentExpansionRequestFile(requestFile.filePath, "discarded")) {
 									discardedCount += 1;
-									processedSegmentExpansionRequestIds.add(requestFile.request.requestId);
 								}
 								continue;
 							}

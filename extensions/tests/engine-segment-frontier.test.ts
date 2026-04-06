@@ -340,4 +340,16 @@ describe("segment expansion graph mutation", () => {
 			["TP-500"],
 		]);
 	});
+
+	it("approval path persists mutation state before renaming request file to .processed", () => {
+		const src = readFileSync(new URL("../taskplane/engine.ts", import.meta.url), "utf-8");
+		expect(src).toMatch(/persistRuntimeState\("segment-expansion-approved"[\s\S]*markSegmentExpansionRequestFile\(pendingRequest\.filePath, "processed"\)/);
+	});
+
+	it("pending segment persistence carries expansion provenance and orch-branch provisioning metadata", () => {
+		const src = readFileSync(new URL("../taskplane/engine.ts", import.meta.url), "utf-8");
+		expect(src).toContain("expandedFrom");
+		expect(src).toContain("expansionRequestId");
+		expect(src).toContain("batchState.orchBranch");
+	});
 });

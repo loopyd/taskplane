@@ -2753,6 +2753,10 @@ export interface PersistedSegmentRecord {
 	exitDiagnostic?: TaskExitDiagnostic;
 	/** Human-readable exit reason (legacy compat, same as task-level) */
 	exitReason: string;
+	/** Anchor segment ID this segment was dynamically expanded from (if any). */
+	expandedFrom?: string;
+	/** Segment expansion request ID that created this segment (if any). */
+	expansionRequestId?: string;
 }
 
 /**

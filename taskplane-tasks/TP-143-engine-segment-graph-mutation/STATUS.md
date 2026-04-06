@@ -4,7 +4,7 @@
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-06
 **Review Level:** 2
-**Review Counter:** 10
+**Review Counter:** 11
 **Iteration:** 2
 **Size:** M
 
@@ -53,15 +53,15 @@
 
 ### Step 4: Persistence and alerts
 **Status:** 🟨 In Progress
-- [ ] Persist new segments to batch state
-- [ ] Persist expansion provenance (`expandedFrom`, `expansionRequestId`) on new segment records
-- [ ] Update segmentIds[]
-- [ ] Record processed requestId
-- [ ] Crash-safe approval ordering: durable persistence + idempotency audit before `.processed` rename
-- [ ] Emit supervisor alert (include before/after segment lists)
-- [ ] Rename request file
-- [ ] Worktree provisioning
-- [ ] Step 4 approval-path persistence/lifecycle targeted test intent
+- [x] Persist new segments to batch state
+- [x] Persist expansion provenance (`expandedFrom`, `expansionRequestId`) on new segment records
+- [x] Update segmentIds[]
+- [x] Record processed requestId
+- [x] Crash-safe approval ordering: durable persistence + idempotency audit before `.processed` rename
+- [x] Emit supervisor alert (include before/after segment lists)
+- [x] Rename request file
+- [x] Worktree provisioning
+- [x] Step 4 approval-path persistence/lifecycle targeted test intent
 
 ### Step 5: Resume compatibility
 **Status:** ⬜ Not Started
@@ -123,3 +123,4 @@
 | 2026-04-06 03:56 | Step 3 completed | DAG mutation with rewiring |
 | 2026-04-06 03:56 | Step 4 started | Persistence and alerts |
 | 2026-04-06 03:57 | Review R010 | plan Step 4: REVISE |
+| 2026-04-06 03:58 | Review R011 | plan Step 4: APPROVE |
