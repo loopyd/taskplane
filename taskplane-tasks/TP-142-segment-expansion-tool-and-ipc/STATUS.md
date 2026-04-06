@@ -1,10 +1,10 @@
 # TP-142: Segment Expansion Tool and File IPC — Status
 
 **Current Step:** Step 5: Documentation & Delivery
-**Status:** 🟡 In Progress
+**Status:** ✅ Complete
 **Last Updated:** 2026-04-06
 **Review Level:** 2
-**Review Counter:** 9
+**Review Counter:** 10
 **Iteration:** 1
 **Size:** M
 
@@ -55,9 +55,9 @@
 - [x] Full test suite passing
 
 ### Step 5: Documentation & Delivery
-**Status:** 🟨 In Progress
-- [ ] JSDoc on new types/tool
-- [ ] Update STATUS.md
+**Status:** ✅ Complete
+- [x] JSDoc on new types/tool
+- [x] Update STATUS.md
 
 ---
 
@@ -94,9 +94,12 @@
 | 2026-04-06 03:20 | Step 4 started | Testing & Verification |
 | 2026-04-06 03:45 | Step 4 completed | Testing & Verification |
 | 2026-04-06 03:45 | Step 5 started | Documentation & Delivery |
+| 2026-04-06 02:49 | Review R008 | code Step 3: APPROVE |
+| 2026-04-06 02:51 | Review R009 | plan Step 4: APPROVE |
+| 2026-04-06 03:01 | Review R010 | code Step 4: APPROVE |
+| 2026-04-06 03:52 | Step 5 completed | Documentation & Delivery |
+| 2026-04-06 03:52 | Task completed | All steps complete |
 
 ## Notes
 - Suggestion from R004: pass `TASKPLANE_TASK_ID` via lane-runner env to avoid folder-name fallback in request payload construction.
 - Suggestion from R005: keep direct tool-unit tests and add a wiring-level regression around autonomy propagation.
-| 2026-04-06 02:49 | Review R008 | code Step 3: APPROVE |
-| 2026-04-06 02:51 | Review R009 | plan Step 4: APPROVE |

@@ -215,6 +215,15 @@ export default function (pi: ExtensionAPI) {
 
 	const activeSegmentId = resolveActiveSegmentId();
 	if (activeSegmentId) {
+		/**
+		 * Worker RPC for requesting runtime segment expansion.
+		 *
+		 * Contract summary:
+		 * - accepts requested repo IDs + rationale (+ optional placement/edges)
+		 * - validates request shape and repo ID rules
+		 * - writes `.pi/mailbox/{batchId}/{agentId}/outbox/segment-expansion-{requestId}.json`
+		 * - returns acknowledgment payload (`accepted`, `requestId`, `message`)
+		 */
 		pi.registerTool({
 			name: "request_segment_expansion",
 			label: "Request Segment Expansion",
