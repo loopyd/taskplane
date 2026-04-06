@@ -4,7 +4,7 @@
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-06
 **Review Level:** 2
-**Review Counter:** 15
+**Review Counter:** 16
 **Iteration:** 2
 **Size:** M
 
@@ -71,6 +71,7 @@
 - [x] Approved-but-unexecuted expansion resumes
 - [x] Idempotency on resume (processed request files/request IDs do not replay)
 - [x] Step 5 resume-specific targeted test intent (approved-but-unexecuted + processed-file replay)
+- [ ] R016: rebuild resume continuation rounds in grouped wave form (multi-task parity) and add multi-task/idempotency resume tests
 
 ### Step 6: Testing & Verification
 **Status:** ⬜ Not Started
@@ -99,6 +100,7 @@
 - Reviewer suggestion (R012): preserve current crash-safe ordering (persist + idempotency audit before `.processed` rename) while fixing multi-request persistence correctness.
 - Reviewer suggestion (R014): validate resume idempotency from persisted request-audit records (not mailbox filename state alone).
 - Reviewer suggestion (R014): consider a multi-request same-boundary resume scenario so Step 4 R012 dependency resync remains correct after reconstruction.
+- Reviewer suggestion (R016): add a multi-request same-boundary-before-restart scenario to validate grouped continuation-wave reconstruction end-to-end.
 
 ## Execution Log
 
@@ -136,3 +138,4 @@
 | 2026-04-06 04:12 | Step 5 started | Resume compatibility |
 | 2026-04-06 04:12 | Review R014 | plan Step 5: REVISE |
 | 2026-04-06 04:12 | Review R015 | plan Step 5: APPROVE |
+| 2026-04-06 04:23 | Review R016 | code Step 5: REVISE |
