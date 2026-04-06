@@ -357,6 +357,62 @@ describe("TP-135 resume segment fallback behavior", () => {
 		expect(point.pendingTaskIds).toContain("TP-050");
 	});
 
+	it("resume wave-plan expansion groups continuation rounds for multi-task wave parity", () => {
+		const state = makeState({
+			wavePlan: [["TP-060", "TP-061"], ["TP-062"]],
+			totalWaves: 2,
+			tasks: [
+				{
+					taskId: "TP-060",
+					laneNumber: 1,
+					sessionName: "",
+					status: "pending",
+					taskFolder: "/tmp/tasks/TP-060",
+					startedAt: null,
+					endedAt: null,
+					doneFileFound: false,
+					exitReason: "",
+					segmentIds: ["TP-060::api", "TP-060::web"],
+					activeSegmentId: null,
+				},
+				{
+					taskId: "TP-061",
+					laneNumber: 2,
+					sessionName: "",
+					status: "pending",
+					taskFolder: "/tmp/tasks/TP-061",
+					startedAt: null,
+					endedAt: null,
+					doneFileFound: false,
+					exitReason: "",
+					segmentIds: ["TP-061::api", "TP-061::web"],
+					activeSegmentId: null,
+				},
+				{
+					taskId: "TP-062",
+					laneNumber: 3,
+					sessionName: "",
+					status: "pending",
+					taskFolder: "/tmp/tasks/TP-062",
+					startedAt: null,
+					endedAt: null,
+					doneFileFound: false,
+					exitReason: "",
+					segmentIds: ["TP-062::api"],
+					activeSegmentId: null,
+				},
+			],
+			segments: [],
+		});
+
+		const runtimeWavePlan = buildResumeRuntimeWavePlan(state);
+		expect(runtimeWavePlan).toEqual([
+			["TP-060", "TP-061"],
+			["TP-060", "TP-061"],
+			["TP-062"],
+		]);
+	});
+
 	it("repo-singleton tasks without segment IDs keep legacy resume behavior", () => {
 		const state = makeState({
 			wavePlan: [["TP-040"]],

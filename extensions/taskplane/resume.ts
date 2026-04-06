@@ -642,37 +642,74 @@ export function getMergeStatusForWave(
 }
 
 export function buildResumeRuntimeWavePlan(persistedState: PersistedBatchState): string[][] {
-	const runtimeWavePlan = persistedState.wavePlan.map((wave) => [...wave]);
+	const baseWavePlan = persistedState.wavePlan.map((wave) => [...wave]);
+	const runtimeWavePlan = [...baseWavePlan];
 	const segmentCountByTaskId = new Map<string, number>();
 	for (const task of persistedState.tasks) {
 		if (Array.isArray(task.segmentIds) && task.segmentIds.length > 0) {
 			segmentCountByTaskId.set(task.taskId, task.segmentIds.length);
 		}
 	}
+
 	const scheduledCountByTaskId = new Map<string, number>();
-	for (const wave of runtimeWavePlan) {
-		for (const taskId of wave) {
+	const lastWaveIndexByTaskId = new Map<string, number>();
+	for (let waveIdx = 0; waveIdx < baseWavePlan.length; waveIdx++) {
+		for (const taskId of baseWavePlan[waveIdx]) {
 			scheduledCountByTaskId.set(taskId, (scheduledCountByTaskId.get(taskId) ?? 0) + 1);
+			lastWaveIndexByTaskId.set(taskId, waveIdx);
 		}
 	}
+
+	const missingByLastWaveIndex = new Map<number, Map<string, number>>();
 	for (const [taskId, segmentCount] of segmentCountByTaskId.entries()) {
 		const scheduledCount = scheduledCountByTaskId.get(taskId) ?? 0;
 		if (segmentCount <= scheduledCount) continue;
-		for (let missing = segmentCount - scheduledCount; missing > 0; missing--) {
-			let lastOccurrence = -1;
-			for (let idx = runtimeWavePlan.length - 1; idx >= 0; idx--) {
-				if (runtimeWavePlan[idx]?.includes(taskId)) {
-					lastOccurrence = idx;
-					break;
-				}
+		const lastWaveIndex = lastWaveIndexByTaskId.get(taskId) ?? -1;
+		if (!missingByLastWaveIndex.has(lastWaveIndex)) {
+			missingByLastWaveIndex.set(lastWaveIndex, new Map<string, number>());
+		}
+		missingByLastWaveIndex.get(lastWaveIndex)!.set(taskId, segmentCount - scheduledCount);
+	}
+
+	let offset = 0;
+	for (let baseWaveIdx = 0; baseWaveIdx < baseWavePlan.length; baseWaveIdx++) {
+		const missingForWave = missingByLastWaveIndex.get(baseWaveIdx);
+		if (!missingForWave || missingForWave.size === 0) continue;
+		const rounds: string[][] = [];
+		const remaining = new Map(missingForWave);
+		while ([...remaining.values()].some((count) => count > 0)) {
+			const roundTaskIds = [...remaining.entries()]
+				.filter(([, count]) => count > 0)
+				.map(([taskId]) => taskId)
+				.sort((a, b) => a.localeCompare(b));
+			if (roundTaskIds.length === 0) break;
+			rounds.push(roundTaskIds);
+			for (const taskId of roundTaskIds) {
+				remaining.set(taskId, (remaining.get(taskId) ?? 0) - 1);
 			}
-			if (lastOccurrence < 0) {
-				runtimeWavePlan.push([taskId]);
-			} else {
-				runtimeWavePlan.splice(lastOccurrence + 1, 0, [taskId]);
+		}
+		if (rounds.length > 0) {
+			runtimeWavePlan.splice(baseWaveIdx + 1 + offset, 0, ...rounds);
+			offset += rounds.length;
+		}
+	}
+
+	const dangling = missingByLastWaveIndex.get(-1);
+	if (dangling && dangling.size > 0) {
+		const remaining = new Map(dangling);
+		while ([...remaining.values()].some((count) => count > 0)) {
+			const roundTaskIds = [...remaining.entries()]
+				.filter(([, count]) => count > 0)
+				.map(([taskId]) => taskId)
+				.sort((a, b) => a.localeCompare(b));
+			if (roundTaskIds.length === 0) break;
+			runtimeWavePlan.push(roundTaskIds);
+			for (const taskId of roundTaskIds) {
+				remaining.set(taskId, (remaining.get(taskId) ?? 0) - 1);
 			}
 		}
 	}
+
 	return runtimeWavePlan;
 }
 

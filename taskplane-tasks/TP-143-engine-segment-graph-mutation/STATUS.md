@@ -71,7 +71,7 @@
 - [x] Approved-but-unexecuted expansion resumes
 - [x] Idempotency on resume (processed request files/request IDs do not replay)
 - [x] Step 5 resume-specific targeted test intent (approved-but-unexecuted + processed-file replay)
-- [ ] R016: rebuild resume continuation rounds in grouped wave form (multi-task parity) and add multi-task/idempotency resume tests
+- [x] R016: rebuild resume continuation rounds in grouped wave form (multi-task parity) and add multi-task/idempotency resume tests
 
 ### Step 6: Testing & Verification
 **Status:** ⬜ Not Started
