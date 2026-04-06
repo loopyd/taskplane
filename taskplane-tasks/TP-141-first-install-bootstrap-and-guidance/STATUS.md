@@ -4,7 +4,7 @@
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-06
 **Review Level:** 2
-**Review Counter:** 6
+**Review Counter:** 8
 **Iteration:** 1
 **Size:** M
 
@@ -49,14 +49,14 @@
 
 ### Step 4: Testing & Verification
 **Status:** ⬜ Not Started
-- [ ] Full test suite passing
-- [ ] Bootstrap creates prefs with thinking: high
-- [ ] No re-bootstrap on existing prefs
-- [ ] Cross-provider guidance triggers correctly
-- [ ] Thinking picker shows all levels
-- [ ] Single-provider skips guidance
-- [ ] CLI smoke tests
-- [ ] All failures fixed
+- [x] Full test suite passing
+- [x] Bootstrap creates prefs with thinking: high
+- [x] No re-bootstrap on existing prefs
+- [x] Cross-provider guidance triggers correctly
+- [x] Thinking picker shows all levels
+- [x] Single-provider skips guidance
+- [x] CLI smoke tests
+- [x] All failures fixed
 
 ### Step 5: Documentation & Delivery
 **Status:** ⬜ Not Started
@@ -108,3 +108,5 @@
 | 2026-04-06 00:56 | Review R004 | code Step 2: APPROVE |
 | 2026-04-06 00:57 | Review R005 | plan Step 3: REVISE |
 | 2026-04-06 00:58 | Review R006 | plan Step 3: APPROVE |
+| 2026-04-06 01:04 | Review R007 | code Step 3: APPROVE |
+| 2026-04-06 01:05 | Review R008 | plan Step 4: APPROVE |
