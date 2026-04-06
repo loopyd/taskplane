@@ -949,18 +949,25 @@ async function pickModel(ctx: ExtensionContext, currentModel: string): Promise<s
 	}
 }
 
-type ThinkingModeValue = "" | "on" | "off";
+type ThinkingModeValue = "" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
 
 const THINKING_MODE_OPTIONS: Array<{ value: ThinkingModeValue; label: string }> = [
 	{ value: "", label: "inherit (use session thinking)" },
-	{ value: "on", label: "on" },
 	{ value: "off", label: "off" },
+	{ value: "minimal", label: "minimal" },
+	{ value: "low", label: "low" },
+	{ value: "medium", label: "medium" },
+	{ value: "high", label: "high" },
+	{ value: "xhigh", label: "xhigh" },
 ];
 
 function normalizeThinkingMode(value: unknown): ThinkingModeValue {
 	const cleaned = String(value ?? "").trim().toLowerCase();
-	if (cleaned === "on") return "on";
-	if (cleaned === "off") return "off";
+	if (!cleaned || cleaned === "inherit") return "";
+	if (cleaned === "on") return "high";
+	if (["off", "minimal", "low", "medium", "high", "xhigh"].includes(cleaned)) {
+		return cleaned as ThinkingModeValue;
+	}
 	return "";
 }
 
@@ -969,11 +976,12 @@ async function pickThinkingMode(
 	currentThinking: string,
 ): Promise<ThinkingModeValue | undefined> {
 	const current = normalizeThinkingMode(currentThinking);
+	const resolvedCurrent: ThinkingModeValue = current || "high";
 	const optionToValue = new Map<string, ThinkingModeValue>();
 	const optionLabels: string[] = [];
 
 	for (const option of THINKING_MODE_OPTIONS) {
-		const label = `${option.label}${option.value === current ? "  ✓ current" : ""}`;
+		const label = `${option.label}${option.value === resolvedCurrent ? "  ✓ current" : ""}`;
 		optionLabels.push(label);
 		optionToValue.set(label, option.value);
 	}
@@ -987,6 +995,12 @@ const MODEL_THINKING_PATH_MAP: Record<string, { thinkingPath: string; label: str
 	"taskRunner.worker.model": { thinkingPath: "taskRunner.worker.thinking", label: "Worker" },
 	"taskRunner.reviewer.model": { thinkingPath: "taskRunner.reviewer.thinking", label: "Reviewer" },
 	"orchestrator.merge.model": { thinkingPath: "orchestrator.merge.thinking", label: "Merge" },
+};
+
+const THINKING_MODEL_PATH_MAP: Record<string, { modelPath: string; label: string }> = {
+	"taskRunner.worker.thinking": { modelPath: "taskRunner.worker.model", label: "Worker" },
+	"taskRunner.reviewer.thinking": { modelPath: "taskRunner.reviewer.model", label: "Reviewer" },
+	"orchestrator.merge.thinking": { modelPath: "orchestrator.merge.model", label: "Merge" },
 };
 
 function resolveModelRecord(ctx: ExtensionContext, modelRef: string): any | undefined {
@@ -1042,6 +1056,10 @@ export function modelSupportsThinking(model: any): boolean {
 	for (const candidate of candidateObjects) {
 		for (const key of boolFlags) {
 			if (typeof candidate[key] === "boolean" && candidate[key]) return true;
+			if (typeof candidate[key] === "string") {
+				const normalized = candidate[key].trim().toLowerCase();
+				if (["yes", "true", "on", "supported"].includes(normalized)) return true;
+			}
 		}
 		for (const key of capabilityKeys) {
 			if (candidate[key] !== undefined && candidate[key] !== null) return true;
@@ -1069,9 +1087,26 @@ export function buildThinkingSuggestionForModelChange(
 	if (!modelRecord || !modelSupportsThinking(modelRecord)) return null;
 
 	const currentThinking = normalizeThinkingMode(getNestedValue(mergedConfig, mapping.thinkingPath));
-	if (currentThinking === "on") return null;
+	if (currentThinking === "high") return null;
 
-	return `${mapping.label} model supports thinking. Consider setting ${mapping.label} Thinking to \"on\".`;
+	return `${mapping.label} model supports thinking. Consider setting ${mapping.label} Thinking to \"high\".`;
+}
+
+export function buildThinkingUnsupportedNoteForThinkingField(
+	ctx: ExtensionContext,
+	field: FieldDef,
+	mergedConfig: TaskplaneConfig,
+): string | null {
+	const mapping = THINKING_MODEL_PATH_MAP[field.configPath];
+	if (!mapping) return null;
+
+	const modelRef = String(getNestedValue(mergedConfig, mapping.modelPath) ?? "").trim();
+	if (!modelRef) return null;
+
+	const modelRecord = resolveModelRecord(ctx, modelRef);
+	if (!modelRecord || modelSupportsThinking(modelRecord)) return null;
+
+	return `${mapping.label} model does not advertise thinking support. You can still set thinking; unsupported models ignore it at runtime.`;
 }
 
 /**
@@ -1333,6 +1368,8 @@ async function showSectionSettingsLoop(
 				if (selected === undefined) continue;  // Cancelled
 				result.rawValue = selected;
 			} else if (field.control === "picker" && field.configPath.endsWith(".thinking")) {
+				const note = buildThinkingUnsupportedNoteForThinkingField(ctx, field, state.mergedConfig);
+				if (note) ctx.ui.notify(note, "info");
 				const selected = await pickThinkingMode(ctx, normalizedCurrent);
 				if (selected === undefined) continue;  // Cancelled
 				result.rawValue = selected;

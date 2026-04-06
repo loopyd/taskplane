@@ -29,12 +29,13 @@ import { tmpdir, homedir } from "os";
 import {
 	resolveGlobalPreferencesPath,
 	loadGlobalPreferences,
+	loadGlobalPreferencesWithMeta,
 	applyGlobalPreferences,
 	loadProjectConfig,
 	ConfigLoadError,
 } from "../taskplane/config-loader.ts";
 import {
-	DEFAULT_GLOBAL_PREFERENCES,
+	DEFAULT_BOOTSTRAP_GLOBAL_PREFERENCES,
 	DEFAULT_PROJECT_CONFIG,
 	DEFAULT_TASK_RUNNER_SECTION,
 	DEFAULT_ORCHESTRATOR_SECTION,
@@ -156,35 +157,35 @@ describe("loadGlobalPreferences", () => {
 		const prefsPath = join(agentDir, GLOBAL_PREFERENCES_SUBDIR, GLOBAL_PREFERENCES_FILENAME);
 		expect(existsSync(prefsPath)).toBe(false);
 
-		const prefs = loadGlobalPreferences();
+		const result = loadGlobalPreferencesWithMeta();
 
 		// File should now exist
 		expect(existsSync(prefsPath)).toBe(true);
+		expect(result.wasBootstrapped).toBe(true);
 
-		// Contents should be the default empty preferences
+		// Contents should be bootstrap preferences
 		const contents = JSON.parse(readFileSync(prefsPath, "utf-8"));
-		expect(contents).toEqual(DEFAULT_GLOBAL_PREFERENCES);
+		expect(contents).toEqual(DEFAULT_BOOTSTRAP_GLOBAL_PREFERENCES);
 
-		// Returned prefs should be defaults (empty object)
-		expect(prefs).toEqual(DEFAULT_GLOBAL_PREFERENCES);
+		// Returned prefs should match bootstrap defaults
+		expect(result.preferences).toEqual(DEFAULT_BOOTSTRAP_GLOBAL_PREFERENCES);
 	});
 
-	it("6.2: malformed JSON returns defaults without overwriting the file", () => {
+	it("6.2: malformed JSON is re-bootstrapped from defaults", () => {
 		const agentDir = makeTestDir("malformed");
 		process.env.PI_CODING_AGENT_DIR = agentDir;
 
 		const malformedContent = "{ this is not valid JSON !!!";
 		writePrefsFile(agentDir, malformedContent);
 
-		const prefs = loadGlobalPreferences();
+		const result = loadGlobalPreferencesWithMeta();
 
-		// Should return defaults
-		expect(prefs).toEqual(DEFAULT_GLOBAL_PREFERENCES);
+		expect(result.wasBootstrapped).toBe(true);
+		expect(result.preferences).toEqual(DEFAULT_BOOTSTRAP_GLOBAL_PREFERENCES);
 
-		// File should NOT be overwritten (non-destructive)
 		const prefsPath = join(agentDir, GLOBAL_PREFERENCES_SUBDIR, GLOBAL_PREFERENCES_FILENAME);
-		const contents = readFileSync(prefsPath, "utf-8");
-		expect(contents).toBe(malformedContent);
+		const contents = JSON.parse(readFileSync(prefsPath, "utf-8"));
+		expect(contents).toEqual(DEFAULT_BOOTSTRAP_GLOBAL_PREFERENCES);
 	});
 
 	it("6.3: unknown keys are silently dropped", () => {
@@ -255,24 +256,26 @@ describe("loadGlobalPreferences", () => {
 		expect(prefs.spawnMode).toBe("subprocess");
 	});
 
-	it("6.5: empty JSON object returns defaults (all fields undefined)", () => {
+	it("6.5: empty JSON object is treated as empty and re-bootstrapped", () => {
 		const agentDir = makeTestDir("empty-obj");
 		process.env.PI_CODING_AGENT_DIR = agentDir;
 
 		writePrefsFile(agentDir, "{}");
 
-		const prefs = loadGlobalPreferences();
-		expect(prefs).toEqual({});
+		const result = loadGlobalPreferencesWithMeta();
+		expect(result.wasBootstrapped).toBe(true);
+		expect(result.preferences).toEqual(DEFAULT_BOOTSTRAP_GLOBAL_PREFERENCES);
 	});
 
-	it("6.6: JSON array returns defaults (not a valid preferences object)", () => {
+	it("6.6: JSON array is treated as invalid and re-bootstrapped", () => {
 		const agentDir = makeTestDir("array-json");
 		process.env.PI_CODING_AGENT_DIR = agentDir;
 
 		writePrefsFile(agentDir, "[]");
 
-		const prefs = loadGlobalPreferences();
-		expect(prefs).toEqual(DEFAULT_GLOBAL_PREFERENCES);
+		const result = loadGlobalPreferencesWithMeta();
+		expect(result.wasBootstrapped).toBe(true);
+		expect(result.preferences).toEqual(DEFAULT_BOOTSTRAP_GLOBAL_PREFERENCES);
 	});
 
 	it("6.7: spawnMode with invalid enum value is dropped", () => {
@@ -373,7 +376,7 @@ describe("loadGlobalPreferences", () => {
 		expect(prefs.workspace?.routing?.tasksRoot).toBe("taskplane-tasks");
 		expect(prefs.dashboardPort).toBe(7070);
 		expect(prefs.initAgentDefaults?.workerModel).toBe("seed-worker");
-		expect(prefs.initAgentDefaults?.workerThinking).toBe("on");
+		expect(prefs.initAgentDefaults?.workerThinking).toBe("high");
 	});
 
 	it("6.12: nested legacy spawnMode tmux values are auto-migrated to subprocess", () => {

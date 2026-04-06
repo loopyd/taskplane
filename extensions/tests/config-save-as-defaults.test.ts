@@ -54,9 +54,9 @@ describe("taskplane config --save-as-defaults", () => {
 				workerModel: "openai/gpt-5.3-codex",
 				reviewerModel: "anthropic/claude-sonnet-4-6",
 				mergeModel: "openai/gpt-5.3-codex",
-				workerThinking: "on",
+				workerThinking: "high",
 				reviewerThinking: "off",
-				mergeThinking: "on",
+				mergeThinking: "high",
 			});
 		} finally {
 			rmSync(tempProject, { recursive: true, force: true });
