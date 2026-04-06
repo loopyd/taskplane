@@ -550,6 +550,24 @@ export interface GlobalPreferences {
 export const DEFAULT_GLOBAL_PREFERENCES: GlobalPreferences = {};
 
 /**
+ * Seed values used when first bootstrapping preferences.json.
+ *
+ * Kept separate from DEFAULT_GLOBAL_PREFERENCES so runtime fallback semantics
+ * remain "no override", while first-install scaffolding can provide
+ * user-friendly init defaults.
+ */
+export const DEFAULT_BOOTSTRAP_GLOBAL_PREFERENCES: GlobalPreferences = {
+	initAgentDefaults: {
+		workerModel: "",
+		reviewerModel: "",
+		mergeModel: "",
+		workerThinking: "high",
+		reviewerThinking: "high",
+		mergeThinking: "high",
+	},
+};
+
+/**
  * Canonical filename for global preferences.
  * Resolved relative to agent directory: `<agentDir>/taskplane/preferences.json`
  */

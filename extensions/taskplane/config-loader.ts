@@ -31,6 +31,7 @@ import {
 	PROJECT_CONFIG_FILENAME,
 	DEFAULT_PROJECT_CONFIG,
 	DEFAULT_GLOBAL_PREFERENCES,
+	DEFAULT_BOOTSTRAP_GLOBAL_PREFERENCES,
 	GLOBAL_PREFERENCES_FILENAME,
 	GLOBAL_PREFERENCES_SUBDIR,
 } from "./config-schema.ts";
@@ -630,53 +631,96 @@ export function resolveGlobalPreferencesPath(): string {
 	return join(homedir(), ".pi", "agent", GLOBAL_PREFERENCES_SUBDIR, GLOBAL_PREFERENCES_FILENAME);
 }
 
+/** Result envelope for global preferences loading. */
+export interface GlobalPreferencesLoadResult {
+	preferences: GlobalPreferences;
+	wasBootstrapped: boolean;
+}
+
+/** Persist preferences JSON atomically (temp file + rename). */
+function writePreferencesAtomically(prefsPath: string, prefs: GlobalPreferences): void {
+	const tmpPath = `${prefsPath}.tmp-${process.pid}-${Date.now()}`;
+	writeFileSync(tmpPath, JSON.stringify(prefs, null, 2) + "\n", "utf-8");
+	renameSync(tmpPath, prefsPath);
+}
+
 /**
- * Load global preferences from `~/.pi/agent/taskplane/preferences.json`.
+ * Write first-install bootstrap preferences to disk and return the in-memory seed.
+ */
+function bootstrapGlobalPreferencesFile(prefsPath: string): GlobalPreferences {
+	const bootstrapPrefs = deepClone(DEFAULT_BOOTSTRAP_GLOBAL_PREFERENCES);
+	try {
+		const dir = join(prefsPath, "..");
+		mkdirSync(dir, { recursive: true });
+		writePreferencesAtomically(prefsPath, bootstrapPrefs);
+	} catch {
+		// Best-effort; if we can't create, still return bootstrap defaults in-memory.
+	}
+	return bootstrapPrefs;
+}
+
+/**
+ * Load global preferences plus bootstrap metadata.
  *
  * Behavior:
- * - If file doesn't exist: auto-create with empty defaults `{}`, return defaults
- * - If file is malformed JSON: log warning, return defaults (non-destructive)
- * - Unknown keys are silently ignored (only allowlisted fields extracted)
- * - Returns a fresh GlobalPreferences object on each call
- *
- * @returns Parsed GlobalPreferences (only recognized fields)
+ * - If file doesn't exist: bootstrap preferences on disk and mark bootstrapped
+ * - If file is empty/malformed/invalid: re-bootstrap preferences and mark bootstrapped
+ * - Unknown keys are silently ignored (allowlist extraction)
  */
-export function loadGlobalPreferences(): GlobalPreferences {
+export function loadGlobalPreferencesWithMeta(): GlobalPreferencesLoadResult {
 	const prefsPath = resolveGlobalPreferencesPath();
 
 	if (!existsSync(prefsPath)) {
-		// Auto-create with empty defaults on first access
-		try {
-			const dir = join(prefsPath, "..");
-			mkdirSync(dir, { recursive: true });
-			writeFileSync(prefsPath, JSON.stringify(DEFAULT_GLOBAL_PREFERENCES, null, 2) + "\n", "utf-8");
-		} catch {
-			// Best-effort; if we can't create, just return defaults
-		}
-		return { ...DEFAULT_GLOBAL_PREFERENCES };
+		return {
+			preferences: bootstrapGlobalPreferencesFile(prefsPath),
+			wasBootstrapped: true,
+		};
 	}
 
 	let raw: string;
 	try {
 		raw = readFileSync(prefsPath, "utf-8");
 	} catch {
-		return { ...DEFAULT_GLOBAL_PREFERENCES };
+		return { preferences: deepClone(DEFAULT_GLOBAL_PREFERENCES), wasBootstrapped: false };
+	}
+
+	if (!raw.trim()) {
+		return {
+			preferences: bootstrapGlobalPreferencesFile(prefsPath),
+			wasBootstrapped: true,
+		};
 	}
 
 	let parsed: any;
 	try {
 		parsed = JSON.parse(raw);
 	} catch {
-		// Malformed JSON — return defaults without overwriting (non-destructive)
-		return { ...DEFAULT_GLOBAL_PREFERENCES };
+		return {
+			preferences: bootstrapGlobalPreferencesFile(prefsPath),
+			wasBootstrapped: true,
+		};
 	}
 
-	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-		return { ...DEFAULT_GLOBAL_PREFERENCES };
+	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed) || Object.keys(parsed).length === 0) {
+		return {
+			preferences: bootstrapGlobalPreferencesFile(prefsPath),
+			wasBootstrapped: true,
+		};
 	}
 
-	// Extract only allowlisted fields — unknown keys are ignored
-	return extractAllowlistedPreferences(parsed, prefsPath);
+	return {
+		preferences: extractAllowlistedPreferences(parsed, prefsPath),
+		wasBootstrapped: false,
+	};
+}
+
+/**
+ * Load global preferences from `~/.pi/agent/taskplane/preferences.json`.
+ *
+ * @returns Parsed GlobalPreferences (only recognized fields)
+ */
+export function loadGlobalPreferences(): GlobalPreferences {
+	return loadGlobalPreferencesWithMeta().preferences;
 }
 
 /**
@@ -685,8 +729,11 @@ export function loadGlobalPreferences(): GlobalPreferences {
  */
 function normalizePreferenceThinkingMode(value: unknown): string {
 	const cleaned = String(value ?? "").trim().toLowerCase();
-	if (cleaned === "on") return "on";
-	if (cleaned === "off") return "off";
+	if (!cleaned || cleaned === "inherit") return "";
+	if (cleaned === "on") return "high";
+	if (["off", "minimal", "low", "medium", "high", "xhigh"].includes(cleaned)) {
+		return cleaned;
+	}
 	return "";
 }
 

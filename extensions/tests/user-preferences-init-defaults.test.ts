@@ -44,7 +44,7 @@ describe("global preferences initAgentDefaults allowlist", () => {
 				workerModel: "openai/gpt-5.3-codex",
 				reviewerModel: "anthropic/claude-sonnet-4-6",
 				mergeModel: "openai/gpt-5.3-codex",
-				workerThinking: "on",
+				workerThinking: "high",
 				reviewerThinking: "",
 				mergeThinking: "off",
 			});

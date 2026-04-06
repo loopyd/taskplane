@@ -4,7 +4,7 @@
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-06
 **Review Level:** 2
-**Review Counter:** 0
+**Review Counter:** 1
 **Iteration:** 1
 **Size:** M
 
@@ -20,12 +20,12 @@
 
 ### Step 1: First-install detection and global prefs bootstrap
 **Status:** ⬜ Not Started
-- [ ] Detect missing prefs file → bootstrap from schema defaults
-- [ ] Default thinking to "high" for all agents
-- [ ] Return bootstrap flag for downstream guidance
-- [ ] Atomic write (temp + rename)
-- [ ] Handle empty/corrupt prefs
-- [ ] Run targeted tests
+- [x] Detect missing prefs file → bootstrap from schema defaults
+- [x] Default thinking to "high" for all agents
+- [x] Return bootstrap flag for downstream guidance
+- [x] Atomic write (temp + rename)
+- [x] Handle empty/corrupt prefs
+- [x] Run targeted tests
 
 ### Step 2: Cross-provider model guidance in first init
 **Status:** ⬜ Not Started
@@ -98,3 +98,4 @@
 ## Notes
 
 *Reserved for execution notes*
+| 2026-04-06 00:42 | Review R001 | plan Step 1: APPROVE |
