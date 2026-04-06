@@ -1365,6 +1365,8 @@ export async function resumeOrchBatch(
 	// v3: Carry forward resilience and diagnostics from persisted state
 	batchState.resilience = persistedState.resilience;
 	batchState.diagnostics = persistedState.diagnostics;
+	// v4: Carry forward segment records (including dynamically expanded segments)
+	batchState.segments = [...(persistedState.segments ?? [])];
 	// Carry forward unknown fields for roundtrip preservation
 	if (persistedState._extraFields) {
 		batchState._extraFields = persistedState._extraFields;
@@ -1383,6 +1385,22 @@ export async function resumeOrchBatch(
 	// Build dependency graph for skip-dependents policy
 	const depGraph = buildDependencyGraph(discovery.pending, discovery.completed);
 	batchState.dependencyGraph = depGraph;
+
+	// Rehydrate discovered tasks with persisted segment metadata.
+	// Dynamically expanded segments may reference tasks that have segment-level
+	// fields (segmentIds, activeSegmentId, packetRepoId, packetTaskPath) set
+	// during the prior run. Merge these back into discovered ParsedTask records
+	// so execution can resume with correct segment context.
+	for (const persistedTask of persistedState.tasks) {
+		const parsed = discovery.pending.get(persistedTask.taskId);
+		if (!parsed) continue;
+		if (persistedTask.segmentIds?.length) {
+			(parsed as any).segmentIds = persistedTask.segmentIds;
+		}
+		if (persistedTask.activeSegmentId) {
+			(parsed as any).activeSegmentId = persistedTask.activeSegmentId;
+		}
+	}
 
 
 	// ── 8. Handle alive sessions (reconnect) ─────────────────────

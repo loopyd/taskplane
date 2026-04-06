@@ -343,6 +343,9 @@ export function validateSegmentExpansionRequestAtBoundary(
 	}
 
 	const requestedRepoSet = new Set(request.requestedRepoIds);
+	if (requestedRepoSet.size !== request.requestedRepoIds.length) {
+		return "duplicate repoIds in requestedRepoIds";
+	}
 	for (const edge of request.edges) {
 		if (!requestedRepoSet.has(edge.from) || !requestedRepoSet.has(edge.to)) {
 			return "edge references a repo outside requestedRepoIds";
@@ -624,10 +627,25 @@ export function applySegmentExpansionMutation(
 		}
 	}
 
-	const fallbackOrderedSegmentIds = [...segmentState.orderedSegments.map((segment) => segment.segmentId), ...newNodes.map((node) => node.segmentId)];
-	const finalOrderedSegmentIds = nextOrderedSegmentIds.length === dependencyMap.size
-		? nextOrderedSegmentIds
-		: fallbackOrderedSegmentIds;
+	if (nextOrderedSegmentIds.length !== dependencyMap.size) {
+		// Topological sort failed to cover all nodes — likely a cycle introduced
+		// by the expansion. Reject the mutation rather than silently using
+		// append-order which could violate dependency semantics.
+		execLog("batch", request.taskId, "segment expansion rejected: topological sort failed (possible cycle)", {
+			expected: dependencyMap.size,
+			covered: nextOrderedSegmentIds.length,
+		});
+		// Roll back: remove new nodes from state maps
+		for (const node of newNodes) {
+			existingNodeById.delete(node.segmentId);
+			dependencyMap.delete(node.segmentId);
+			segmentState.statusBySegmentId.delete(node.segmentId);
+		}
+		// Restore original dependency map
+		segmentState.dependsOnBySegmentId = dependencyMap;
+		return { insertedSegmentIds: [] };
+	}
+	const finalOrderedSegmentIds = nextOrderedSegmentIds;
 
 	const nextOrderedSegments = finalOrderedSegmentIds
 		.map((segmentId, idx) => {
