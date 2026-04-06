@@ -1849,6 +1849,12 @@ export async function mergeWave(
 
 		for (const lane of orderedLanes) {
 			for (const allocTask of lane.tasks) {
+				if (!allocTask.task.taskFolder?.trim()) {
+					execLog("merge", `W${waveIndex}`, `skipping task with missing taskFolder (possibly dynamically expanded)`, {
+						taskId: allocTask.taskId,
+					});
+					continue;
+				}
 				const absFolder = resolve(allocTask.task.taskFolder);
 				const relFolder = relative(resolvedRepoRoot, absFolder).replace(/\\/g, "/");
 

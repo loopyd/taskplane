@@ -62,8 +62,13 @@ export interface OrchestratorConfig {
 	};
 }
 
-/** Stable segment identifier: `<taskId>::<repoId>` */
-export type SegmentId = `${string}::${string}`;
+/**
+ * Stable segment identifier.
+ *
+ * SegmentId is opaque — never parse by string-splitting.
+ * Use structured node/record fields (`repoId`, `taskId`) instead.
+ */
+export type SegmentId = `${string}::${string}` | `${string}::${string}::${number}`;
 
 /** How an intra-task segment edge was produced (for observability/debugging). */
 export type SegmentEdgeProvenance = "explicit" | "inferred";
@@ -122,9 +127,29 @@ export interface ParsedTask {
 	activeSegmentId?: string | null;
 }
 
-/** Build a stable segment ID from task + repo identity (`<taskId>::<repoId>`). */
-export function buildSegmentId(taskId: string, repoId: string): SegmentId {
+/** Build a stable segment ID from task + repo identity (`<taskId>::<repoId>[::N]`). */
+export function buildSegmentId(taskId: string, repoId: string, sequence?: number): SegmentId {
+	if (typeof sequence === "number" && Number.isFinite(sequence) && sequence >= 2) {
+		return `${taskId}::${repoId}::${Math.floor(sequence)}` as SegmentId;
+	}
 	return `${taskId}::${repoId}` as SegmentId;
+}
+
+/**
+ * Read repoId from structured segment metadata.
+ *
+ * SegmentId is opaque — never parse it by string-splitting.
+ */
+export function parseSegmentIdRepo(segment: { repoId: string }): string {
+	return segment.repoId;
+}
+
+/** Build a dynamic segment expansion request ID (`exp-{timestamp}-{random5}`). */
+export function buildExpansionRequestId(timestamp = Date.now()): string {
+	const ts = Number.isFinite(timestamp) ? Math.floor(timestamp) : Date.now();
+	const base = Math.random().toString(36).slice(2).toLowerCase().replace(/[^a-z0-9]/g, "");
+	const random5 = (base + "00000").slice(0, 5);
+	return `exp-${ts}-${random5}`;
 }
 
 /** One repo-scoped segment node for a task. */
@@ -165,6 +190,36 @@ export interface TaskSegmentPlan {
 	 * repo-singleton: repo mode fallback (`resolvedRepoId ?? "default"`)
 	 */
 	mode: "explicit-dag" | "inferred-sequential" | "repo-singleton";
+}
+
+/** Directed edge between repos requested in a dynamic segment expansion. */
+export interface SegmentExpansionEdge {
+	from: string;
+	to: string;
+}
+
+/**
+ * File IPC payload for worker-initiated dynamic segment expansion requests.
+ *
+ * Written to: `.pi/mailbox/{batchId}/{agentId}/outbox/segment-expansion-{requestId}.json`
+ */
+export interface SegmentExpansionRequest {
+	/** Unique request ID: `exp-{timestamp}-{random5}` */
+	requestId: string;
+	/** Task ID making the expansion request. */
+	taskId: string;
+	/** Segment active when the request was emitted. */
+	fromSegmentId: SegmentId;
+	/** Repo IDs the worker is requesting the engine to add. */
+	requestedRepoIds: string[];
+	/** Human rationale from the worker. */
+	rationale: string;
+	/** Placement directive for inserting new segments. */
+	placement: "after-current" | "end";
+	/** Optional inter-request ordering edges. */
+	edges: SegmentExpansionEdge[];
+	/** Epoch milliseconds when the request was emitted. */
+	timestamp: number;
 }
 
 /**
@@ -1934,17 +1989,27 @@ export type EngineEventCallback = (event: EngineEvent) => void;
  * Alert category for supervisor notifications.
  *
  * Matches the alert categories in the autonomous supervisor spec:
- * - `task-failure`:   A task failed after deterministic recovery was exhausted
- * - `merge-failure`:  Wave merge failed and batch paused
- * - `batch-complete`: Batch finished (all waves done)
- * - `agent-message`:  Runtime mailbox reply/escalation from a running agent
+ * - `task-failure`:                A task failed after deterministic recovery was exhausted
+ * - `merge-failure`:               Wave merge failed and batch paused
+ * - `batch-complete`:              Batch finished (all waves done)
+ * - `agent-message`:               Runtime mailbox reply/escalation from a running agent
+ * - `segment-expansion-requested`: Worker requested dynamic segment expansion
+ * - `segment-expansion-approved`:  Engine approved an expansion request
+ * - `segment-expansion-rejected`:  Engine rejected/discarded an expansion request
  *
  * Note: `stall` detection is deferred to a future phase (requires
  * last-activity tracking not yet built).
  *
  * @since TP-076
  */
-export type SupervisorAlertCategory = "task-failure" | "merge-failure" | "batch-complete" | "agent-message";
+export type SupervisorAlertCategory =
+	| "task-failure"
+	| "merge-failure"
+	| "batch-complete"
+	| "agent-message"
+	| "segment-expansion-requested"
+	| "segment-expansion-approved"
+	| "segment-expansion-rejected";
 
 /**
  * Structured context payload for supervisor alerts.
@@ -1993,6 +2058,8 @@ export interface SupervisorAlertContext {
 	agentId?: string;
 	/** Mailbox message ID (for agent-message alerts) */
 	messageId?: string;
+	/** Segment expansion request ID (for segment-expansion alerts) */
+	expansionRequestId?: string;
 	/** Whether partial progress was preserved (for task-failure alerts) */
 	partialProgress?: boolean;
 	/** Batch progress summary */
@@ -2070,12 +2137,6 @@ export function buildBatchProgressSnapshot(
 	};
 }
 
-function repoIdFromSegmentId(segmentId: string): string {
-	const idx = segmentId.indexOf("::");
-	if (idx <= 0 || idx >= segmentId.length - 2) return "unknown";
-	return segmentId.slice(idx + 2);
-}
-
 /**
  * Build a task-level segment frontier snapshot for supervisor failure alerts.
  *
@@ -2112,7 +2173,7 @@ export function buildSupervisorSegmentFrontierSnapshot(
 			?? (resolvedActiveSegmentId === segmentId ? "running" : "pending");
 		return {
 			segmentId,
-			repoId: persisted?.repoId ?? repoIdFromSegmentId(segmentId),
+			repoId: persisted ? parseSegmentIdRepo(persisted) : "unknown",
 			status,
 			dependsOnSegmentIds: persisted?.dependsOnSegmentIds ?? [],
 		};
@@ -2692,6 +2753,10 @@ export interface PersistedSegmentRecord {
 	exitDiagnostic?: TaskExitDiagnostic;
 	/** Human-readable exit reason (legacy compat, same as task-level) */
 	exitReason: string;
+	/** Anchor segment ID this segment was dynamically expanded from (if any). */
+	expandedFrom?: string;
+	/** Segment expansion request ID that created this segment (if any). */
+	expansionRequestId?: string;
 }
 
 /**
