@@ -1,10 +1,10 @@
 # TP-143: Engine Segment Graph Mutation — Status
 
-**Current Step:** Step 3: DAG mutation with successor rewiring
+**Current Step:** Step 4: Persistence and supervisor alerts
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-06
 **Review Level:** 2
-**Review Counter:** 8
+**Review Counter:** 10
 **Iteration:** 2
 **Size:** M
 
@@ -41,7 +41,7 @@
 - [x] Validation branch smoke coverage (reject + accept)
 
 ### Step 3: DAG mutation with rewiring
-**Status:** 🟨 In Progress
+**Status:** ✅ Complete
 - [x] Formal rewiring algorithm (roots/sinks/S_old)
 - [x] after-current rewiring
 - [x] end placement
@@ -52,13 +52,16 @@
 - [x] Step 3 scheduling continuity test intent (targeted coverage)
 
 ### Step 4: Persistence and alerts
-**Status:** ⬜ Not Started
+**Status:** 🟨 In Progress
 - [ ] Persist new segments to batch state
+- [ ] Persist expansion provenance (`expandedFrom`, `expansionRequestId`) on new segment records
 - [ ] Update segmentIds[]
 - [ ] Record processed requestId
-- [ ] Emit supervisor alert
+- [ ] Crash-safe approval ordering: durable persistence + idempotency audit before `.processed` rename
+- [ ] Emit supervisor alert (include before/after segment lists)
 - [ ] Rename request file
 - [ ] Worktree provisioning
+- [ ] Step 4 approval-path persistence/lifecycle targeted test intent
 
 ### Step 5: Resume compatibility
 **Status:** ⬜ Not Started
@@ -89,6 +92,7 @@
 - Reviewer suggestion (R004): consider validating request edges against requested repos before cycle checks for clearer rejection reasons.
 - Reviewer suggestion (R007): clarify `end` placement for multi-root inserts (terminals connect to all roots(N)).
 - Reviewer suggestion (R007): keep re-topology tie-breaks deterministic (existing order + segmentId).
+- Reviewer suggestion (R010): keep approval processing in the same boundary-processing path for deterministic ordering and file lifecycle handling.
 
 ## Execution Log
 
@@ -115,3 +119,7 @@
 | 2026-04-06 03:40 | Review R007 | plan Step 3: REVISE |
 | 2026-04-06 03:41 | Review R008 | plan Step 3: APPROVE |
 | 2026-04-06 03:45 | Worker iter 1 | done in 1961s, tools: 148 |
+| 2026-04-06 03:55 | Review R009 | code Step 3: APPROVE |
+| 2026-04-06 03:56 | Step 3 completed | DAG mutation with rewiring |
+| 2026-04-06 03:56 | Step 4 started | Persistence and alerts |
+| 2026-04-06 03:57 | Review R010 | plan Step 4: REVISE |
