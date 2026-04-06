@@ -1,17 +1,17 @@
 # TP-141: First-Install Bootstrap and Cross-Provider Guidance — Status
 
-**Current Step:** Step 0: Preflight
-**Status:** 🟡 In Progress
+**Current Step:** Step 5: Documentation & Delivery
+**Status:** ✅ Complete
 **Last Updated:** 2026-04-06
 **Review Level:** 2
-**Review Counter:** 8
+**Review Counter:** 9
 **Iteration:** 1
 **Size:** M
 
 ---
 
 ### Step 0: Preflight
-**Status:** 🟨 In Progress
+**Status:** ✅ Complete
 - [x] Read PROMPT.md and STATUS.md
 - [x] Verify TP-140 complete
 - [x] Read init flow and model discovery
@@ -19,7 +19,7 @@
 - [x] Check pi --list-models format
 
 ### Step 1: First-install detection and global prefs bootstrap
-**Status:** ⬜ Not Started
+**Status:** ✅ Complete
 - [x] Detect missing prefs file → bootstrap from schema defaults
 - [x] Default thinking to "high" for all agents
 - [x] Return bootstrap flag for downstream guidance
@@ -28,7 +28,7 @@
 - [x] Run targeted tests
 
 ### Step 2: Cross-provider model guidance in first init
-**Status:** ⬜ Not Started
+**Status:** ✅ Complete
 - [x] Detect first-init condition
 - [x] Query models, count providers
 - [x] 2+ providers: show guidance + cross-provider picker
@@ -38,7 +38,7 @@
 - [x] Run targeted tests
 
 ### Step 3: Thinking level picker enhancement
-**Status:** ⬜ Not Started
+**Status:** ✅ Complete
 - [x] Settings TUI: all pi levels (off→xhigh) + inherit
 - [x] CLI init: same levels
 - [x] Default selection: high
@@ -48,7 +48,7 @@
 - [x] Run targeted tests
 
 ### Step 4: Testing & Verification
-**Status:** ⬜ Not Started
+**Status:** ✅ Complete
 - [x] Full test suite passing
 - [x] Bootstrap creates prefs with thinking: high
 - [x] No re-bootstrap on existing prefs
@@ -59,11 +59,11 @@
 - [x] All failures fixed
 
 ### Step 5: Documentation & Delivery
-**Status:** ⬜ Not Started
-- [ ] Update config docs
-- [ ] Update README if needed
-- [ ] Document bootstrap behavior
-- [ ] Update STATUS.md
+**Status:** ✅ Complete
+- [x] Update config docs
+- [x] Update README if needed
+- [x] Document bootstrap behavior
+- [x] Update STATUS.md
 
 ---
 
@@ -110,3 +110,4 @@
 | 2026-04-06 00:58 | Review R006 | plan Step 3: APPROVE |
 | 2026-04-06 01:04 | Review R007 | code Step 3: APPROVE |
 | 2026-04-06 01:05 | Review R008 | plan Step 4: APPROVE |
+| 2026-04-06 01:16 | Review R009 | code Step 4: APPROVE |
