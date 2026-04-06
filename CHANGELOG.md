@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.24.23] - 2026-04-06
+
+### New
+- **TP-142: Segment expansion tool + file IPC** — `request_segment_expansion` RPC tool for workers to request new segments at runtime. SegmentId extended with sequence suffix (`::2`) for repeat-repo segments. Non-autonomous guard rejects in supervised/interactive mode.
+- **TP-143: Engine segment graph mutation** — Engine consumes expansion requests at segment boundaries. DAG mutation with formal successor rewiring (roots/sinks algorithm). Repeat-repo segments, cycle detection, idempotency guard. Persisted to batch state for resume.
+- **TP-144: Segment expansion acceptance tests** — Unit test coverage for expansion tool, engine mutation, frontier reconstruction, and resume. Live e2e deferred due to merge thinking issue.
+
+### Fixed
+- **Resume crash after segment expansion** (#441) — `resolve(allocTask.task.taskFolder)` guarded for missing/empty taskFolder. Persisted segments carried forward on resume. Segment metadata (segmentIds, activeSegmentId, packetRepoId, packetTaskPath) rehydrated into discovered tasks.
+- **Topo-sort failure rejects expansion** — Was falling back to append-order which could violate dependency semantics. Now fully rolls back to pre-mutation state.
+- **Engine-side requestedRepoIds uniqueness** — Duplicate repo IDs in expansion request now rejected at engine validation.
+
 ## [0.24.22] - 2026-04-05
 
 ### New
