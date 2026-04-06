@@ -1,10 +1,10 @@
 # TP-143: Engine Segment Graph Mutation — Status
 
-**Current Step:** Step 1: Outbox consumption
+**Current Step:** Step 2: Engine validation
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-06
 **Review Level:** 2
-**Review Counter:** 0
+**Review Counter:** 1
 **Iteration:** 1
 **Size:** M
 
@@ -19,15 +19,15 @@
 - [x] Understand segment lifecycle
 
 ### Step 1: Outbox consumption
-**Status:** 🟨 In Progress
-- [ ] Check for request files after segment completes
-- [ ] Parse SegmentExpansionRequest
-- [ ] Handle malformed files (.invalid)
-- [ ] Discard on failed segment (.discarded)
-- [ ] Process in requestId order
+**Status:** ✅ Complete
+- [x] Check for request files after segment completes
+- [x] Parse SegmentExpansionRequest
+- [x] Handle malformed files (.invalid)
+- [x] Discard on failed segment (.discarded)
+- [x] Process in requestId order
 
 ### Step 2: Engine validation
-**Status:** ⬜ Not Started
+**Status:** 🟨 In Progress
 - [ ] Repo existence check
 - [ ] Cycle detection
 - [ ] Task not terminal
@@ -83,3 +83,6 @@
 | 2026-04-06 03:12 | Step 0 started | Preflight |
 | 2026-04-06 03:26 | Step 0 completed | Preflight |
 | 2026-04-06 03:26 | Step 1 started | Outbox consumption |
+| 2026-04-06 03:41 | Step 1 completed | Outbox consumption |
+| 2026-04-06 03:41 | Step 2 started | Engine validation |
+| 2026-04-06 03:14 | Review R001 | plan Step 1: APPROVE |

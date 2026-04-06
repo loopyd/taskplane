@@ -2,7 +2,7 @@
  * Main batch execution engine
  * @module orch/engine
  */
-import { existsSync, readdirSync, readFileSync, unlinkSync } from "fs";
+import { existsSync, readdirSync, readFileSync, renameSync, unlinkSync } from "fs";
 import { join, resolve } from "path";
 
 import { formatDiscoveryResults, runDiscovery } from "./discovery.ts";
@@ -20,7 +20,7 @@ import { resolveOperatorId } from "./naming.ts";
 import { applyPartialProgressToOutcomes, buildTier0EventBase, deleteBatchState, emitEngineEvent, emitTier0Event, loadBatchHistory, loadBatchState, persistRuntimeState, saveBatchHistory, seedPendingOutcomesForAllocatedLanes, syncTaskOutcomesFromMonitor, upsertTaskOutcome } from "./persistence.ts";
 import { readRegistrySnapshot, isTerminalStatus, isProcessAlive as registryIsProcessAlive } from "./process-registry.ts";
 import { buildBatchProgressSnapshot, buildEngineEventBase, buildSupervisorSegmentFrontierSnapshot, defaultResilienceState, FATAL_DISCOVERY_CODES, generateBatchId, TIER0_RETRYABLE_CLASSIFICATIONS, TIER0_RETRY_BUDGETS, tier0ScopeKey, tier0WaveScopeKey } from "./types.ts";
-import type { AllocatedLane, AllocatedTask, BatchHistorySummary, BatchTaskSummary, BatchWaveSummary, DiscoveryResult, EngineEventCallback, EscalationContext, LaneExecutionResult, LaneTaskOutcome, MergeWaveResult, OrchBatchPhase, OrchBatchRuntimeState, OrchestratorConfig, ParsedTask, PersistedSegmentRecord, SupervisorAlert, SupervisorAlertCallback, TaskRunnerConfig, TaskSegmentPlan, TaskSegmentPlanMap, TaskSegmentNode, Tier0EscalationPattern, Tier0RecoveryPattern, TokenCounts, WaveExecutionResult, WorkspaceConfig } from "./types.ts";
+import type { AllocatedLane, AllocatedTask, BatchHistorySummary, BatchTaskSummary, BatchWaveSummary, DiscoveryResult, EngineEventCallback, EscalationContext, LaneExecutionResult, LaneTaskOutcome, MergeWaveResult, OrchBatchPhase, OrchBatchRuntimeState, OrchestratorConfig, ParsedTask, PersistedSegmentRecord, SegmentExpansionRequest, SupervisorAlert, SupervisorAlertCallback, TaskRunnerConfig, TaskSegmentPlan, TaskSegmentPlanMap, TaskSegmentNode, Tier0EscalationPattern, Tier0RecoveryPattern, TokenCounts, WaveExecutionResult, WorkspaceConfig } from "./types.ts";
 import { buildDependencyGraph, computeWaveAssignments, resolveBaseBranch, resolveRepoRoot, validateGraph } from "./waves.ts";
 import { deleteBranchBestEffort, forceCleanupWorktree, formatPreflightResults, listWorktrees, preserveFailedLaneProgress, removeAllWorktrees, removeWorktree, runPreflight, safeResetWorktree, sleepSync } from "./worktree.ts";
 import { runPreflightCleanup, formatPreflightCleanup } from "./cleanup.ts";
@@ -145,6 +145,130 @@ function buildSegmentDependencyMap(plan: TaskSegmentPlan): Map<string, string[]>
 		depsBySegmentId.set(segmentId, [...new Set(deps)].sort((a, b) => a.localeCompare(b)));
 	}
 	return depsBySegmentId;
+}
+
+function resolveTaskWorkerAgentId(
+	taskId: string,
+	allTaskOutcomes: LaneTaskOutcome[],
+	laneByTaskId: Map<string, AllocatedLane>,
+): string | null {
+	const outcome = allTaskOutcomes.find((candidate) => candidate.taskId === taskId);
+	if (outcome?.sessionName) {
+		return outcome.sessionName;
+	}
+	const lane = laneByTaskId.get(taskId);
+	return lane?.laneSessionId ?? null;
+}
+
+function listPendingSegmentExpansionRequestFiles(stateRoot: string, batchId: string, agentId: string): string[] {
+	const outboxDir = join(stateRoot, ".pi", "mailbox", batchId, agentId, "outbox");
+	if (!existsSync(outboxDir)) return [];
+	let entries: string[] = [];
+	try {
+		entries = readdirSync(outboxDir);
+	} catch {
+		return [];
+	}
+	return entries
+		.filter((entry) => /^segment-expansion-.+\.json$/.test(entry))
+		.sort((a, b) => a.localeCompare(b))
+		.map((entry) => join(outboxDir, entry));
+}
+
+interface PendingSegmentExpansionRequest {
+	filePath: string;
+	request: SegmentExpansionRequest;
+}
+
+interface SegmentExpansionParseFailure {
+	filePath: string;
+	reason: string;
+}
+
+function parseSegmentExpansionRequestPayload(payload: unknown): SegmentExpansionRequest | null {
+	if (!payload || typeof payload !== "object") return null;
+	const candidate = payload as Record<string, unknown>;
+	if (typeof candidate.requestId !== "string" || !candidate.requestId.trim()) return null;
+	if (typeof candidate.taskId !== "string" || !candidate.taskId.trim()) return null;
+	if (typeof candidate.fromSegmentId !== "string" || !candidate.fromSegmentId.trim()) return null;
+	if (!Array.isArray(candidate.requestedRepoIds) || candidate.requestedRepoIds.some((repoId) => typeof repoId !== "string" || !repoId.trim())) return null;
+	if (typeof candidate.rationale !== "string") return null;
+	if (candidate.placement !== "after-current" && candidate.placement !== "end") return null;
+	if (!Array.isArray(candidate.edges)) return null;
+	for (const edge of candidate.edges) {
+		if (!edge || typeof edge !== "object") return null;
+		const typedEdge = edge as Record<string, unknown>;
+		if (typeof typedEdge.from !== "string" || !typedEdge.from.trim()) return null;
+		if (typeof typedEdge.to !== "string" || !typedEdge.to.trim()) return null;
+	}
+	if (typeof candidate.timestamp !== "number" || !Number.isFinite(candidate.timestamp)) return null;
+	return {
+		requestId: candidate.requestId,
+		taskId: candidate.taskId,
+		fromSegmentId: candidate.fromSegmentId as SegmentExpansionRequest["fromSegmentId"],
+		requestedRepoIds: candidate.requestedRepoIds as string[],
+		rationale: candidate.rationale,
+		placement: candidate.placement,
+		edges: candidate.edges as SegmentExpansionRequest["edges"],
+		timestamp: candidate.timestamp,
+	};
+}
+
+function parseSegmentExpansionRequests(filePaths: string[]): {
+	valid: PendingSegmentExpansionRequest[];
+	malformed: SegmentExpansionParseFailure[];
+} {
+	const valid: PendingSegmentExpansionRequest[] = [];
+	const malformed: SegmentExpansionParseFailure[] = [];
+
+	for (const filePath of filePaths) {
+		let raw = "";
+		try {
+			raw = readFileSync(filePath, "utf-8");
+		} catch (err) {
+			malformed.push({
+				filePath,
+				reason: `read failed: ${err instanceof Error ? err.message : String(err)}`,
+			});
+			continue;
+		}
+
+		let payload: unknown;
+		try {
+			payload = JSON.parse(raw);
+		} catch (err) {
+			malformed.push({
+				filePath,
+				reason: `JSON parse failed: ${err instanceof Error ? err.message : String(err)}`,
+			});
+			continue;
+		}
+
+		const parsed = parseSegmentExpansionRequestPayload(payload);
+		if (!parsed) {
+			malformed.push({
+				filePath,
+				reason: "schema validation failed",
+			});
+			continue;
+		}
+
+		valid.push({
+			filePath,
+			request: parsed,
+		});
+	}
+
+	return { valid, malformed };
+}
+
+function markSegmentExpansionRequestFile(filePath: string, stateSuffix: "invalid" | "discarded" | "rejected" | "processed"): boolean {
+	try {
+		renameSync(filePath, `${filePath}.${stateSuffix}`);
+		return true;
+	} catch {
+		return false;
+	}
 }
 
 function ensureSegmentRecords(batchState: OrchBatchRuntimeState): PersistedSegmentRecord[] {
@@ -1844,6 +1968,42 @@ export async function executeOrchBatch(
 				segmentState.statusBySegmentId.set(activeSegmentId, "succeeded");
 				const outcome = allTaskOutcomes.find((candidate) => candidate.taskId === taskId);
 				upsertTerminalSegmentRecord(batchState, task, segmentState, activeSegmentId, "succeeded", outcome, laneByTaskId.get(taskId));
+
+				const workerAgentId = resolveTaskWorkerAgentId(taskId, allTaskOutcomes, laneByTaskId);
+				if (workerAgentId) {
+					const pendingExpansionFiles = listPendingSegmentExpansionRequestFiles(stateRoot, batchState.batchId, workerAgentId);
+					if (pendingExpansionFiles.length > 0) {
+						const parsedRequests = parseSegmentExpansionRequests(pendingExpansionFiles);
+						for (const malformed of parsedRequests.malformed) {
+							const renamed = markSegmentExpansionRequestFile(malformed.filePath, "invalid");
+							execLog("batch", batchState.batchId, `segment expansion request malformed (${renamed ? "renamed to .invalid" : "rename failed"})`, {
+								taskId,
+								agentId: workerAgentId,
+								segmentId: activeSegmentId,
+								filePath: malformed.filePath,
+								reason: malformed.reason,
+							});
+						}
+						const orderedRequests = [...parsedRequests.valid].sort((a, b) => a.request.requestId.localeCompare(b.request.requestId));
+						for (const pendingRequest of orderedRequests) {
+							execLog("batch", batchState.batchId, `segment expansion request queued for processing`, {
+								taskId,
+								agentId: workerAgentId,
+								segmentId: activeSegmentId,
+								requestId: pendingRequest.request.requestId,
+								placement: pendingRequest.request.placement,
+								requestedRepoIds: pendingRequest.request.requestedRepoIds.join(","),
+							});
+						}
+						execLog("batch", batchState.batchId, `segment ${activeSegmentId} completed with ${pendingExpansionFiles.length} pending expansion request(s)`, {
+							taskId,
+							agentId: workerAgentId,
+							segmentId: activeSegmentId,
+							validRequests: parsedRequests.valid.length,
+							malformedRequests: parsedRequests.malformed.length,
+						});
+					}
+				}
 			}
 			segmentState.nextSegmentIndex += 1;
 			task.activeSegmentId = null;
@@ -1864,6 +2024,40 @@ export async function executeOrchBatch(
 				segmentState.statusBySegmentId.set(activeSegmentId, "failed");
 				const outcome = allTaskOutcomes.find((candidate) => candidate.taskId === taskId);
 				upsertTerminalSegmentRecord(batchState, task, segmentState, activeSegmentId, "failed", outcome, laneByTaskId.get(taskId));
+
+				const workerAgentId = resolveTaskWorkerAgentId(taskId, allTaskOutcomes, laneByTaskId);
+				if (workerAgentId) {
+					const pendingExpansionFiles = listPendingSegmentExpansionRequestFiles(stateRoot, batchState.batchId, workerAgentId);
+					if (pendingExpansionFiles.length > 0) {
+						let discardedCount = 0;
+						for (const requestFile of pendingExpansionFiles) {
+							if (markSegmentExpansionRequestFile(requestFile, "discarded")) {
+								discardedCount += 1;
+							}
+						}
+						execLog("batch", batchState.batchId, `segment ${activeSegmentId} failed with ${pendingExpansionFiles.length} pending expansion request(s)`, {
+							taskId,
+							agentId: workerAgentId,
+							segmentId: activeSegmentId,
+							discardedCount,
+						});
+						emitAlert({
+							category: "agent-message",
+							summary:
+								`🗑️ Segment expansion requests discarded\n` +
+								`  Task: ${taskId}\n` +
+								`  Segment: ${activeSegmentId}\n` +
+								`  Agent: ${workerAgentId}\n` +
+								`  Discarded: ${discardedCount}/${pendingExpansionFiles.length}`,
+							context: {
+								taskId,
+								segmentId: activeSegmentId,
+								agentId: workerAgentId,
+								exitReason: "segment-expansion-discarded-originating-segment-failed",
+							},
+						});
+					}
+				}
 			}
 			task.activeSegmentId = null;
 			segmentState.terminalStatus = "failed";
