@@ -1541,6 +1541,7 @@ export async function executeWave(
 	workspaceConfig?: WorkspaceConfig | null,
 	runtimeBackend?: RuntimeBackend,
 	onSupervisorAlert?: SupervisorAlertCallback,
+	supervisorAutonomy: "interactive" | "supervised" | "autonomous" = "autonomous",
 ): Promise<WaveExecutionResult> {
 	const startedAt = Date.now();
 	const policy = config.failure.on_task_failure;
@@ -1642,7 +1643,19 @@ export async function executeWave(
 	}
 
 	const lanePromises = lanes.map(lane =>
-		executeLaneV2(lane, config, repoRoot, wavePauseSignal, wsRoot, isWsMode, { ORCH_BATCH_ID: batchId }, onSupervisorAlert),
+		executeLaneV2(
+			lane,
+			config,
+			repoRoot,
+			wavePauseSignal,
+			wsRoot,
+			isWsMode,
+			{
+				ORCH_BATCH_ID: batchId,
+				TASKPLANE_SUPERVISOR_AUTONOMY: supervisorAutonomy,
+			},
+			onSupervisorAlert,
+		),
 	);
 
 	// Start monitoring as a sibling async loop
@@ -2235,7 +2248,7 @@ export async function executeLaneV2(
 		// Build execution unit
 		const unit = buildExecutionUnit(lane, task, repoRoot, isWorkspaceMode);
 
-		const rawAutonomy = String((config as any)?.orchestrator?.supervisor?.autonomy ?? "autonomous").toLowerCase();
+		const rawAutonomy = String(extraEnvVars?.TASKPLANE_SUPERVISOR_AUTONOMY ?? "autonomous").toLowerCase();
 		const supervisorAutonomy: LaneRunnerConfig["supervisorAutonomy"] =
 			(rawAutonomy === "interactive" || rawAutonomy === "supervised" || rawAutonomy === "autonomous")
 				? rawAutonomy as LaneRunnerConfig["supervisorAutonomy"]

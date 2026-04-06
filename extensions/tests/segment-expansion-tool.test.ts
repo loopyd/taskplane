@@ -1,7 +1,8 @@
 import { afterEach, describe, it } from "node:test";
-import { mkdtempSync, readdirSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
 
 import { expect } from "./expect.ts";
 import bridgeExtension from "../taskplane/agent-bridge-extension.ts";
@@ -56,6 +57,8 @@ function parsePayload(result: { content: Array<{ type: string; text: string }> }
 	return JSON.parse(result.content[0].text);
 }
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
 const tempDirs: string[] = [];
 afterEach(() => {
 	while (tempDirs.length > 0) {
@@ -99,5 +102,24 @@ describe("request_segment_expansion registration + autonomy guard", () => {
 			expect(payload.message).toBe("Segment expansion requires autonomous supervisor mode");
 			expect(readdirSync(outboxDir)).toEqual([]);
 		});
+	});
+});
+
+describe("autonomy wiring contracts", () => {
+	it("threads supervisor autonomy from extension workerData into engine worker", () => {
+		const extensionSrc = readFileSync(join(__dirname, "..", "taskplane", "extension.ts"), "utf-8");
+		const workerSrc = readFileSync(join(__dirname, "..", "taskplane", "engine-worker.ts"), "utf-8");
+
+		expect(extensionSrc).toContain("supervisorAutonomy: supervisorConfig.autonomy");
+		expect(workerSrc).toContain("data.supervisorAutonomy ?? \"autonomous\"");
+	});
+
+	it("propagates autonomy through executeWave into lane-runner env", () => {
+		const executionSrc = readFileSync(join(__dirname, "..", "taskplane", "execution.ts"), "utf-8");
+		const laneRunnerSrc = readFileSync(join(__dirname, "..", "taskplane", "lane-runner.ts"), "utf-8");
+
+		expect(executionSrc).toContain("TASKPLANE_SUPERVISOR_AUTONOMY: supervisorAutonomy");
+		expect(executionSrc).toContain("extraEnvVars?.TASKPLANE_SUPERVISOR_AUTONOMY");
+		expect(laneRunnerSrc).toContain("TASKPLANE_SUPERVISOR_AUTONOMY: config.supervisorAutonomy || \"autonomous\"");
 	});
 });
