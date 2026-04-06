@@ -510,6 +510,11 @@ export function applySegmentExpansionMutation(
 		}
 	}
 
+	// Snapshot original state for rollback on topo-sort failure
+	const originalOrderedSegments = [...segmentState.orderedSegments];
+	const originalDeps = new Map<string, string[]>();
+	for (const [k, v] of dependencyMap) originalDeps.set(k, [...v]);
+
 	const outgoingBeforeMutation = buildOutgoingBySegmentId(dependencyMap);
 	const anchorSuccessors = outgoingBeforeMutation.get(anchorSegmentId) ?? [];
 	const maxOrder = segmentState.orderedSegments.reduce((max, segment) => Math.max(max, segment.order), -1);
@@ -629,20 +634,17 @@ export function applySegmentExpansionMutation(
 
 	if (nextOrderedSegmentIds.length !== dependencyMap.size) {
 		// Topological sort failed to cover all nodes — likely a cycle introduced
-		// by the expansion. Reject the mutation rather than silently using
-		// append-order which could violate dependency semantics.
+		// by the expansion. Reject the mutation entirely and restore original state.
 		execLog("batch", request.taskId, "segment expansion rejected: topological sort failed (possible cycle)", {
 			expected: dependencyMap.size,
 			covered: nextOrderedSegmentIds.length,
 		});
-		// Roll back: remove new nodes from state maps
+		// Full rollback to pre-mutation state
 		for (const node of newNodes) {
-			existingNodeById.delete(node.segmentId);
-			dependencyMap.delete(node.segmentId);
 			segmentState.statusBySegmentId.delete(node.segmentId);
 		}
-		// Restore original dependency map
-		segmentState.dependsOnBySegmentId = dependencyMap;
+		segmentState.orderedSegments = originalOrderedSegments;
+		segmentState.dependsOnBySegmentId = originalDeps;
 		return { insertedSegmentIds: [] };
 	}
 	const finalOrderedSegmentIds = nextOrderedSegmentIds;

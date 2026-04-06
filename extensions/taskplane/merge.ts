@@ -1849,7 +1849,7 @@ export async function mergeWave(
 
 		for (const lane of orderedLanes) {
 			for (const allocTask of lane.tasks) {
-				if (!allocTask.task.taskFolder) {
+				if (!allocTask.task.taskFolder?.trim()) {
 					execLog("merge", `W${waveIndex}`, `skipping task with missing taskFolder (possibly dynamically expanded)`, {
 						taskId: allocTask.taskId,
 					});

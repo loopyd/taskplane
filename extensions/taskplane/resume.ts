@@ -1395,10 +1395,16 @@ export async function resumeOrchBatch(
 		const parsed = discovery.pending.get(persistedTask.taskId);
 		if (!parsed) continue;
 		if (persistedTask.segmentIds?.length) {
-			(parsed as any).segmentIds = persistedTask.segmentIds;
+			parsed.segmentIds = persistedTask.segmentIds;
 		}
-		if (persistedTask.activeSegmentId) {
-			(parsed as any).activeSegmentId = persistedTask.activeSegmentId;
+		if (persistedTask.activeSegmentId !== undefined) {
+			parsed.activeSegmentId = persistedTask.activeSegmentId;
+		}
+		if (persistedTask.packetRepoId) {
+			parsed.packetRepoId = persistedTask.packetRepoId;
+		}
+		if (persistedTask.packetTaskPath) {
+			parsed.packetTaskPath = persistedTask.packetTaskPath;
 		}
 	}
 
