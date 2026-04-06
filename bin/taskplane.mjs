@@ -2012,7 +2012,12 @@ async function cmdInit(args) {
 		);
 
 		// CONTEXT.md — tasks area context
-		const tasksDir = path.join(configRepoRoot, vars.tasks_root);
+		// tasks_root is workspace-relative (e.g., "shared-libs/task-management/...").
+		// Strip the config repo prefix when resolving inside the config repo root.
+		const tasksRootInRepo = vars.tasks_root.startsWith(configRepoName + "/")
+			? vars.tasks_root.slice(configRepoName.length + 1)
+			: vars.tasks_root;
+		const tasksDir = path.join(configRepoRoot, tasksRootInRepo);
 		const contextSrc = fs.readFileSync(path.join(TEMPLATES_DIR, "tasks", "CONTEXT.md"), "utf-8");
 		writeFile(
 			path.join(tasksDir, "CONTEXT.md"),
