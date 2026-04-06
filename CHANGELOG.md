@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.24.28] - 2026-04-06
+
+### Fixed
+- **Workspace init doubled config repo name in tasks directory** — `shared-libs/shared-libs/task-management/...` now correctly resolves to `shared-libs/task-management/...`.
+
 ## [0.24.27] - 2026-04-06
 
 ### Fixed
