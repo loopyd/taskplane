@@ -1,10 +1,10 @@
 # TP-143: Engine Segment Graph Mutation — Status
 
-**Current Step:** Step 2: Engine validation
+**Current Step:** Step 3: DAG mutation with rewiring
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-06
 **Review Level:** 2
-**Review Counter:** 4
+**Review Counter:** 5
 **Iteration:** 1
 **Size:** M
 
@@ -30,18 +30,18 @@
 - [x] R002: reject empty requestedRepoIds as malformed (.invalid)
 
 ### Step 2: Engine validation
-**Status:** 🟨 In Progress
-- [ ] Repo existence check
-- [ ] Cycle detection
-- [ ] Task not terminal
-- [ ] Placement valid
-- [ ] Idempotency guard
-- [ ] Validation failure path: rename to .rejected and emit segment-expansion-rejected alert
-- [ ] Validation success path: hand off to graph-mutation path
-- [ ] Validation branch smoke coverage (reject + accept)
+**Status:** ✅ Complete
+- [x] Repo existence check
+- [x] Cycle detection
+- [x] Task not terminal
+- [x] Placement valid
+- [x] Idempotency guard
+- [x] Validation failure path: rename to .rejected and emit segment-expansion-rejected alert
+- [x] Validation success path: hand off to graph-mutation path
+- [x] Validation branch smoke coverage (reject + accept)
 
 ### Step 3: DAG mutation with rewiring
-**Status:** ⬜ Not Started
+**Status:** 🟨 In Progress
 - [ ] Formal rewiring algorithm (roots/sinks/S_old)
 - [ ] after-current rewiring
 - [ ] end placement
@@ -100,5 +100,10 @@
 | 2026-04-06 03:14 | Review R001 | plan Step 1: APPROVE |
 | 2026-04-06 03:22 | Review R002 | code Step 1: REVISE |
 | 2026-04-06 03:49 | Review R003 | code Step 1: APPROVE |
+| 2026-04-06 03:50 | Review R004 | plan Step 2: REVISE |
+| 2026-04-06 03:51 | Review R005 | plan Step 2: APPROVE |
+| 2026-04-06 04:06 | Step 2 completed | Engine validation |
+| 2026-04-06 04:06 | Step 3 started | DAG mutation with rewiring |
 | 2026-04-06 03:28 | Review R003 | code Step 1: APPROVE |
 | 2026-04-06 03:30 | Review R004 | plan Step 2: REVISE |
+| 2026-04-06 03:31 | Review R005 | plan Step 2: APPROVE |

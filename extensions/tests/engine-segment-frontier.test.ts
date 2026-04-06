@@ -2,9 +2,9 @@ import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
 import { expect } from "./expect.ts";
-import { buildSegmentFrontierWaves, linearizeTaskSegmentPlan } from "../taskplane/engine.ts";
+import { buildSegmentFrontierWaves, linearizeTaskSegmentPlan, processSegmentExpansionRequestAtBoundary } from "../taskplane/engine.ts";
 import { buildExecutionUnit } from "../taskplane/execution.ts";
-import type { AllocatedLane, AllocatedTask, ParsedTask, TaskSegmentPlan } from "../taskplane/types.ts";
+import type { AllocatedLane, AllocatedTask, ParsedTask, SegmentExpansionRequest, TaskSegmentPlan } from "../taskplane/types.ts";
 
 function makeTask(taskId: string, repoId?: string): ParsedTask {
 	return {
@@ -19,6 +19,20 @@ function makeTask(taskId: string, repoId?: string): ParsedTask {
 		areaName: "default",
 		status: "pending",
 		resolvedRepoId: repoId,
+	};
+}
+
+function makeExpansionRequest(overrides: Partial<SegmentExpansionRequest> = {}): SegmentExpansionRequest {
+	return {
+		requestId: "exp-001",
+		taskId: "TP-100",
+		fromSegmentId: "TP-100::api",
+		requestedRepoIds: ["api"],
+		rationale: "follow-up",
+		placement: "after-current",
+		edges: [],
+		timestamp: Date.now(),
+		...overrides,
 	};
 }
 
@@ -136,5 +150,57 @@ describe("TP-133 segment frontier helpers", () => {
 		expect(unit.packet.statusPath).toBe("/repos/packets/taskplane-tasks/TP-030/STATUS.md");
 		expect(unit.packetHomeRepoId).toBe("packets");
 		expect(unit.packet.donePath.includes(lane.worktreePath)).toBe(false);
+	});
+});
+
+describe("segment expansion boundary validation smoke", () => {
+	it("rejects unknown repo IDs in workspace mode", () => {
+		const request = makeExpansionRequest({ requestedRepoIds: ["web"] });
+		const result = processSegmentExpansionRequestAtBoundary(
+			"batch-1",
+			"TP-100",
+			"TP-100::api",
+			"agent-1",
+			{ filePath: "/tmp/segment-expansion-exp-001.json", request },
+			{ terminalStatus: "pending" } as any,
+			{ repos: new Map([ ["api", {}] ]) } as any,
+			new Set<string>(),
+		);
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result.reason).toMatch(/unknown repoId/);
+		}
+	});
+
+	it("accepts valid request and enforces requestId idempotency", () => {
+		const request = makeExpansionRequest({ requestedRepoIds: ["api"] });
+		const knownRequestIds = new Set<string>();
+		const first = processSegmentExpansionRequestAtBoundary(
+			"batch-1",
+			"TP-100",
+			"TP-100::api",
+			"agent-1",
+			{ filePath: "/tmp/segment-expansion-exp-001.json", request },
+			{ terminalStatus: "pending" } as any,
+			{ repos: new Map([ ["api", {}] ]) } as any,
+			knownRequestIds,
+		);
+		expect(first).toEqual({ ok: true });
+		expect(knownRequestIds.has("exp-001")).toBe(true);
+
+		const duplicate = processSegmentExpansionRequestAtBoundary(
+			"batch-1",
+			"TP-100",
+			"TP-100::api",
+			"agent-1",
+			{ filePath: "/tmp/segment-expansion-exp-001-dupe.json", request },
+			{ terminalStatus: "pending" } as any,
+			{ repos: new Map([ ["api", {}] ]) } as any,
+			knownRequestIds,
+		);
+		expect(duplicate.ok).toBe(false);
+		if (!duplicate.ok) {
+			expect(duplicate.reason).toMatch(/already processed/);
+		}
 	});
 });
