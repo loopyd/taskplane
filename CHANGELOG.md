@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.24.24] - 2026-04-06
+
+### Fixed
+- **Merge agent auth failure** — v0.24.21's `PI_CODING_AGENT_DIR` isolation cut off API credentials (`auth.json` was empty in the isolated dir). Merge agents silently failed to authenticate, producing zero tool calls. Removed process-level isolation; test-level isolation in `project-config-loader.test.ts` is sufficient.
+
 ## [0.24.23] - 2026-04-06
 
 ### New
