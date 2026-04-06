@@ -1,10 +1,10 @@
 # TP-144: Segment Expansion Acceptance Tests — Status
 
-**Current Step:** Step 4: Resume after expansion test
+**Current Step:** Step 5: Testing & Verification
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-06
 **Review Level:** 1
-**Review Counter:** 7
+**Review Counter:** 8
 **Iteration:** 3
 **Size:** S
 
@@ -45,17 +45,17 @@
 - [x] Run targeted repeat-repo expansion unit tests and capture passing evidence
 
 ### Step 4: Resume after expansion
-**Status:** 🟨 In Progress
-- [ ] Add unit coverage for persisted state where expansion is approved before expanded segment execution
-- [ ] Add unit coverage that resume reconstruction reactivates expanded segment execution frontier
-- [ ] Add unit coverage that processed expansion request IDs prevent duplicate processing on resume
-- [ ] Run targeted resume + expansion unit tests and capture passing evidence
+**Status:** ✅ Complete
+- [x] Add unit coverage for persisted state where expansion is approved before expanded segment execution
+- [x] Add unit coverage that resume reconstruction reactivates expanded segment execution frontier
+- [x] Add unit coverage that processed expansion request IDs prevent duplicate processing on resume
+- [x] Run targeted resume + expansion unit tests and capture passing evidence
 
 ### Step 5: Testing & Verification
-**Status:** ⬜ Not Started
-- [ ] All expansion tests pass
-- [ ] All 6 regression tests pass
-- [ ] Resume works
+**Status:** 🟨 In Progress
+- [ ] Expansion-focused unit tests pass (tool + engine + frontier coverage)
+- [ ] Regression validation captured via unit test pass/fail status (live `/orch` TP-001..TP-006 deferred for issue #439)
+- [ ] Resume-after-expansion unit coverage passes
 - [ ] Full unit suite passing
 
 ### Step 6: Documentation & Delivery
@@ -96,3 +96,4 @@
 - Live polyrepo execution for TP-144 was deferred in this session due known merge-agent thinking hang issue (#439), per supervisor steering.
 | 2026-04-06 09:03 | Review R006 | plan Step 3: REVISE |
 | 2026-04-06 09:06 | Review R007 | plan Step 3: APPROVE |
+| 2026-04-06 09:08 | Review R008 | plan Step 4: APPROVE |
