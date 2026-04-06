@@ -1,10 +1,10 @@
 # TP-142: Segment Expansion Tool and File IPC — Status
 
-**Current Step:** Step 1: Extend SegmentId grammar
+**Current Step:** Step 2: Implement tool
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-06
 **Review Level:** 2
-**Review Counter:** 0
+**Review Counter:** 1
 **Iteration:** 1
 **Size:** M
 
@@ -19,15 +19,15 @@
 - [x] Read mailbox.ts outbox layout
 
 ### Step 1: Extend SegmentId grammar
-**Status:** 🟨 In Progress
-- [ ] buildSegmentId with optional sequence
-- [ ] parseSegmentIdRepo helper (structured, not string-split)
-- [ ] SegmentExpansionRequest interface
-- [ ] buildExpansionRequestId helper
-- [ ] Run targeted tests
+**Status:** ✅ Complete
+- [x] buildSegmentId with optional sequence
+- [x] parseSegmentIdRepo helper (structured, not string-split)
+- [x] SegmentExpansionRequest interface
+- [x] buildExpansionRequestId helper
+- [x] Run targeted tests
 
 ### Step 2: Implement tool
-**Status:** ⬜ Not Started
+**Status:** 🟨 In Progress
 - [ ] Register request_segment_expansion
 - [ ] Workspace mode + autonomous guard
 - [ ] Input validation
@@ -66,3 +66,6 @@
 | 2026-04-06 02:19 | Step 0 started | Preflight |
 | 2026-04-06 02:30 | Step 0 completed | Preflight |
 | 2026-04-06 02:30 | Step 1 started | Extend SegmentId grammar |
+| 2026-04-06 02:22 | Review R001 | plan Step 1: APPROVE |
+| 2026-04-06 02:36 | Step 1 completed | Extend SegmentId grammar |
+| 2026-04-06 02:36 | Step 2 started | Implement tool |
