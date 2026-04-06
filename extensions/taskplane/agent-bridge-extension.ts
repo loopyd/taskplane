@@ -8,12 +8,11 @@
  * Tools:
  *   - notify_supervisor: send a reply or acknowledgment to supervisor
  *   - escalate_to_supervisor: escalate a blocker or ambiguity
+ *   - request_segment_expansion: request runtime segment expansion via file IPC
  *
  * This extension is intentionally minimal and protocol-focused.
  * It does NOT own:
- *   - review_step (deferred to TP-105+ lane-runner bridge work)
  *   - wait_for_review (deferred to persistent reviewer work)
- *   - request_segment_expansion (deferred to TP-086)
  *
  * File I/O only — writes to the agent's outbox directory.
  * The lane-runner or engine polls outbox and surfaces to supervisor.
@@ -28,6 +27,7 @@ import { writeFileSync, readFileSync, existsSync, mkdirSync, renameSync, unlinkS
 import { join, dirname } from "path";
 import { spawn as nodeSpawn } from "child_process";
 import { randomBytes } from "crypto";
+import { buildExpansionRequestId, type SegmentExpansionRequest } from "./types.ts";
 
 /**
  * Resolve the outbox directory from environment variables.
@@ -36,7 +36,15 @@ import { randomBytes } from "crypto";
  * with the bridge extension. Falls back to .pi/bridge-outbox/ in cwd.
  */
 function resolveOutboxDir(): string {
-	return process.env.TASKPLANE_OUTBOX_DIR || join(process.cwd(), ".pi", "bridge-outbox");
+	if (process.env.TASKPLANE_OUTBOX_DIR) return process.env.TASKPLANE_OUTBOX_DIR;
+
+	const batchId = process.env.ORCH_BATCH_ID;
+	const agentId = process.env.TASKPLANE_AGENT_ID;
+	if (batchId && agentId) {
+		return join(process.cwd(), ".pi", "mailbox", batchId, agentId, "outbox");
+	}
+
+	return join(process.cwd(), ".pi", "bridge-outbox");
 }
 
 /**
@@ -73,6 +81,53 @@ function writeOutbox(type: "reply" | "escalate", content: string, replyTo?: stri
 	renameSync(tmpPath, finalPath);
 
 	return { id };
+}
+
+const REPO_ID_PATTERN = /^[a-z0-9][a-z0-9._-]*$/;
+const AUTONOMY_PATTERN = /^(interactive|supervised|autonomous)$/;
+
+function resolveActiveSegmentId(): string | null {
+	const raw = (process.env.TASKPLANE_ACTIVE_SEGMENT_ID || process.env.TASKPLANE_SEGMENT_ID || "").trim();
+	if (!raw || raw === "null" || raw === "(none / whole-task execution)") return null;
+	return raw;
+}
+
+function resolveTaskId(fromSegmentId: string): string {
+	const envTaskId = process.env.TASKPLANE_TASK_ID?.trim();
+	if (envTaskId) return envTaskId;
+	const idx = fromSegmentId.indexOf("::");
+	if (idx > 0) return fromSegmentId.slice(0, idx);
+	const folder = process.env.TASKPLANE_TASK_FOLDER || "";
+	const name = folder.split(/[\\/]/).filter(Boolean).at(-1) || "";
+	const match = name.match(/^[A-Z]+-\d+/);
+	return match ? match[0] : "unknown";
+}
+
+function resolveSupervisorAutonomy(): "interactive" | "supervised" | "autonomous" {
+	const value = (process.env.TASKPLANE_SUPERVISOR_AUTONOMY || "autonomous").trim().toLowerCase();
+	if (AUTONOMY_PATTERN.test(value)) {
+		return value as "interactive" | "supervised" | "autonomous";
+	}
+	return "autonomous";
+}
+
+function writeSegmentExpansionRequest(request: SegmentExpansionRequest): string {
+	const outboxDir = resolveOutboxDir();
+	mkdirSync(outboxDir, { recursive: true });
+
+	const filename = `segment-expansion-${request.requestId}.json`;
+	const finalPath = join(outboxDir, filename);
+	const tempPath = `${finalPath}.tmp`;
+
+	try {
+		writeFileSync(tempPath, JSON.stringify(request, null, 2) + "\n", "utf-8");
+		renameSync(tempPath, finalPath);
+	} catch (err) {
+		try { if (existsSync(tempPath)) unlinkSync(tempPath); } catch { /* cleanup */ }
+		throw new Error(`Failed to write segment expansion request: ${err instanceof Error ? err.message : String(err)}`);
+	}
+
+	return finalPath;
 }
 
 export default function (pi: ExtensionAPI) {
@@ -157,6 +212,144 @@ export default function (pi: ExtensionAPI) {
 			}
 		},
 	});
+
+	const activeSegmentId = resolveActiveSegmentId();
+	if (activeSegmentId) {
+		/**
+		 * Worker RPC for requesting runtime segment expansion.
+		 *
+		 * Contract summary:
+		 * - accepts requested repo IDs + rationale (+ optional placement/edges)
+		 * - validates request shape and repo ID rules
+		 * - writes `.pi/mailbox/{batchId}/{agentId}/outbox/segment-expansion-{requestId}.json`
+		 * - returns acknowledgment payload (`accepted`, `requestId`, `message`)
+		 */
+		pi.registerTool({
+			name: "request_segment_expansion",
+			label: "Request Segment Expansion",
+			description:
+				"Request additional repository segments for the current task at runtime. " +
+				"Writes a request file to the worker outbox for engine processing.",
+			promptSnippet:
+				"request_segment_expansion(requestedRepoIds, rationale, placement?, edges?)",
+			promptGuidelines: [
+				"Use this when runtime discovery reveals additional repos are needed.",
+				"Do not wait for approval; continue current segment work after requesting.",
+				"requestedRepoIds must be non-empty, unique, and match /^[a-z0-9][a-z0-9._-]*$/.",
+				"In supervised/interactive autonomy, this tool returns accepted: false (V1 guard).",
+			],
+			parameters: Type.Object({
+				requestedRepoIds: Type.Array(Type.String({ description: "Repo ID to add" }), {
+					description: "Repo IDs to add as new segments",
+				}),
+				rationale: Type.String({
+					description: "Why these repos are needed",
+				}),
+				placement: Type.Optional(Type.Union([
+					Type.Literal("after-current"),
+					Type.Literal("end"),
+				], {
+					description: "Where to place new segments: after-current (default) or end",
+				})),
+				edges: Type.Optional(Type.Array(Type.Object({
+					from: Type.String({ description: "Source repo ID" }),
+					to: Type.String({ description: "Destination repo ID" }),
+				}), {
+					description: "Optional ordering edges between requested repos",
+				})),
+			}),
+			async execute(_toolCallId, params) {
+				const autonomy = resolveSupervisorAutonomy();
+				if (autonomy !== "autonomous") {
+					const rejected = {
+						accepted: false,
+						requestId: null,
+						message: "Segment expansion requires autonomous supervisor mode",
+					};
+					return {
+						content: [{ type: "text" as const, text: JSON.stringify(rejected) }],
+						details: rejected,
+					};
+				}
+
+				const requestedRepoIds = Array.isArray(params.requestedRepoIds)
+					? params.requestedRepoIds.map((id) => String(id).trim()).filter(Boolean)
+					: [];
+				const rejections: Array<{ repoId: string; reason: string }> = [];
+
+				if (requestedRepoIds.length === 0) {
+					rejections.push({ repoId: "", reason: "requestedRepoIds must be a non-empty array" });
+				} else {
+					const seen = new Set<string>();
+					for (const repoId of requestedRepoIds) {
+						if (!REPO_ID_PATTERN.test(repoId)) {
+							rejections.push({ repoId, reason: "invalid repo ID format" });
+							continue;
+						}
+						if (seen.has(repoId)) {
+							rejections.push({ repoId, reason: "duplicate repo ID in request" });
+							continue;
+						}
+						seen.add(repoId);
+					}
+				}
+
+				if (rejections.length > 0) {
+					const rejected = {
+						accepted: false,
+						requestId: null,
+						message: "Segment expansion request rejected by tool validation",
+						rejections,
+					};
+					return {
+						content: [{ type: "text" as const, text: JSON.stringify(rejected) }],
+						details: rejected,
+					};
+				}
+
+				const requestId = buildExpansionRequestId();
+				const now = Date.now();
+				const request: SegmentExpansionRequest = {
+					requestId,
+					taskId: resolveTaskId(activeSegmentId),
+					fromSegmentId: activeSegmentId as SegmentExpansionRequest["fromSegmentId"],
+					requestedRepoIds,
+					rationale: String(params.rationale ?? "").trim(),
+					placement: params.placement === "end" ? "end" : "after-current",
+					edges: Array.isArray(params.edges)
+						? params.edges
+							.filter((edge): edge is { from: string; to: string } => Boolean(edge && typeof edge.from === "string" && typeof edge.to === "string"))
+							.map((edge) => ({ from: edge.from.trim(), to: edge.to.trim() }))
+							.filter((edge) => edge.from.length > 0 && edge.to.length > 0)
+						: [],
+					timestamp: now,
+				};
+
+				try {
+					writeSegmentExpansionRequest(request);
+					const accepted = {
+						accepted: true,
+						requestId,
+						message: "Segment expansion request accepted",
+					};
+					return {
+						content: [{ type: "text" as const, text: JSON.stringify(accepted) }],
+						details: accepted,
+					};
+				} catch (err) {
+					const failed = {
+						accepted: false,
+						requestId: null,
+						message: err instanceof Error ? err.message : String(err),
+					};
+					return {
+						content: [{ type: "text" as const, text: JSON.stringify(failed) }],
+						details: failed,
+					};
+				}
+			},
+		});
+	}
 
 	// ── review_step Tool (TP-117) ─────────────────────────────────────
 	// Spawns a reviewer subprocess to evaluate work at step boundaries.

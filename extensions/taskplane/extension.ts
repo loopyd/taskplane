@@ -1032,6 +1032,7 @@ export function startBatchInWorker(
 				wkData.agentRoot,
 				wkData.force ?? false,
 				onSupervisorAlert ?? null,
+				wkData.supervisorAutonomy ?? "autonomous",
 			)
 			: () => executeOrchBatch(
 				wkData.args ?? "",
@@ -1046,6 +1047,7 @@ export function startBatchInWorker(
 				wkData.agentRoot,
 				null, // onEngineEvent
 				onSupervisorAlert ?? null,
+				wkData.supervisorAutonomy ?? "autonomous",
 			);
 		startBatchAsync(fallbackFn, batchState, ctx, updateWidget, onTerminal);
 		return null;
@@ -2052,6 +2054,7 @@ export default function (pi: ExtensionAPI) {
 					: null,
 				workspaceRoot: execCtx!.workspaceRoot,
 				agentRoot: execCtx!.pointer?.agentRoot,
+				supervisorAutonomy: supervisorConfig.autonomy,
 			},
 			orchBatchState,
 			ctx,
@@ -2396,6 +2399,7 @@ export default function (pi: ExtensionAPI) {
 				workspaceRoot: execCtx!.workspaceRoot,
 				agentRoot: execCtx!.pointer?.agentRoot,
 				force,
+				supervisorAutonomy: supervisorConfig.autonomy,
 			},
 			orchBatchState,
 			ctx,

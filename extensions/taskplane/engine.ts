@@ -1008,6 +1008,7 @@ async function attemptStaleWorktreeRecovery(
 	stateRoot: string,
 	runtimeBackend?: RuntimeBackend,
 	onSupervisorAlert?: SupervisorAlertCallback,
+	supervisorAutonomy: "interactive" | "supervised" | "autonomous" = "autonomous",
 ): Promise<WaveExecutionResult | null> {
 	// Only attempt recovery for ALLOC_WORKTREE_FAILED
 	if (!waveResult.allocationError || waveResult.allocationError.code !== "ALLOC_WORKTREE_FAILED") {
@@ -1109,6 +1110,7 @@ async function attemptStaleWorktreeRecovery(
 		workspaceConfig,
 		runtimeBackend,
 		onSupervisorAlert,
+		supervisorAutonomy,
 	);
 
 	return retryResult;
@@ -1185,6 +1187,7 @@ export async function executeOrchBatch(
 	agentRoot?: string,
 	onEngineEvent?: EngineEventCallback | null,
 	onSupervisorAlert?: SupervisorAlertCallback | null,
+	supervisorAutonomy: "interactive" | "supervised" | "autonomous" = "autonomous",
 ): Promise<void> {
 	const repoRoot = cwd;
 	// State files (.pi/batch-state.json, lane-state, etc.) belong in the workspace root,
@@ -1653,6 +1656,7 @@ export async function executeOrchBatch(
 			workspaceConfig,
 			selectedBackend,
 			emitAlert,
+			supervisorAutonomy,
 		);
 
 		// ── TP-039: Tier 0 — Stale worktree recovery ────────────
@@ -1674,6 +1678,7 @@ export async function executeOrchBatch(
 				stateRoot,
 				selectedBackend,
 				emitAlert,
+				supervisorAutonomy,
 			);
 			if (retryResult) {
 				const staleRecovered = !retryResult.allocationError;

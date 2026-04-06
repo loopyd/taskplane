@@ -985,6 +985,7 @@ export async function resumeOrchBatch(
 	agentRoot?: string,
 	force: boolean = false,
 	onSupervisorAlert?: import("./types.ts").SupervisorAlertCallback | null,
+	supervisorAutonomy: "interactive" | "supervised" | "autonomous" = "autonomous",
 ): Promise<void> {
 	const repoRoot = cwd;
 	// State files (.pi/batch-state.json, lane-state, etc.) belong in the workspace root,
@@ -1884,6 +1885,7 @@ export async function resumeOrchBatch(
 			workspaceConfig,
 			resumeBackend,
 			emitAlert,
+			supervisorAutonomy,
 		);
 
 		batchState.waveResults.push(waveResult);

@@ -107,6 +107,8 @@ export interface EngineWorkerData {
 	agentRoot?: string;
 	/** Force flag for resume */
 	force?: boolean;
+	/** Supervisor autonomy mode propagated to worker bridge tools. */
+	supervisorAutonomy?: "interactive" | "supervised" | "autonomous";
 }
 
 // ── Serialization helpers (used by both main thread and worker) ──────
@@ -332,6 +334,7 @@ if (process.env.TASKPLANE_ENGINE_FORK === "1" && typeof process.send === "functi
 				data.agentRoot,
 				data.force ?? false,
 				onSupervisorAlert,
+				data.supervisorAutonomy ?? "autonomous",
 			)
 			: executeOrchBatch(
 				data.args ?? "",
@@ -346,6 +349,7 @@ if (process.env.TASKPLANE_ENGINE_FORK === "1" && typeof process.send === "functi
 				data.agentRoot,
 				onEngineEvent,
 				onSupervisorAlert,
+				data.supervisorAutonomy ?? "autonomous",
 			);
 
 		enginePromise
