@@ -37,11 +37,11 @@
 - [x] Run targeted expansion unit tests and capture passing evidence for Step 2
 
 ### Step 3: Repeat-repo expansion test
-**Status:** ⬜ Not Started
-- [ ] Create repeat-repo test task
-- [ ] Second-pass segment created (::2)
-- [ ] Worktree from orch branch
-- [ ] Merge succeeds
+**Status:** 🟨 In Progress
+- [ ] Add unit coverage for repeat-repo expansion that creates `shared-libs::2` after `api-service` second-pass request
+- [ ] Add unit coverage for repeat-repo dependency wiring so second-pass segment depends on `api-service` and rewires downstream dependents
+- [ ] Add unit coverage for repeat-repo persistence metadata using orch-branch provisioning for the `::2` segment
+- [ ] Run targeted repeat-repo expansion unit tests and capture passing evidence
 
 ### Step 4: Resume after expansion
 **Status:** ⬜ Not Started
