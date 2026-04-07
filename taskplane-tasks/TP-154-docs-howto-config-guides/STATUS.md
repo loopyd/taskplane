@@ -71,6 +71,8 @@
 | 2026-04-07 | Task staged | PROMPT.md and STATUS.md created |
 | 2026-04-07 18:55 | Task started | Runtime V2 lane-runner execution |
 | 2026-04-07 18:55 | Step 0 started | Preflight |
+| 2026-04-07 18:59 | Worker iter 1 | done in 222s, tools: 44 |
+| 2026-04-07 18:59 | Task complete | .DONE created |
 
 ---
 
