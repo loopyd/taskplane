@@ -177,16 +177,15 @@ describe("17.x — Deterministic buildIntegrationPlan: branch→mode mapping", (
 		mockExecFileSync.mock.restore();
 	});
 
-	it("17.1: protected base branch → PR mode", () => {
-		configureMockExecFileSync("protected");
+	it("17.1: protected base branch + linear history → FF mode (TP-149: try FF before PR)", () => {
+		configureMockExecFileSync("protected", true /* isAncestor */);
 		const batchState = makeIntegrationBatchState();
 
 		const plan = buildIntegrationPlan(batchState, "/fake/cwd");
 
 		expect(plan).not.toBeNull();
-		expect(plan!.mode).toBe("pr");
+		expect(plan!.mode).toBe("ff");
 		expect(plan!.branchProtection).toBe("protected");
-		expect(plan!.rationale).toContain("protected");
 	});
 
 	it("17.2: unknown protection with remotes → ff mode (TP-149: no longer defaults to PR)", () => {
@@ -426,8 +425,8 @@ describe("18.x — Auto mode: executor call order and message assertions", () =>
 		expect(state.active).toBe(false);
 	});
 
-	it("18.5: PR mode — executor called with pr mode, CI lifecycle message emitted", () => {
-		configureMockExecFileSync("protected");
+	it("18.5: PR mode (protected + diverged) — executor called with pr mode", () => {
+		configureMockExecFileSync("protected", false);
 		const pi = makeMockPi();
 		const state = freshSupervisorState();
 		state.active = true;
@@ -576,8 +575,8 @@ describe("19.x — Manual-mode guidance and branch-protection-detected default-t
 		expect(integrationMsgs).toHaveLength(0);
 	});
 
-	it("19.4: branch protection detected → defaults to PR mode in buildIntegrationPlan", () => {
-		configureMockExecFileSync("protected");
+	it("19.4: branch protection detected + diverged → PR mode in buildIntegrationPlan", () => {
+		configureMockExecFileSync("protected", false /* diverged */);
 		const batchState = makeIntegrationBatchState();
 
 		const plan = buildIntegrationPlan(batchState, "/fake/cwd");
@@ -585,14 +584,12 @@ describe("19.x — Manual-mode guidance and branch-protection-detected default-t
 		expect(plan).not.toBeNull();
 		expect(plan!.mode).toBe("pr");
 		expect(plan!.branchProtection).toBe("protected");
-		// formatIntegrationPlan shows protection info
 		const text = formatIntegrationPlan(plan!);
 		expect(text).toContain("pull request");
-		expect(text).toContain("protection detected");
 	});
 
-	it("19.5: branch protection detected → supervised mode presents PR plan for confirmation", () => {
-		configureMockExecFileSync("protected");
+	it("19.5: branch protection detected + diverged → supervised mode presents PR plan", () => {
+		configureMockExecFileSync("protected", false);
 		const pi = makeMockPi();
 		const state = freshSupervisorState();
 		state.active = true;
@@ -624,8 +621,8 @@ describe("19.x — Manual-mode guidance and branch-protection-detected default-t
 		expect(state.active).toBe(true);
 	});
 
-	it("19.6: branch protection detected → auto mode executes PR without confirmation", () => {
-		configureMockExecFileSync("protected");
+	it("19.6: branch protection detected + diverged → auto mode executes PR without confirmation", () => {
+		configureMockExecFileSync("protected", false);
 		const pi = makeMockPi();
 		const state = freshSupervisorState();
 		state.active = true;

@@ -582,12 +582,12 @@ export function resolveBaseBranch(
 			// This means worktrees will branch from the repo's current HEAD
 			// instead of the orch branch, bypassing batch isolation.
 			console.error(
-				`[resolveBaseBranch] WARNING: orch branch "${batchBaseBranch}" not found in repo "${repoId}" at ${repoRoot} — falling back to repo HEAD. ` +
+				`[taskplane] resolveBaseBranch WARNING: orch branch "${batchBaseBranch}" not found in repo "${repoId}" at ${repoRoot} — falling back to repo HEAD. ` +
 				`This bypasses orch branch isolation. Ensure the orch branch was created in all workspace repos.`,
 			);
 		} catch (err) {
 			console.error(
-				`[resolveBaseBranch] WARNING: orch branch check failed for repo "${repoId}" at ${repoRoot}: ${err}`,
+				`[taskplane] resolveBaseBranch WARNING: orch branch check failed for repo "${repoId}" at ${repoRoot}: ${err}`,
 			);
 		}
 	}
@@ -1037,6 +1037,16 @@ export function enforceGlobalLaneCap(
 		// Merge into the first lane of the same repo (deterministic target)
 		group[0].assignments.push(...removed.assignments);
 		excess--;
+	}
+
+	// Warn if cap could not be fully enforced (more repos than maxLanes)
+	const finalTotal = [...byRepo.values()].reduce((sum, g) => sum + g.length, 0);
+	if (finalTotal > maxLanes) {
+		console.error(
+			`[taskplane] warning: global maxLanes=${maxLanes} could not be enforced — ` +
+			`${byRepo.size} repos each need at least 1 lane (total: ${finalTotal}). ` +
+			`Increase maxLanes to at least ${byRepo.size} to avoid this.`,
+		);
 	}
 
 	// Rebuild entries array with sequential global lane numbers

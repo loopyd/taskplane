@@ -471,22 +471,11 @@ export function buildIntegrationPlan(
 	const protection = protectionOverride
 		?? (remotes ? detectBranchProtection(baseBranch, cwd) : "unprotected");
 
-	// Step 3: Only use PR mode if protection is CONFIRMED protected (TP-149)
-	// "unknown" no longer defaults to PR — prefer FF/merge which work without remotes.
-	if (protection === "protected") {
-		return {
-			mode: "pr",
-			orchBranch,
-			baseBranch,
-			batchId,
-			branchProtection: protection,
-			rationale: `Base branch \`${baseBranch}\` is protected — creating a pull request for review.`,
-			succeededTasks: batchState.succeededTasks,
-			failedTasks: batchState.failedTasks,
-		};
-	}
+	// Step 3: Always try FF first, then merge, then PR (TP-149).
+	// Protected branches may still allow FF/merge via API tokens.
+	// PR is the last resort when direct merge is blocked.
 
-	// Step 4: Try fast-forward first (cleanest, most common — TP-149)
+	// Step 3a: Try fast-forward first (cleanest, most common)
 	try {
 		execFileSync("git", ["merge-base", "--is-ancestor", baseBranch, orchBranch], {
 			encoding: "utf-8",
@@ -506,7 +495,20 @@ export function buildIntegrationPlan(
 			failedTasks: batchState.failedTasks,
 		};
 	} catch {
-		// Branches have diverged — need merge commit
+		// Branches have diverged — need merge commit or PR
+		// Step 3c: If protected AND remotes exist, prefer PR (merge may be blocked by push protection)
+		if (protection === "protected" && remotes) {
+			return {
+				mode: "pr",
+				orchBranch,
+				baseBranch,
+				batchId,
+				branchProtection: protection,
+				rationale: `Branches diverged and \`${baseBranch}\` is protected — creating a pull request.`,
+				succeededTasks: batchState.succeededTasks,
+				failedTasks: batchState.failedTasks,
+			};
+		}
 		return {
 			mode: "merge",
 			orchBranch,

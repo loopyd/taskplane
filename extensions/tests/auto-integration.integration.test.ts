@@ -231,7 +231,7 @@ describe("10.x — Integration plan: buildIntegrationPlan", () => {
 		expect(plan).toBeNull();
 	});
 
-	it("10.4: protected branch → PR mode", () => {
+	it("10.4: protected + linear → FF mode (TP-149: try FF before PR)", () => {
 		const repo = createLinearGitRepo();
 		try {
 			const state = makeIntegrationBatchState({
@@ -240,9 +240,8 @@ describe("10.x — Integration plan: buildIntegrationPlan", () => {
 			});
 			const plan = buildIntegrationPlan(state, repo.dir, "protected");
 			expect(plan).not.toBeNull();
-			expect(plan!.mode).toBe("pr");
+			expect(plan!.mode).toBe("ff");
 			expect(plan!.branchProtection).toBe("protected");
-			expect(plan!.rationale).toContain("protected");
 		} finally {
 			rmSync(repo.dir, { recursive: true, force: true });
 		}
@@ -1680,7 +1679,7 @@ describe("18.x — Branch protection detected → defaults to PR mode (R006)", (
 		}
 	});
 
-	it("18.2: buildIntegrationPlan with protected override → PR mode with protection rationale", () => {
+	it("18.2: buildIntegrationPlan with protected + linear → FF mode (TP-149: try FF first)", () => {
 		const repo = createLinearGitRepo();
 		try {
 			const state = makeIntegrationBatchState({
@@ -1689,10 +1688,8 @@ describe("18.x — Branch protection detected → defaults to PR mode (R006)", (
 			});
 			const plan = buildIntegrationPlan(state, repo.dir, "protected");
 			expect(plan).not.toBeNull();
-			expect(plan!.mode).toBe("pr");
+			expect(plan!.mode).toBe("ff");
 			expect(plan!.branchProtection).toBe("protected");
-			expect(plan!.rationale).toContain("protected");
-			expect(plan!.rationale).toContain("pull request");
 		} finally {
 			rmSync(repo.dir, { recursive: true, force: true });
 		}
