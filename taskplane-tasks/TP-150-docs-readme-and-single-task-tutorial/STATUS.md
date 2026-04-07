@@ -1,6 +1,6 @@
 # TP-150: Update docs README and rewrite single-task tutorial — Status
 
-**Current Step:** Step 1: Update docs/README.md
+**Current Step:** Step 2: Rewrite docs/tutorials/run-your-first-task.md
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-07
 **Review Level:** 0
@@ -20,12 +20,12 @@
 ---
 
 ### Step 1: Update docs/README.md
-**Status:** ⬜ Not Started
+**Status:** ✅ Complete
 
-- [ ] Update "New Users" tutorial links — reframe "Run Your First Task" description
-- [ ] Update "Operators" section — fix "Configure Task Runner" link text
-- [ ] Remove all `/task` references throughout file
-- [ ] Verify all links resolve to valid files
+- [x] Update "New Users" tutorial links — reframe "Run Your First Task" description
+- [x] Update "Operators" section — fix "Configure Task Runner" link text
+- [x] Remove all `/task` references throughout file
+- [x] Verify all links resolve to valid files
 
 ---
 
