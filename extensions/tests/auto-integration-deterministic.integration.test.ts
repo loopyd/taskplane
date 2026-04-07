@@ -5,7 +5,7 @@
  * branch protection detection and git merge-base behavior. Separated
  * from auto-integration.test.ts because mock.module is file-scoped.
  *
- *   17.x — Deterministic buildIntegrationPlan: protected→PR, unprotected+linear→ff, unprotected+diverged→merge
+ *   17.x — Deterministic buildIntegrationPlan: protected+remotes→PR, unprotected+linear→ff, unprotected+diverged→merge, unknown→ff/merge
  *   18.x — Auto-mode executor call order + no confirmation prompt
  *   19.x — Manual-mode guidance + branch-protection default-to-PR
  *
@@ -115,12 +115,19 @@ function makeMockExecutor(
  *
  * @param protection - "protected" | "unprotected" | "unknown"
  * @param isAncestor - true if baseBranch is ancestor of orchBranch (ff possible)
+ * @param hasRemotes - whether git remote returns configured remotes (TP-149)
  */
 function configureMockExecFileSync(
 	protection: "protected" | "unprotected" | "unknown",
 	isAncestor: boolean = true,
+	hasRemotes: boolean = true,
 ) {
 	mockExecFileSync.mock.mockImplementation((cmd: string, args: string[], _opts: any) => {
+		// git remote -- used by hasGitRemotes (TP-149)
+		if (cmd === "git" && args[0] === "remote" && args.length === 1) {
+			return hasRemotes ? "origin\n" : "";
+		}
+
 		// gh repo view -- used by detectBranchProtection
 		if (cmd === "gh" && args[0] === "repo" && args[1] === "view") {
 			return "owner/repo";
@@ -182,16 +189,40 @@ describe("17.x — Deterministic buildIntegrationPlan: branch→mode mapping", (
 		expect(plan!.rationale).toContain("protected");
 	});
 
-	it("17.2: unknown protection → PR mode (safety fallback)", () => {
-		configureMockExecFileSync("unknown");
+	it("17.2: unknown protection with remotes → ff mode (TP-149: no longer defaults to PR)", () => {
+		configureMockExecFileSync("unknown", true /* isAncestor */, true /* hasRemotes */);
 		const batchState = makeIntegrationBatchState();
 
 		const plan = buildIntegrationPlan(batchState, "/fake/cwd");
 
 		expect(plan).not.toBeNull();
-		expect(plan!.mode).toBe("pr");
+		expect(plan!.mode).toBe("ff");
 		expect(plan!.branchProtection).toBe("unknown");
-		expect(plan!.rationale).toContain("safety");
+		expect(plan!.rationale).toContain("linear");
+	});
+
+	it("17.2b: no remotes → skips protection check, uses ff (TP-149)", () => {
+		configureMockExecFileSync("unknown", true, false /* no remotes */);
+		const batchState = makeIntegrationBatchState();
+
+		const plan = buildIntegrationPlan(batchState, "/fake/cwd");
+
+		expect(plan).not.toBeNull();
+		expect(plan!.mode).toBe("ff");
+		expect(plan!.branchProtection).toBe("unprotected");
+		expect(plan!.rationale).toContain("linear");
+	});
+
+	it("17.2c: no remotes + diverged → merge mode (TP-149)", () => {
+		configureMockExecFileSync("unknown", false /* diverged */, false /* no remotes */);
+		const batchState = makeIntegrationBatchState();
+
+		const plan = buildIntegrationPlan(batchState, "/fake/cwd");
+
+		expect(plan).not.toBeNull();
+		expect(plan!.mode).toBe("merge");
+		expect(plan!.branchProtection).toBe("unprotected");
+		expect(plan!.rationale).toContain("diverged");
 	});
 
 	it("17.3: unprotected + linear history → ff mode", () => {
