@@ -33,10 +33,10 @@
 - [x] Run targeted tests (29 pass, 0 fail)
 
 ### Step 3: Fix session naming
-**Status:** ⬜ Not Started
-- [ ] Identify naming mismatch
-- [ ] Add V2 agent ID to batch state
-- [ ] Update widget lookup
+**Status:** 🟨 In Progress
+- [ ] Fix isV2AgentAlive to handle workspace-mode lane session IDs (laneSessionId includes repoId but agentId uses global lane number)
+- [ ] Add agentId field to AllocatedLane so the widget can look up by the correct V2 registry key
+- [ ] Update formatting.ts widget and dashboard to use agentId when available for liveness checks
 - [ ] Run targeted tests
 
 ### Step 4: Testing & Verification
