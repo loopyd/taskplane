@@ -1,7 +1,7 @@
 # TP-155: Update dev setup and orchestration tutorial — Status
 
-**Current Step:** Step 2: Update docs/tutorials/run-your-first-orchestration.md
-**Status:** 🟡 In Progress
+**Current Step:** Step 3: Documentation & Delivery
+**Status:** ✅ Complete
 **Last Updated:** 2026-04-07
 **Review Level:** 0
 **Review Counter:** 0
@@ -38,10 +38,10 @@
 ---
 
 ### Step 3: Documentation & Delivery
-**Status:** ⬜ Not Started
+**Status:** ✅ Complete
 
-- [ ] Verify all internal doc links resolve correctly
-- [ ] Discoveries logged
+- [x] Verify all internal doc links resolve correctly
+- [x] Discoveries logged
 
 ---
 
@@ -56,6 +56,8 @@
 
 | Discovery | Disposition | Location |
 |-----------|-------------|----------|
+| `development-setup.md` had no internal markdown links to verify | No action needed | docs/maintainers/development-setup.md |
+| Tutorial `commands.md#orch-areaspathsall` anchor link — base file exists, anchor assumed valid | No action needed | docs/tutorials/run-your-first-orchestration.md |
 
 ---
 
