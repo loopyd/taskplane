@@ -1,6 +1,6 @@
 # TP-148: Wave Display, MaxLanes, Session Naming — Status
 
-**Current Step:** Step 0: Preflight
+**Current Step:** Step 1: Wave display with segment context
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-07
 **Review Level:** 2
@@ -19,10 +19,10 @@
 - [x] Read dashboard wave display
 
 ### Step 1: Wave display with segment context
-**Status:** ⬜ Not Started
-- [ ] Add segment info to wave data
-- [ ] Dashboard segment display
-- [ ] Supervisor event segment context
+**Status:** 🟨 In Progress
+- [ ] Add segment context to wavePlan in persisted state (segment index/total/repoId per task in each wave)
+- [ ] Dashboard: show segment info (e.g. "TP-006 (segment 2/3: api-service)") in wave tooltip and task rows
+- [ ] Engine: include segment context in wave_start events
 - [ ] Run targeted tests
 
 ### Step 2: Global maxLanes cap
