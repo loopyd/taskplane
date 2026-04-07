@@ -1,25 +1,25 @@
 # TP-153: Update architecture and explanation docs — Status
 
-**Current Step:** Not Started
-**Status:** 🔵 Ready for Execution
+**Current Step:** Step 1: Update docs/explanation/architecture.md
+**Status:** 🟡 In Progress
 **Last Updated:** 2026-04-07
 **Review Level:** 0
 **Review Counter:** 0
-**Iteration:** 0
+**Iteration:** 1
 **Size:** M
 
 ---
 
 ### Step 0: Preflight
-**Status:** ⬜ Not Started
+**Status:** ✅ Complete
 
-- [ ] Read all files in `docs/explanation/` and catalog every `/task` or stale reference
-- [ ] Read root `README.md` "How It Works" section for ground truth
+- [x] Read all files in `docs/explanation/` and catalog every `/task` or stale reference
+- [x] Read root `README.md` "How It Works" section for ground truth
 
 ---
 
 ### Step 1: Update docs/explanation/architecture.md
-**Status:** ⬜ Not Started
+**Status:** 🟨 In Progress
 
 - [ ] Update ASCII diagram to remove `/task /task-status`
 - [ ] Rewrite "Task Runner extension" module description as internal orchestrator module
@@ -67,6 +67,8 @@
 | Timestamp | Action | Outcome |
 |-----------|--------|---------|
 | 2026-04-07 | Task staged | PROMPT.md and STATUS.md created |
+| 2026-04-07 18:55 | Task started | Runtime V2 lane-runner execution |
+| 2026-04-07 18:55 | Step 0 started | Preflight |
 
 ---
 
