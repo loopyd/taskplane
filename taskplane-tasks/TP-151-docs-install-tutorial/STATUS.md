@@ -1,6 +1,6 @@
 # TP-151: Update install tutorial for current architecture — Status
 
-**Current Step:** Step 0: Preflight
+**Current Step:** Step 1: Update docs/tutorials/install.md
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-07
 **Review Level:** 0
@@ -19,17 +19,17 @@
 ---
 
 ### Step 1: Update docs/tutorials/install.md
-**Status:** ⬜ Not Started
+**Status:** ✅ Complete
 
-- [ ] Remove tmux from prerequisites and delete "Installing tmux" subsection
-- [ ] Remove all `/task` references
-- [ ] Update config references to `taskplane-config.json` as primary
-- [ ] Remove tmux detection subsection
-- [ ] Update "Verify Commands" section
-- [ ] Update "Quick Smoke Test" section
-- [ ] Update troubleshooting section
-- [ ] Fix YAML vs JSON tip
-- [ ] Update "Next Step" link if needed
+- [x] Remove tmux from prerequisites and delete "Installing tmux" subsection
+- [x] Remove all `/task` references
+- [x] Update config references to `taskplane-config.json` as primary
+- [x] Remove tmux detection subsection
+- [x] Update "Verify Commands" section
+- [x] Update "Quick Smoke Test" section
+- [x] Update troubleshooting section
+- [x] Fix YAML vs JSON tip
+- [x] Update "Next Step" link if needed
 
 ---
 

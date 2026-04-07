@@ -1,43 +1,12 @@
 # Install Taskplane
 
-This tutorial gets Taskplane running in a project and verifies that `/task` and `/orch` are available in your pi session.
+This tutorial gets Taskplane running in a project and verifies that `/orch` is available in your pi session.
 
 ## Prerequisites
 
 - Node.js **22+**
 - [pi](https://github.com/badlogic/pi-mono)
 - Git
-- **tmux** (strongly recommended — required for `/orch` parallel execution)
-
-### Installing tmux
-
-tmux is needed for the orchestrator to spawn parallel worker sessions in isolated worktrees. Without it, `/orch` will not work.
-
-**Windows (Git Bash):**
-
-```bash
-taskplane install-tmux
-```
-
-This downloads tmux from the official [MSYS2](https://packages.msys2.org/packages/tmux) package repository and installs it into `~/bin/`. No admin rights or external tools needed. To upgrade later, run the same command with `--force`.
-
-**macOS:**
-
-```bash
-brew install tmux
-```
-
-**Linux (Debian/Ubuntu):**
-
-```bash
-sudo apt install tmux
-```
-
-Verify tmux is available:
-
-```bash
-tmux -V
-```
 
 ---
 
@@ -111,10 +80,10 @@ taskplane init --preset full
 
 This scaffolds:
 
-- `.pi/task-runner.yaml` — task runner config
-- `.pi/task-orchestrator.yaml` — orchestrator config
-- `.pi/taskplane-config.json` — unified JSON config (takes precedence when present)
+- `.pi/taskplane-config.json` — canonical JSON config (task runner + orchestrator settings)
 - `.pi/taskplane.json` — version tracker
+- `.pi/task-runner.yaml` — legacy task runner config (fallback; ignored when JSON config is present)
+- `.pi/task-orchestrator.yaml` — legacy orchestrator config (fallback; ignored when JSON config is present)
 - `.pi/agents/task-worker.md`, `task-reviewer.md`, `task-merger.md` — agent prompts
 - `taskplane-tasks/CONTEXT.md` — task area context
 - `taskplane-tasks/EXAMPLE-001-hello-world/{PROMPT.md,STATUS.md}` — example tasks
@@ -141,10 +110,10 @@ Init detects the subdirectory repos and prompts you to choose which one holds th
 
 Files created in the config repo (e.g., `repo-a`):
 
-- `repo-a/.taskplane/task-runner.yaml`
-- `repo-a/.taskplane/task-orchestrator.yaml`
 - `repo-a/.taskplane/taskplane-config.json`
 - `repo-a/.taskplane/taskplane.json`
+- `repo-a/.taskplane/task-runner.yaml` (legacy fallback)
+- `repo-a/.taskplane/task-orchestrator.yaml` (legacy fallback)
 - `repo-a/.taskplane/workspace.json` — lists all discovered repos
 - `repo-a/.taskplane/agents/task-worker.md`, `task-reviewer.md`, `task-merger.md`
 - `repo-a/taskplane-tasks/CONTEXT.md`
@@ -185,17 +154,6 @@ If any of these files are already tracked in git, init detects them and offers t
 
 In workspace mode, these entries are prefixed with `.taskplane/` and added to the config repo's `.gitignore`.
 
-### tmux Detection
-
-Init checks for tmux availability and sets the orchestrator's `spawn_mode` accordingly:
-
-- **tmux found** → `spawn_mode: "tmux"` (parallel execution via tmux sessions)
-- **tmux not found** → `spawn_mode: "subprocess"` with a guidance message suggesting `taskplane install-tmux`
-
-This is silent when tmux is present. The `runner-only` preset skips this check since no orchestrator config is generated.
-
-> **Tip:** You can also use a single `.pi/taskplane-config.json` file instead of the two YAML files. When a JSON config is present it takes precedence and the YAML files are ignored. See the [task-runner config reference](../reference/configuration/task-runner.yaml.md#unified-json-config) and [orchestrator config reference](../reference/configuration/task-orchestrator.yaml.md#unified-json-config) for the JSON format.
-
 ---
 
 ## Validate the Installation
@@ -234,12 +192,6 @@ Inside pi, run:
 
 This confirms orchestrator commands are registered and shows a plan preview.
 
-Optional single-task check (deprecated — use `/orch` for all workflows):
-
-```
-/task
-```
-
 To review or customize your configuration interactively:
 
 ```
@@ -248,9 +200,9 @@ To review or customize your configuration interactively:
 
 ---
 
-## Quick Smoke Test (Orchestrator-First)
+## Quick Smoke Test
 
-Recommended flow:
+Run these steps to verify everything works end-to-end:
 
 1. In terminal A, launch the dashboard:
 
@@ -274,12 +226,6 @@ Expected artifacts:
 - `hello-taskplane-2.md`
 - `taskplane-tasks/EXAMPLE-001-hello-world/.DONE`
 - `taskplane-tasks/EXAMPLE-002-parallel-smoke/.DONE`
-
-Optional single-task mode (deprecated — prefer `/orch` with a single task path):
-
-```text
-/task taskplane-tasks/EXAMPLE-001-hello-world/PROMPT.md
-```
 
 ---
 
@@ -322,25 +268,9 @@ taskplane uninstall --package-only
 
 Use `npx taskplane <command>` or `.pi/npm/node_modules/.bin/taskplane <command>`.
 
-### `/task` is unknown inside pi
+### `taskplane doctor` reports missing config files
 
-You likely installed via `npm` but not via `pi`. Run:
-
-```bash
-pi install npm:taskplane
-```
-
-### `taskplane doctor` reports missing `.pi/task-*.yaml`
-
-Run `taskplane init` from the project root.
-
-### tmux missing or not found
-
-tmux is required for `/orch` parallel execution. Install it:
-
-- **Windows:** `taskplane install-tmux`
-- **macOS:** `brew install tmux`
-- **Linux:** `sudo apt install tmux`
+Run `taskplane init` from the project root to scaffold the required `.pi/taskplane-config.json` and other config files.
 
 ---
 
