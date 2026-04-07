@@ -1,7 +1,7 @@
 # TP-150: Update docs README and rewrite single-task tutorial — Status
 
 **Current Step:** Step 3: Documentation & Delivery
-**Status:** 🟡 In Progress
+**Status:** ✅ Complete
 **Last Updated:** 2026-04-07
 **Review Level:** 0
 **Review Counter:** 0
@@ -43,10 +43,10 @@
 ---
 
 ### Step 3: Documentation & Delivery
-**Status:** ⬜ Not Started
+**Status:** ✅ Complete
 
-- [ ] Verify all internal doc links resolve correctly
-- [ ] Discoveries logged
+- [x] Verify all internal doc links resolve correctly
+- [x] Discoveries logged
 
 ---
 
@@ -61,6 +61,8 @@
 
 | Discovery | Disposition | Location |
 |-----------|-------------|----------|
+| Root README.md still has deprecated `/task` command entries in the commands table | Out of scope — another task handles root README cleanup | `README.md` |
+| `docs/how-to/use-tmux-for-visibility.md` exists but may be stale with Runtime V2 subprocess backend | Out of scope — note for future cleanup | `docs/README.md` Operators section |
 
 ---
 
