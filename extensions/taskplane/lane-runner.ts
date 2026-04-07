@@ -540,8 +540,16 @@ export async function executeTaskV2(
 	if (isNonFinalSegment) {
 		// Segment succeeded but more segments remain — suppress .DONE and "✅ Complete" status.
 		// The engine will advance the frontier and dispatch the next segment.
-		logExecution(statusPath, "Segment complete",
-			`Segment ${segmentId} succeeded (not final — .DONE suppressed)`);
+		// Also delete any .DONE the worker may have created directly (workers have
+		// write access and sometimes create .DONE on their own, bypassing this gate).
+		if (existsSync(donePath)) {
+			try { unlinkSync(donePath); } catch { /* best effort */ }
+			logExecution(statusPath, "Segment complete",
+				`Segment ${segmentId} succeeded (non-final — removed premature worker-created .DONE)`);
+		} else {
+			logExecution(statusPath, "Segment complete",
+				`Segment ${segmentId} succeeded (not final — .DONE suppressed)`);
+		}
 		return makeResult(taskId, segmentId, workerAgentId, "succeeded", startTime,
 			"Segment completed (non-final — .DONE suppressed)", false, totalIterations, cumulativeCostUsd, cumulativeTokens, config, statusPath, reviewerStatePath, lastTelemetry);
 	}
