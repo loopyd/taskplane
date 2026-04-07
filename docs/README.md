@@ -18,7 +18,7 @@ Start here if you're new to Taskplane.
 1. [Install Taskplane](tutorials/install.md)
 2. [Run Your First Orchestration](tutorials/run-your-first-orchestration.md)
 3. [Use the Dashboard](tutorials/use-the-dashboard.md)
-4. [Run Your First Task (Single-Task Mode)](tutorials/run-your-first-task.md)
+4. [Run Your First Task](tutorials/run-your-first-task.md) — run a single task with full orchestrator isolation via `/orch`
 
 Alternative setup:
 - [Install from Source](tutorials/install-from-source.md)
@@ -29,7 +29,7 @@ Alternative setup:
 
 Use these for concrete operational tasks.
 
-- [Configure Task Runner](how-to/configure-task-runner.md)
+- [Configure Worker & Reviews](how-to/configure-task-runner.md) — worker model, reviewer settings, context injection
 - [Configure Task Orchestrator](how-to/configure-task-orchestrator.md)
 - [Define Task Areas](how-to/define-task-areas.md)
 - [Pause, Resume, or Abort a Batch](how-to/pause-resume-abort-a-batch.md)
