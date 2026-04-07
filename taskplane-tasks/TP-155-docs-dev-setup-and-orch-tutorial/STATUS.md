@@ -1,6 +1,6 @@
 # TP-155: Update dev setup and orchestration tutorial — Status
 
-**Current Step:** Step 0: Preflight
+**Current Step:** Step 1: Update docs/maintainers/development-setup.md
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-07
 **Review Level:** 0
@@ -18,12 +18,12 @@
 ---
 
 ### Step 1: Update docs/maintainers/development-setup.md
-**Status:** ⬜ Not Started
+**Status:** ✅ Complete
 
-- [ ] Update "Run extensions locally" — remove standalone task-runner subsection
-- [ ] Update "Recommended local dev loop" — remove `/task` from smoke flows
-- [ ] Update "Suggested scratch-repo smoke test" — remove `/task` command
-- [ ] Update "File map" — clarify task-runner.ts is internal
+- [x] Update "Run extensions locally" — remove standalone task-runner subsection
+- [x] Update "Recommended local dev loop" — remove `/task` from smoke flows
+- [x] Update "Suggested scratch-repo smoke test" — remove `/task` command
+- [x] Update "File map" — clarify task-runner.ts is internal
 
 ---
 
