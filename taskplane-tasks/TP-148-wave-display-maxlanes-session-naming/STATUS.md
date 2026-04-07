@@ -26,10 +26,10 @@
 - [x] Run targeted tests (49 pass, 0 fail)
 
 ### Step 2: Global maxLanes cap
-**Status:** ⬜ Not Started
-- [ ] Count total lanes after per-repo allocation
-- [ ] Reduce if exceeds maxLanes
-- [ ] Preserve 1 lane per repo minimum
+**Status:** 🟨 In Progress
+- [ ] Add enforceGlobalLaneCap function in waves.ts that reduces lanes across repos when total exceeds maxLanes
+- [ ] Integrate global cap into allocateLanes after per-repo assignment
+- [ ] Add test: maxLanes=4 with 3 repos produces at most 4 total lanes
 - [ ] Run targeted tests
 
 ### Step 3: Fix session naming
