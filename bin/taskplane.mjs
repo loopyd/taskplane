@@ -2795,7 +2795,7 @@ function cmdDoctor() {
 		{ path: "agents/task-worker.md", required: true, hide: false },
 		{ path: "agents/task-reviewer.md", required: true, hide: false },
 		{ path: "agents/task-merger.md", required: true, hide: false },
-		// supervisor.md is created by /orch; taskplane.json is created at runtime
+		// supervisor.md is optional (scaffolded by init but may be absent in older projects); taskplane.json is created at runtime
 		{ path: "agents/supervisor.md", required: false, hide: true },
 		{ path: "taskplane.json", required: false, hide: true },
 	];

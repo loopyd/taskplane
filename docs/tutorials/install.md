@@ -82,7 +82,7 @@ This scaffolds:
 
 - `.pi/taskplane-config.json` — project configuration (task runner + orchestrator settings)
 - `.pi/taskplane.json` — version tracker
-- `.pi/agents/task-worker.md`, `task-reviewer.md`, `task-merger.md` — agent prompts
+- `.pi/agents/task-worker.md`, `task-reviewer.md`, `task-merger.md`, `supervisor.md` — agent prompts
 - `taskplane-tasks/CONTEXT.md` — task area context
 - `taskplane-tasks/EXAMPLE-001-hello-world/{PROMPT.md,STATUS.md}` — example tasks
 - `taskplane-tasks/EXAMPLE-002-parallel-smoke/{PROMPT.md,STATUS.md}` — example tasks
