@@ -42,17 +42,7 @@ Or with just:
 just orch
 ```
 
-### Load task-runner only
-
-```bash
-pi -e extensions/task-runner.ts
-```
-
-Or:
-
-```bash
-just task
-```
+The orchestrator loads `task-runner.ts` internally — there is no separate user-facing `/task` command.
 
 ---
 
@@ -148,7 +138,6 @@ and `@mariozechner/pi-tui` to local mock stubs so tests don't need the real pack
 4. Execute manual smoke flows:
    - `/orch-plan all`
    - `/orch all`
-   - `/task ...` (single-task mode)
    - `taskplane doctor`
 
 ---
@@ -168,14 +157,14 @@ Inside pi:
 ```text
 /orch-plan all
 /orch all
-/task taskplane-tasks/EXAMPLE-001-hello-world/PROMPT.md
+/orch taskplane-tasks/EXAMPLE-001-hello-world/PROMPT.md
 ```
 
 ---
 
 ## File map for core implementation
 
-- `extensions/task-runner.ts` — single-task engine
+- `extensions/task-runner.ts` — single-task execution engine (used internally by orchestrator lanes)
 - `extensions/task-orchestrator.ts` — orchestrator facade export
 - `extensions/taskplane/discovery.ts` — task discovery + dependency parsing
 - `extensions/taskplane/waves.ts` — DAG + wave computation + lane assignment
