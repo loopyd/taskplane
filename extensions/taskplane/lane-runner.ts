@@ -528,7 +528,25 @@ export async function executeTaskV2(
 			false, totalIterations, cumulativeCostUsd, cumulativeTokens, config, statusPath, reviewerStatePath, lastTelemetry);
 	}
 
-	// Create .DONE if not already present
+	// TP-145: Determine if this is a non-final segment of a multi-segment task.
+	// If more segments remain after this one, suppress .DONE creation so that
+	// the engine can advance the segment frontier and execute subsequent segments.
+	// .DONE must only exist when ALL segments of a multi-segment task are complete.
+	const isNonFinalSegment = segmentId != null
+		&& Array.isArray(unit.task.segmentIds)
+		&& unit.task.segmentIds.length > 1
+		&& unit.task.segmentIds[unit.task.segmentIds.length - 1] !== segmentId;
+
+	if (isNonFinalSegment) {
+		// Segment succeeded but more segments remain — suppress .DONE and "✅ Complete" status.
+		// The engine will advance the frontier and dispatch the next segment.
+		logExecution(statusPath, "Segment complete",
+			`Segment ${segmentId} succeeded (not final — .DONE suppressed)`);
+		return makeResult(taskId, segmentId, workerAgentId, "succeeded", startTime,
+			"Segment completed (non-final — .DONE suppressed)", false, totalIterations, cumulativeCostUsd, cumulativeTokens, config, statusPath, reviewerStatePath, lastTelemetry);
+	}
+
+	// Create .DONE if not already present (final segment or single-segment/whole-task execution)
 	if (!existsSync(donePath)) {
 		writeFileSync(donePath, `Completed: ${new Date().toISOString()}\nTask: ${taskId}\n`);
 	}
