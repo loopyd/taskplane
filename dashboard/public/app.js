@@ -1168,7 +1168,7 @@ function renderMailboxAuditEvent(evt) {
   } else {
     // Unknown event type — render generically
     direction = evt.from ? `${escapeHtml(evt.from)}` : '';
-    preview = JSON.stringify(evt).slice(0, 120);
+    preview = JSON.stringify(evt);
   }
 
   return `<div class="message-row">`
@@ -1199,7 +1199,7 @@ function renderMailboxDirMessage(msg) {
   else if (msg._status === 'reply-acked') statusBadge = '<span class="msg-badge msg-delivered">reply (acked)</span>';
   else statusBadge = '';
   const typeBadge = `<span class="msg-badge msg-type">${escapeHtml(msg.type || '')}</span>`;
-  const preview = (msg.content || '').slice(0, 120);
+  const preview = msg.content || '';
   const broadcastTag = msg._isBroadcast ? ' <span class="msg-badge msg-type">broadcast</span>' : '';
 
   return `<div class="message-row">`
