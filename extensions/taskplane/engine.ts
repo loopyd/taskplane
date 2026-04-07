@@ -22,7 +22,7 @@ import { readRegistrySnapshot, isTerminalStatus, isProcessAlive as registryIsPro
 import { buildBatchProgressSnapshot, buildEngineEventBase, buildSegmentId, buildSupervisorSegmentFrontierSnapshot, defaultResilienceState, FATAL_DISCOVERY_CODES, generateBatchId, TIER0_RETRYABLE_CLASSIFICATIONS, TIER0_RETRY_BUDGETS, tier0ScopeKey, tier0WaveScopeKey } from "./types.ts";
 import type { AllocatedLane, AllocatedTask, BatchHistorySummary, BatchTaskSummary, BatchWaveSummary, DiscoveryResult, EngineEventCallback, EscalationContext, LaneExecutionResult, LaneTaskOutcome, MergeWaveResult, OrchBatchPhase, OrchBatchRuntimeState, OrchestratorConfig, ParsedTask, PersistedSegmentRecord, SegmentExpansionRequest, SupervisorAlert, SupervisorAlertCallback, TaskRunnerConfig, TaskSegmentPlan, TaskSegmentPlanMap, TaskSegmentNode, Tier0EscalationPattern, Tier0RecoveryPattern, TokenCounts, WaveExecutionResult, WorkspaceConfig } from "./types.ts";
 import { buildDependencyGraph, computeWaveAssignments, resolveBaseBranch, resolveRepoRoot, validateGraph } from "./waves.ts";
-import { deleteBranchBestEffort, forceCleanupWorktree, formatPreflightResults, listWorktrees, preserveFailedLaneProgress, removeAllWorktrees, removeWorktree, runPreflight, safeResetWorktree, sleepSync } from "./worktree.ts";
+import { deleteBranchBestEffort, forceCleanupWorktree, formatPreflightResults, listWorktrees, preserveFailedLaneProgress, preserveSkippedLaneProgress, removeAllWorktrees, removeWorktree, runPreflight, safeResetWorktree, sleepSync } from "./worktree.ts";
 import { runPreflightCleanup, formatPreflightCleanup } from "./cleanup.ts";
 
 // ── Tier 0: Automatic Recovery Helpers (TP-039) ─────────────────────
@@ -2934,13 +2934,16 @@ export async function executeOrchBatch(
 		// files (especially for level-0 / fast tasks). Check each merge-candidate
 		// lane worktree and auto-commit any remaining changes so they're included
 		// in the merge. Skips lanes with only failed/stalled tasks (no merge).
+		// TP-147: Also auto-commit skipped-task lanes so partial progress
+		// (STATUS.md updates, partial code) is preserved on their branch.
 		for (const lane of waveResult.allocatedLanes) {
 			if (!lane.worktreePath || !existsSync(lane.worktreePath)) continue;
-			// Only check lanes that have at least one succeeded task (merge candidates)
 			const laneOutcome = laneOutcomeByNumber.get(lane.laneNumber);
 			if (!laneOutcome) continue;
 			const hasSucceeded = laneOutcome.tasks.some(t => t.status === "succeeded");
-			if (!hasSucceeded) continue;
+			const hasSkipped = laneOutcome.tasks.some(t => t.status === "skipped");
+			// Auto-commit merge candidates (succeeded) and skipped-task lanes
+			if (!hasSucceeded && !hasSkipped) continue;
 			try {
 				const addResult = runGit(["add", "-A"], lane.worktreePath);
 				if (!addResult.ok) {
@@ -3484,6 +3487,34 @@ export async function executeOrchBatch(
 			}
 			// TP-028: Stamp task outcomes with partial progress data for persistence
 			applyPartialProgressToOutcomes(ppResult, allTaskOutcomes);
+
+			// TP-147: Also preserve skipped task branches before inter-wave reset
+			const skippedPpResult = preserveSkippedLaneProgress(
+				latestAllocatedLanes,
+				allTaskOutcomes,
+				ppOpId,
+				batchState.batchId,
+				(repoId) => {
+					const perRepoRoot = resolveRepoRoot(repoId, repoRoot, workspaceConfig);
+					let targetBranch = batchState.orchBranch;
+					if (repoId && perRepoRoot !== repoRoot) {
+						try {
+							targetBranch = resolveBaseBranch(repoId, perRepoRoot, batchState.orchBranch, workspaceConfig);
+						} catch { /* fall back to orchBranch */ }
+					}
+					return { repoRoot: perRepoRoot, targetBranch };
+				},
+			);
+			// Merge unsafe branches from skipped tasks into the main set
+			for (const branch of skippedPpResult.unsafeBranches) {
+				ppUnsafeBranches.add(branch);
+			}
+			if (skippedPpResult.results.some(r => r.saved)) {
+				execLog("batch", batchState.batchId,
+					`preserved partial progress for ${skippedPpResult.results.filter(r => r.saved).length} skipped task(s) before inter-wave reset`);
+			}
+			// Stamp skipped task outcomes with partial progress data
+			applyPartialProgressToOutcomes(skippedPpResult, allTaskOutcomes);
 		}
 
 		// ── Post-merge: Reset worktrees for next wave ────────────
@@ -4002,6 +4033,37 @@ export async function executeOrchBatch(
 			}
 			// TP-028: Stamp task outcomes with partial progress data for persistence
 			applyPartialProgressToOutcomes(ppResult, allTaskOutcomes);
+
+			// TP-147: Also preserve skipped task branches before terminal cleanup
+			const skippedPpResult = preserveSkippedLaneProgress(
+				latestAllocatedLanes,
+				allTaskOutcomes,
+				ppOpId,
+				batchState.batchId,
+				(repoId) => {
+					const perRepoRoot = resolveRepoRoot(repoId, repoRoot, workspaceConfig);
+					let targetBranch = batchState.orchBranch;
+					if (repoId && perRepoRoot !== repoRoot) {
+						try {
+							targetBranch = resolveBaseBranch(repoId, perRepoRoot, batchState.orchBranch, workspaceConfig);
+						} catch { /* fall back to orchBranch */ }
+					}
+					return { repoRoot: perRepoRoot, targetBranch };
+				},
+			);
+			if (skippedPpResult.results.some(r => r.saved)) {
+				execLog("batch", batchState.batchId,
+					`preserved partial progress for ${skippedPpResult.results.filter(r => r.saved).length} skipped task(s) before terminal cleanup`);
+			}
+			for (const r of skippedPpResult.results) {
+				if (!r.saved && (r.commitCount > 0 || r.error)) {
+					execLog("batch", batchState.batchId,
+						`WARNING: Failed to preserve partial progress for skipped task ${r.taskId} ` +
+						`(${r.commitCount} commit(s) may become unreachable after cleanup)`,
+						{ taskId: r.taskId, commitCount: r.commitCount, error: r.error ?? "unknown" });
+				}
+			}
+			applyPartialProgressToOutcomes(skippedPpResult, allTaskOutcomes);
 		}
 
 		// TP-029: Clean up worktrees across ALL encountered repos (not just primary).
