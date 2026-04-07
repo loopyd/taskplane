@@ -35,6 +35,8 @@
 | 2026-04-07 | Step 1 complete | Created hello.txt, fibonacci.txt, summary.txt |
 | 2026-04-07 | Step 2 complete | Created analysis.txt (6 exports from lane-runner.ts), events.txt (13 event types from agent-host.ts) |
 | 2026-04-07 | Step 3 complete | All files created, task complete |
+| 2026-04-07 15:10 | Worker iter 1 | done in 171s, tools: 40 |
+| 2026-04-07 15:10 | Task complete | .DONE created |
 |-----------|--------|---------|
 
 ## Files Created
