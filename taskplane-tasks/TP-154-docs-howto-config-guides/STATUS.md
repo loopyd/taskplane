@@ -1,6 +1,6 @@
 # TP-154: Update how-to config guides for current architecture — Status
 
-**Current Step:** Step 1: Update docs/how-to/configure-task-runner.md
+**Current Step:** Step 2: Update docs/how-to/configure-task-orchestrator.md
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-07
 **Review Level:** 0
@@ -32,13 +32,13 @@
 ---
 
 ### Step 2: Update docs/how-to/configure-task-orchestrator.md
-**Status:** ⬜ Not Started
+**Status:** ✅ Complete
 
-- [ ] Update title for JSON config
-- [ ] Update "Where this file lives" section for `taskplane-config.json`
-- [ ] Convert all config examples from YAML to JSON with camelCase keys
-- [ ] Remove tmux references (`spawn_mode: "tmux"`, `tmux_prefix`)
-- [ ] Update "Related guides" links
+- [x] Update title for JSON config
+- [x] Update "Where this file lives" section for `taskplane-config.json`
+- [x] Convert all config examples from YAML to JSON with camelCase keys
+- [x] Remove tmux references (`spawn_mode: "tmux"`, `tmux_prefix`)
+- [x] Update "Related guides" links
 
 ---
 
