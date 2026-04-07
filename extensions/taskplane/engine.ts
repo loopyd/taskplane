@@ -2655,8 +2655,10 @@ export async function executeOrchBatch(
 							// completing segment (because it was the last segment at that
 							// time), remove it now. The task is no longer complete — new
 							// segments have been added and must execute first.
+							// Only delete if segments were actually inserted (avoid
+							// reopening a completed task on no-op mutations).
 							const doneDir = task.packetTaskPath || task.taskFolder;
-							if (doneDir) {
+							if (doneDir && mutation.insertedSegmentIds.length > 0) {
 								const donePath = join(doneDir, ".DONE");
 								if (existsSync(donePath)) {
 									try {
@@ -3918,6 +3920,7 @@ export async function executeOrchBatch(
 					tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, costUsd: 0 },
 					exitReason: isBlocked ? "Blocked by upstream failure" : null,
 				});
+				coveredTaskIds.add(taskId);
 			}
 		}
 
