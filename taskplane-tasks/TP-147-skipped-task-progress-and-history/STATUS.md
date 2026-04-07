@@ -1,10 +1,10 @@
 # TP-147: Skipped Task Progress and Batch History — Status
 
-**Current Step:** Step 2: Fix batch history completeness
+**Current Step:** Step 3: Testing & Verification
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-07
 **Review Level:** 2
-**Review Counter:** 3
+**Review Counter:** 4
 **Iteration:** 1
 **Size:** M
 
@@ -33,10 +33,10 @@
 - [x] Run targeted tests (742 pass, 0 fail)
 
 ### Step 3: Testing & Verification
-**Status:** ⬜ Not Started
-- [ ] Branch saved test
-- [ ] History completeness test
-- [ ] Full suite passing
+**Status:** ✅ Complete
+- [x] Branch saved test (4 preserveSkippedLaneProgress tests pass)
+- [x] History completeness test (2 TP-147 pending/blocked status tests pass)
+- [x] Full suite passing (3245 pass, 0 fail)
 
 ### Step 4: Documentation & Delivery
 **Status:** ⬜ Not Started
@@ -53,3 +53,4 @@
 | 2026-04-07 02:36 | Step 0 started | Preflight |
 | 2026-04-07 02:41 | Review R001 | plan Step 1: APPROVE |
 | 2026-04-07 02:56 | Review R003 | plan Step 2: APPROVE |
+| 2026-04-07 03:01 | Review R004 | code Step 2: APPROVE |
