@@ -1501,9 +1501,33 @@ async function showSectionSettingsOnce(
 			description: field.description,
 		};
 
-		// Toggle fields get values array for cycling
+		// Toggle fields: use cycling for 2 values (boolean-like), submenu for 3+
 		if (field.control === "toggle" && field.values) {
-			item.values = field.values.map((v) => `${v}  ${sourceBadge}`);
+			if (field.values.length <= 2) {
+				item.values = field.values.map((v) => `${v}  ${sourceBadge}`);
+			} else {
+				// 3+ values: use a submenu so the user can pick any option,
+				// not just cycle to the next one and immediately commit.
+				item.submenu = (_currentValue: string, done: (selected?: string) => void) => {
+					const container = new Container();
+					const selectItems: SelectItem[] = field.values!.map((v) => ({
+						value: `${v}  ${sourceBadge}`,
+						label: v,
+					}));
+					const list = new SelectList(
+						selectItems,
+						Math.min(selectItems.length + 1, 10),
+						{ selectedPrefix: "› ", unselectedPrefix: "  " },
+					);
+					// Pre-select current value
+					const currentIdx = field.values!.indexOf(displayValue);
+					if (currentIdx >= 0) list.setSelectedIndex(currentIdx);
+					list.onSelect = (selected) => done(selected.value);
+					list.onCancel = () => done();
+					container.addChild(list);
+					return container;
+				};
+			}
 		}
 
 		// Input fields: use a single-value cycling pattern instead of a submenu.
