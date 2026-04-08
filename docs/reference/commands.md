@@ -482,7 +482,7 @@ Open the interactive settings TUI for viewing and editing taskplane configuratio
 - Save destination defaults to global preferences, with explicit options for project override and remove-project-override when applicable
 - Project config changes require confirmation before writing
 - New config parameters added in future schema updates appear automatically
-- Changes take effect on next session restart
+- Changes take effect immediately — no session restart required
 
 **Sections**
 

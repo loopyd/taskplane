@@ -1166,9 +1166,10 @@ export async function openSettingsTui(
 	ctx: ExtensionContext,
 	configRoot: string,
 	pointerConfigRoot?: string,
+	onConfigChanged?: () => void,
 ): Promise<void> {
 	// Load current config state — refreshed each time we return to the top level
-	await showSectionSelectorLoop(ctx, configRoot, pointerConfigRoot);
+	await showSectionSelectorLoop(ctx, configRoot, pointerConfigRoot, onConfigChanged);
 }
 
 /**
@@ -1200,6 +1201,7 @@ async function showSectionSelectorLoop(
 	ctx: ExtensionContext,
 	configRoot: string,
 	pointerConfigRoot?: string,
+	onConfigChanged?: () => void,
 ): Promise<void> {
 	while (true) {
 		const state = loadConfigState(configRoot, pointerConfigRoot);
@@ -1257,7 +1259,7 @@ async function showSectionSelectorLoop(
 		if (section.readOnly) {
 			await showAdvancedSection(ctx, state.mergedConfig);
 		} else {
-			await showSectionSettingsLoop(ctx, section, configRoot, pointerConfigRoot);
+			await showSectionSettingsLoop(ctx, section, configRoot, pointerConfigRoot, onConfigChanged);
 		}
 	}
 }
@@ -1339,6 +1341,7 @@ async function showSectionSettingsLoop(
 	section: SectionDef,
 	configRoot: string,
 	pointerConfigRoot?: string,
+	onConfigChanged?: () => void,
 ): Promise<void> {
 	while (true) {
 		const state = loadConfigState(configRoot, pointerConfigRoot);
@@ -1438,9 +1441,13 @@ async function showSectionSettingsLoop(
 			} else {
 				writeGlobalPreference(toGlobalPreferencePath(field), typedValue);
 			}
+			// Notify caller to reload in-memory config from disk
+			if (onConfigChanged) {
+				try { onConfigChanged(); } catch { /* non-fatal */ }
+			}
+
 			ctx.ui.notify(
-				`✅ ${field.label} updated.\n` +
-				`ℹ Restart session to apply changes.`,
+				`✅ ${field.label} updated.`,
 				"info",
 			);
 
