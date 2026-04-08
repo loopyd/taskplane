@@ -7,7 +7,6 @@ This guide is for contributors working on Taskplane itself.
 - Node.js 22+
 - Git
 - pi
-- Optional: `just` for convenience commands
 
 ---
 
@@ -34,12 +33,6 @@ cd ..
 
 ```bash
 pi -e extensions/task-orchestrator.ts -e extensions/task-runner.ts
-```
-
-Or with just:
-
-```bash
-just orch
 ```
 
 The orchestrator loads `task-runner.ts` internally for lane execution.
