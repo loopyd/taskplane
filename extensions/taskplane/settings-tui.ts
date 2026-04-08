@@ -1517,7 +1517,13 @@ async function showSectionSettingsOnce(
 					const list = new SelectList(
 						selectItems,
 						Math.min(selectItems.length + 1, 10),
-						{ selectedPrefix: "› ", unselectedPrefix: "  " },
+						{
+							selectedPrefix: (t: string) => `\x1b[36m${t}\x1b[0m`,
+							selectedText: (t: string) => `\x1b[36m${t}\x1b[0m`,
+							description: (t: string) => `\x1b[2m${t}\x1b[0m`,
+							scrollInfo: (t: string) => `\x1b[2m${t}\x1b[0m`,
+							noMatch: (t: string) => `\x1b[33m${t}\x1b[0m`,
+						},
 					);
 					// Pre-select current value
 					const currentIdx = field.values!.indexOf(displayValue);
