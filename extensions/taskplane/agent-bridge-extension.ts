@@ -25,7 +25,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@mariozechner/pi-ai";
 import { writeFileSync, readFileSync, existsSync, mkdirSync, renameSync, unlinkSync } from "fs";
 import { join, dirname } from "path";
-import { spawn as nodeSpawn } from "child_process";
+import { spawn as nodeSpawn, spawnSync } from "child_process";
 import { randomBytes } from "crypto";
 import { buildExpansionRequestId, type SegmentExpansionRequest } from "./types.ts";
 
@@ -359,32 +359,60 @@ export default function (pi: ExtensionAPI) {
 	/**
 	 * Resolve the Pi CLI entrypoint path (same logic as agent-host.ts).
 	 */
+	function getNpmGlobalRoot(): string {
+		try {
+			const result = spawnSync("npm", ["root", "-g"], { encoding: "utf-8", timeout: 5000, shell: true });
+			return result.stdout?.trim() || "";
+		} catch { return ""; }
+	}
+
 	function resolvePiCli(): string {
-		const relPath = join("node_modules", "@mariozechner", "pi-coding-agent", "dist", "cli.js");
+		const relPath = join("@mariozechner", "pi-coding-agent", "dist", "cli.js");
 		const candidates: string[] = [];
-		if (process.env.APPDATA) candidates.push(join(process.env.APPDATA, "npm", relPath));
+
+		// Dynamic: npm root -g (covers nvm, Homebrew, volta, and all custom prefixes)
+		const npmRoot = getNpmGlobalRoot();
+		if (npmRoot) candidates.push(join(npmRoot, relPath));
+
+		// Well-known static paths
 		const home = process.env.HOME || process.env.USERPROFILE || "";
+		if (process.env.APPDATA) candidates.push(join(process.env.APPDATA, "npm", "node_modules", relPath));
 		if (home) {
-			candidates.push(join(home, "AppData", "Roaming", "npm", relPath));
-			candidates.push(join(home, ".npm-global", "lib", relPath));
+			candidates.push(join(home, "AppData", "Roaming", "npm", "node_modules", relPath));
+			candidates.push(join(home, ".npm-global", "lib", "node_modules", relPath));
 		}
-		candidates.push(join("/usr", "local", "lib", relPath));
+		candidates.push(join("/usr", "local", "lib", "node_modules", relPath));
+		candidates.push(join("/opt", "homebrew", "lib", "node_modules", relPath));
+
 		for (const c of candidates) {
 			if (existsSync(c)) return c;
 		}
-		throw new Error("Cannot find Pi CLI entrypoint");
+		throw new Error("Cannot find Pi CLI entrypoint. Run: npm root -g to verify your npm global path.");
 	}
 
 	/**
 	 * Load the reviewer system prompt from base template + local override.
 	 */
 	function loadReviewerPrompt(): string {
-		const basePaths = [
-			process.env.APPDATA ? join(process.env.APPDATA, "npm", "node_modules", "taskplane", "templates", "agents", "task-reviewer.md") : "",
-			(process.env.HOME || process.env.USERPROFILE || "") ? join(process.env.HOME || process.env.USERPROFILE || "", "AppData", "Roaming", "npm", "node_modules", "taskplane", "templates", "agents", "task-reviewer.md") : "",
-		].filter(Boolean);
+		const relPath = join("taskplane", "templates", "agents", "task-reviewer.md");
+		const candidates: string[] = [];
+
+		// Dynamic: npm root -g
+		const npmRoot = getNpmGlobalRoot();
+		if (npmRoot) candidates.push(join(npmRoot, relPath));
+
+		// Well-known static paths
+		const home = process.env.HOME || process.env.USERPROFILE || "";
+		if (process.env.APPDATA) candidates.push(join(process.env.APPDATA, "npm", "node_modules", relPath));
+		if (home) {
+			candidates.push(join(home, "AppData", "Roaming", "npm", "node_modules", relPath));
+			candidates.push(join(home, ".npm-global", "lib", "node_modules", relPath));
+		}
+		candidates.push(join("/usr", "local", "lib", "node_modules", relPath));
+		candidates.push(join("/opt", "homebrew", "lib", "node_modules", relPath));
+
 		let basePrompt = "You are a code reviewer. Read the request and write your review to the specified output file.";
-		for (const p of basePaths) {
+		for (const p of candidates) {
 			try {
 				if (!existsSync(p)) continue;
 				const raw = readFileSync(p, "utf-8");
