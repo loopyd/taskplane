@@ -839,32 +839,3 @@ describe("TP-090: sanitizeSteeringContent", () => {
 	});
 });
 
-// ── 11. TP-090: Source extraction — task-runner contract verification ──
-
-describe("TP-090: task-runner steering annotation contract (source extraction)", () => {
-	let taskRunnerSrc: string;
-
-	beforeEach(() => {
-		taskRunnerSrc = readFileSync(join(__dirname, "..", "task-runner.ts"), "utf-8");
-	});
-
-	it("task-runner checks .steering-pending in polling loop", () => {
-		expect(taskRunnerSrc).toContain(".steering-pending");
-		// Source uses unicode escapes \u26a0\ufe0f — search for the literal string
-		expect(taskRunnerSrc).toContain("Steering");
-		expect(taskRunnerSrc).toContain("\\u26a0\\ufe0f");
-	});
-
-	it("task-runner has sanitizeSteeringContent function", () => {
-		expect(taskRunnerSrc).toContain("function sanitizeSteeringContent");
-	});
-
-	it("subprocess runner no longer passes explicit steeringPendingPath spawn options", () => {
-		expect(taskRunnerSrc).not.toContain("steeringPendingPath,");
-		expect(taskRunnerSrc).not.toContain("steeringPendingPath?:");
-	});
-
-	it("subprocess runner has no rpc-wrapper --steering-pending-path flag", () => {
-		expect(taskRunnerSrc).not.toContain("--steering-pending-path");
-	});
-});

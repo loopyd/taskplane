@@ -407,29 +407,6 @@ describe("model fallback retry logic", () => {
 		});
 	});
 
-	describe("task-runner.ts — TASKPLANE_MODEL_FALLBACK env handling", () => {
-		const taskRunnerSource = readFileSync(
-			join(__dirname, "..", "task-runner.ts"),
-			"utf-8",
-		).replace(/\r\n/g, "\n");
-
-		it("reads TASKPLANE_MODEL_FALLBACK env var", () => {
-			expect(taskRunnerSource).toContain("TASKPLANE_MODEL_FALLBACK");
-		});
-
-		it("checks for value '1' to activate fallback", () => {
-			expect(taskRunnerSource).toContain('TASKPLANE_MODEL_FALLBACK === "1"');
-		});
-
-		it("applies fallback to worker model", () => {
-			// The task-runner should skip configured model when fallback active
-			expect(taskRunnerSource).toContain("modelFallbackActive");
-		});
-
-		it("applies fallback to reviewer model", () => {
-			expect(taskRunnerSource).toContain("reviewerModelFallback");
-		});
-	});
 });
 
 // ── 4. Edge Cases ────────────────────────────────────────────────────

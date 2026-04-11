@@ -1,6 +1,6 @@
 {
   "name": "taskplane",
-  "version": "0.25.8",
+  "version": "0.26.0",
   "description": "AI agent orchestration for pi — parallel task execution with checkpoint discipline",
   "keywords": [
     "pi-package",
@@ -15,7 +15,6 @@
   },
   "pi": {
     "extensions": [
-      "./extensions/task-runner.ts",
       "./extensions/task-orchestrator.ts"
     ],
     "skills": [
@@ -29,7 +28,6 @@
   "files": [
     "bin/",
     "dashboard/",
-    "extensions/task-runner.ts",
     "extensions/task-orchestrator.ts",
     "extensions/reviewer-extension.ts",
     "extensions/taskplane/",

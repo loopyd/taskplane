@@ -25,6 +25,8 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync } from "
 import { join } from "path";
 import { homedir } from "os";
 import { parse as yamlParse } from "yaml";
+import { resolvePointer, loadWorkspaceConfig } from "./workspace.ts";
+import type { PointerResolution } from "./types.ts";
 
 import {
 	CONFIG_VERSION,
@@ -1263,4 +1265,55 @@ export function toTaskConfig(config: TaskplaneConfig): {
 			pass_threshold: tr.qualityGate.passThreshold,
 		},
 	};
+}
+
+// ── Task Runner Config Loader ───────────────────────────────────────────
+//
+// loadConfig and _resetPointerWarning for task execution consumers.
+
+/** Track whether a pointer warning has been logged this session (log once). */
+let _pointerWarningLogged = false;
+
+/**
+ * Resolve the workspace pointer for config and agent path redirection.
+ * Returns null in repo mode (TASKPLANE_WORKSPACE_ROOT not set).
+ */
+function resolveTaskRunnerPointer(): PointerResolution | null {
+	const wsRoot = process.env.TASKPLANE_WORKSPACE_ROOT;
+	if (!wsRoot) return null;
+	try {
+		const wsConfig = loadWorkspaceConfig(wsRoot);
+		const result = resolvePointer(wsRoot, wsConfig);
+		if (result?.warning && !_pointerWarningLogged) {
+			_pointerWarningLogged = true;
+			console.error(`[task-runner] pointer: ${result.warning}`);
+		}
+		return result;
+	} catch {
+		return null;
+	}
+}
+
+/** Reset pointer warning state (for testing only). */
+export function _resetPointerWarning(): void {
+	_pointerWarningLogged = false;
+}
+
+/**
+ * Load task-runner config via the unified config loader.
+ *
+ * Returns the legacy snake_case TaskConfig shape. Wraps loadProjectConfig
+ * with pointer resolution and error handling.
+ */
+export function loadConfig(cwd: string): ReturnType<typeof toTaskConfig> {
+	try {
+		const pointer = resolveTaskRunnerPointer();
+		const unified = loadProjectConfig(cwd, pointer?.configRoot);
+		return toTaskConfig(unified);
+	} catch (err: unknown) {
+		if (err instanceof ConfigLoadError && err.code === "CONFIG_LEGACY_FIELD") {
+			throw err;
+		}
+		return toTaskConfig(deepClone(DEFAULT_PROJECT_CONFIG));
+	}
 }

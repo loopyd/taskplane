@@ -45,7 +45,7 @@ import {
 	loadOrchestratorConfig,
 	loadTaskRunnerConfig,
 } from "../taskplane/config.ts";
-import { loadConfig as taskRunnerLoadConfig } from "../task-runner.ts";
+import { loadConfig as taskRunnerLoadConfig } from "../taskplane/config-loader.ts";
 
 // ── Fixture Helpers ──────────────────────────────────────────────────
 
@@ -1509,7 +1509,7 @@ describe("pointer-threaded config resolution (TP-016)", () => {
 // ── 6.x: Agent resolution with pointer + warning surfacing ──────────
 
 import { loadAgentDef as _loadAgentDef } from "../taskplane/execution.ts";
-import { _resetPointerWarning } from "../task-runner.ts";
+import { _resetPointerWarning } from "../taskplane/config-loader.ts";
 
 describe("agent resolution precedence with pointer (TP-016)", () => {
 	/** Helper: write a minimal agent markdown file. */
