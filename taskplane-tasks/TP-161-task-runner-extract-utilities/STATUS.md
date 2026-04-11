@@ -1,7 +1,7 @@
 # TP-161: Extract task-runner utilities into taskplane library — Status
 
-**Current Step:** Step 0: Preflight — full reference inventory (BLOCKING)
-**Status:** 🟡 In Progress
+**Current Step:** Step 6: Documentation & Delivery
+**Status:** ✅ Complete
 **Last Updated:** 2026-04-11
 **Review Level:** 2
 **Review Counter:** 4
@@ -75,10 +75,10 @@
 ---
 
 ### Step 6: Documentation & Delivery
-**Status:** ⬜ Not Started
+**Status:** ✅ Complete
 
-- [ ] JSDoc headers on both new files
-- [ ] Discoveries logged
+- [x] JSDoc headers on both new files (sidecar-telemetry.ts, context-window.ts)
+- [x] Discoveries logged (full inventory in Discoveries table)
 
 ---
 
