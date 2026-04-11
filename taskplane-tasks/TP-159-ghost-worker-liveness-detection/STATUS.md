@@ -90,6 +90,8 @@
 | 2026-04-11 00:05 | Task started | Runtime V2 lane-runner execution |
 | 2026-04-11 00:05 | Step 0 started | Preflight |
 | 2026-04-11 00:32 | Snapshot refresh disabled | Lane 2, task TP-159: 5 consecutive emitSnapshot failures |
+| 2026-04-11 01:10 | Worker iter 1 | done in 3900s, tools: 106 |
+| 2026-04-11 01:10 | Task complete | .DONE created |
 
 ---
 
