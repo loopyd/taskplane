@@ -1,10 +1,10 @@
 # TP-164: Live merge agent telemetry in dashboard (#465) — Status
 
-**Current Step:** Step 1: Add merge snapshot infrastructure
+**Current Step:** Step 2: Write snapshots from spawnMergeAgentV2
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-11
 **Review Level:** 2
-**Review Counter:** 1
+**Review Counter:** 2
 **Iteration:** 1
 **Size:** M
 
@@ -34,7 +34,7 @@
 ---
 
 ### Step 2: Write snapshots from spawnMergeAgentV2
-**Status:** ⬜ Not Started
+**Status:** 🟨 In Progress
 
 - [ ] Add `onTelemetry` callback to `spawnAgent` call in `spawnMergeAgentV2`
 - [ ] Write `running` snapshot on each telemetry update
@@ -99,3 +99,4 @@
 
 *None*
 | 2026-04-11 04:55 | Review R001 | plan Step 1: APPROVE |
+| 2026-04-11 04:57 | Review R002 | code Step 1: APPROVE |
