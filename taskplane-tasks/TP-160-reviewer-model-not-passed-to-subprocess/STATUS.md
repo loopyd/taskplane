@@ -22,7 +22,7 @@
 ---
 
 ### Step 1: Thread reviewer config through the call chain
-**Status:** ⬜ Not Started
+**Status:** ✅ Complete
 
 - [x] Part 0-A: Add `reviewer` field to `TaskRunnerConfig` in `types.ts`
 - [x] Part 0-B: Update `toTaskRunnerConfig()` in `config-loader.ts` to include `reviewer`
@@ -80,6 +80,8 @@
 | 2026-04-10 | Task staged | PROMPT.md and STATUS.md created |
 | 2026-04-11 01:33 | Task started | Runtime V2 lane-runner execution |
 | 2026-04-11 01:33 | Step 0 started | Preflight |
+| 2026-04-11 02:08 | Worker iter 1 | done in 2150s, tools: 118 |
+| 2026-04-11 02:08 | Task complete | .DONE created |
 
 ---
 
