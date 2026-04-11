@@ -4,7 +4,7 @@
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-11
 **Review Level:** 2
-**Review Counter:** 4
+**Review Counter:** 5
 **Iteration:** 1
 **Size:** M
 
@@ -46,12 +46,12 @@
 ---
 
 ### Step 3: Load and expose merge snapshots in dashboard server
-**Status:** 🟨 In Progress
+**Status:** ✅ Complete
 
-- [ ] Add `loadRuntimeMergeSnapshots(batchId)` to `server.cjs`
-- [ ] Update `getActiveSessions()` to return active merger session names from registry
-- [ ] Add merge snapshot telemetry to `telemetry` map in `buildDashboardState`
-- [ ] Expose `runtimeMergeSnapshots` in response
+- [x] Add `loadRuntimeMergeSnapshots(batchId)` to `server.cjs`
+- [x] Update `getActiveSessions()` to return active merger session names from registry
+- [x] Add merge snapshot telemetry to `telemetry` map in `buildDashboardState`
+- [x] Expose `runtimeMergeSnapshots` in response
 
 ---
 
@@ -104,3 +104,4 @@
 | 2026-04-11 04:57 | Review R002 | code Step 1: APPROVE |
 | 2026-04-11 04:58 | Review R003 | plan Step 2: REVISE |
 | 2026-04-11 05:02 | Review R004 | code Step 2: APPROVE |
+| 2026-04-11 05:03 | Review R005 | plan Step 3: APPROVE |
