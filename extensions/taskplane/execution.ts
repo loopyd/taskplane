@@ -1536,38 +1536,48 @@ export function ensureTaskFilesCommitted(
 						repoRoot,
 					);
 					if (mergeTreeRes.ok) {
-						// First line of stdout is the merged tree SHA
+						// First line of stdout is the merged tree SHA.
+						// git merge-tree --write-tree exits 0 on clean merge, non-zero on conflicts.
+						// Since it exited 0, the tree should be conflict-free, but validate
+						// the SHA looks like a valid 40-hex OID before using it.
 						const mergedTree = mergeTreeRes.stdout.trim().split("\n")[0];
-						const mergeCommitMsg = `merge: include staged task files for wave ${waveIndex} into orch branch`;
-						const commitTreeRes = runGit(
-							["commit-tree", mergedTree, "-p", orchTip, "-p", newHead, "-m", mergeCommitMsg],
-							repoRoot,
-						);
-						if (commitTreeRes.ok) {
-							const mergeCommitSha = commitTreeRes.stdout.trim();
-							const refUpdateRes = runGit(
-								["update-ref", `refs/heads/${orchBranch}`, mergeCommitSha, orchTip],
+						if (!/^[0-9a-f]{40}$/i.test(mergedTree)) {
+							execLog("wave", `W${waveIndex}`, `warning: merge-tree returned unexpected output (non-fatal)`, {
+								orchBranch,
+								output: mergedTree.slice(0, 60),
+							});
+						} else {
+							const mergeCommitMsg = `merge: include staged task files for wave ${waveIndex} into orch branch`;
+							const commitTreeRes = runGit(
+								["commit-tree", mergedTree, "-p", orchTip, "-p", newHead, "-m", mergeCommitMsg],
 								repoRoot,
 							);
-							if (refUpdateRes.ok) {
-								execLog("wave", `W${waveIndex}`, `merged staging commit into orch branch (non-FF wave)`, {
-									orchBranch,
-									orchTip: orchTip.slice(0, 8),
-									newHead: newHead.slice(0, 8),
-									mergeCommit: mergeCommitSha.slice(0, 8),
-								});
+							if (commitTreeRes.ok) {
+								const mergeCommitSha = commitTreeRes.stdout.trim();
+								const refUpdateRes = runGit(
+									["update-ref", `refs/heads/${orchBranch}`, mergeCommitSha, orchTip],
+									repoRoot,
+								);
+								if (refUpdateRes.ok) {
+									execLog("wave", `W${waveIndex}`, `merged staging commit into orch branch (non-FF wave)`, {
+										orchBranch,
+										orchTip: orchTip.slice(0, 8),
+										newHead: newHead.slice(0, 8),
+										mergeCommit: mergeCommitSha.slice(0, 8),
+									});
+								} else {
+									execLog("wave", `W${waveIndex}`, `warning: failed to update orch branch ref after merge-tree (non-fatal)`, {
+										orchBranch,
+										error: refUpdateRes.stderr,
+									});
+								}
 							} else {
-								execLog("wave", `W${waveIndex}`, `warning: failed to update orch branch ref after merge-tree (non-fatal)`, {
+								execLog("wave", `W${waveIndex}`, `warning: failed to create merge commit for orch branch (non-fatal)`, {
 									orchBranch,
-									error: refUpdateRes.stderr,
+									error: commitTreeRes.stderr,
 								});
 							}
-						} else {
-							execLog("wave", `W${waveIndex}`, `warning: failed to create merge commit for orch branch (non-fatal)`, {
-								orchBranch,
-								error: commitTreeRes.stderr,
-							});
-						}
+						} // end valid tree SHA
 					} else {
 						execLog("wave", `W${waveIndex}`, `warning: failed to compute merge-tree for orch branch (non-fatal; requires git ≥ 2.38)`, {
 							orchBranch,
@@ -1621,7 +1631,7 @@ export function ensureTaskFilesCommitted(
  * @param batchId           - Batch ID for naming
  * @param pauseSignal       - Shared pause signal (mutated by stop-wave policy)
  * @param dependencyGraph   - Dependency graph for computing transitive dependents
- * @param baseBranch        - Branch to base worktrees on (captured at batch start)
+ * @param orchBranch        - Orch branch to base worktrees on (and to update after staging commits)
  * @param onMonitorUpdate   - Optional callback for dashboard updates during monitoring
  * @param onLanesAllocated  - Optional callback fired after lane allocation succeeds
  * @param workspaceConfig   - Workspace configuration for repo routing (null/undefined = repo mode)
@@ -1646,7 +1656,7 @@ export async function executeWave(
 	batchId: string,
 	pauseSignal: { paused: boolean },
 	dependencyGraph: DependencyGraph,
-	baseBranch: string,
+	orchBranch: string,
 	onMonitorUpdate?: MonitorUpdateCallback,
 	onLanesAllocated?: (lanes: AllocatedLane[]) => void,
 	workspaceConfig?: WorkspaceConfig | null,
@@ -1668,10 +1678,10 @@ export async function executeWave(
 	// Task folders may contain untracked files (PROMPT.md, STATUS.md) that
 	// won't appear in worktrees unless committed. Stage and commit them now,
 	// before worktree creation, so workers can find their TASK_AUTOSTART paths.
-	// Pass baseBranch (the orch branch) so the staging commit is also
-	// reflected in the orch branch before worktrees are allocated from it.
+	// Pass orchBranch so the staging commit is reflected in the orch branch
+	// before worktrees are allocated from it.
 	try {
-		ensureTaskFilesCommitted(waveTasks, pending, repoRoot, waveIndex, baseBranch);
+		ensureTaskFilesCommitted(waveTasks, pending, repoRoot, waveIndex, orchBranch);
 	} catch (err: unknown) {
 		const errMsg = err instanceof Error ? err.message : String(err);
 		execLog("wave", `W${waveIndex}`, `task file commit failed: ${errMsg}`);
@@ -1695,7 +1705,7 @@ export async function executeWave(
 	}
 
 	// ── Stage 1: Allocate lanes ──────────────────────────────────
-	const allocResult = allocateLanes(waveTasks, pending, config, repoRoot, batchId, baseBranch, workspaceConfig);
+	const allocResult = allocateLanes(waveTasks, pending, config, repoRoot, batchId, orchBranch, workspaceConfig);
 
 	if (!allocResult.success) {
 		const errMsg = allocResult.error?.message || "Unknown allocation failure";
