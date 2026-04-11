@@ -79,10 +79,10 @@
 ---
 
 ### Step 6: Version bump and delivery
-**Status:** ⬜ Not Started
+**Status:** ✅ Complete
 
-- [ ] Bump `package.json` version to `0.26.0`
-- [ ] Discoveries logged
+- [x] Bump `package.json` version to `0.26.0` (and package-lock.json)
+- [x] Discoveries logged
 
 ---
 
