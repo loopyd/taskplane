@@ -1,7 +1,7 @@
 # TP-163: Fix ENOENT when task folders are uncommitted at batch start (#471) — Status
 
-**Current Step:** Step 2: Testing & Verification
-**Status:** 🟡 In Progress
+**Current Step:** Step 3: Documentation & Delivery
+**Status:** ✅ Complete
 **Last Updated:** 2026-04-11
 **Review Level:** 2
 **Review Counter:** 3
@@ -44,10 +44,10 @@
 ---
 
 ### Step 3: Documentation & Delivery
-**Status:** ⬜ Not Started
+**Status:** ✅ Complete
 
-- [ ] Inline comment explaining the fix
-- [ ] Discoveries logged
+- [x] Inline comment explaining the fix
+- [x] Discoveries logged
 
 ---
 
@@ -65,6 +65,9 @@
 
 | Discovery | Disposition | Location |
 |-----------|-------------|----------|
+| Non-FF case in wave 2+ requires `git merge-tree --write-tree` (git ≥ 2.38). If git is older, the non-FF path logs a warning and continues (worktree allocation will fail with a clearer error). | Logged in code comment | `execution.ts:ensureTaskFilesCommitted` |
+| `baseBranch` in `executeWave` IS the orch branch (`batchState.orchBranch`), confirmed from engine.ts call site. | Confirmed | `engine.ts:2378` |
+| Workspace mode is handled correctly: task files are committed to primary `repoRoot`; orch branch in `repoRoot` is what needs updating. | Confirmed | `execution.ts:ensureTaskFilesCommitted` |
 
 ---
 
@@ -81,6 +84,3 @@
 ## Blockers
 
 *None*
-| 2026-04-11 03:48 | Review R001 | plan Step 1: REVISE |
-| 2026-04-11 03:51 | Review R002 | plan Step 1: APPROVE |
-| 2026-04-11 03:58 | Review R003 | code Step 1: APPROVE |
