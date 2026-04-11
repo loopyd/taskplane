@@ -1652,9 +1652,7 @@ export async function executeWave(
 		executeLaneV2(lane, config, repoRoot, wavePauseSignal, wsRoot, isWsMode, {
 			ORCH_BATCH_ID: batchId,
 			TASKPLANE_SUPERVISOR_AUTONOMY: supervisorAutonomy,
-			...(reviewerConfig?.model ? { TASKPLANE_REVIEWER_MODEL: reviewerConfig.model } : {}),
-			...(reviewerConfig?.thinking ? { TASKPLANE_REVIEWER_THINKING: reviewerConfig.thinking } : {}),
-			...(reviewerConfig?.tools ? { TASKPLANE_REVIEWER_TOOLS: reviewerConfig.tools } : {}),
+			...buildReviewerEnv(reviewerConfig),
 		}, onSupervisorAlert),
 	);
 
@@ -2166,6 +2164,27 @@ import { executeTaskV2, type LaneRunnerConfig, type LaneRunnerTaskResult } from 
  *
  * @since TP-105
  */
+
+/**
+ * Build reviewer env vars from a TaskRunnerConfig or reviewer config object.
+ * Used to ensure reviewer config is consistently passed to executeLaneV2
+ * across all call sites (initial waves, resume, retries).
+ *
+ * Returns only the keys that have non-empty values, so that empty/inherit
+ * config does not override inherited env vars from the parent process.
+ *
+ * @since TP-160
+ */
+export function buildReviewerEnv(
+	reviewerConfig?: { model?: string; thinking?: string; tools?: string } | null,
+): Record<string, string> {
+	const env: Record<string, string> = {};
+	if (reviewerConfig?.model) env.TASKPLANE_REVIEWER_MODEL = reviewerConfig.model;
+	if (reviewerConfig?.thinking) env.TASKPLANE_REVIEWER_THINKING = reviewerConfig.thinking;
+	if (reviewerConfig?.tools) env.TASKPLANE_REVIEWER_TOOLS = reviewerConfig.tools;
+	return env;
+}
+
 export async function executeLaneV2(
 	lane: AllocatedLane,
 	config: OrchestratorConfig,

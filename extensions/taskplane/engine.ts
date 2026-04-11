@@ -6,7 +6,7 @@ import { existsSync, readdirSync, readFileSync, renameSync, unlinkSync } from "f
 import { join, resolve } from "path";
 
 import { formatDiscoveryResults, runDiscovery } from "./discovery.ts";
-import { computeTransitiveDependents, execLog, executeLaneV2, executeWave, killV2LaneAgents } from "./execution.ts";
+import { buildReviewerEnv, computeTransitiveDependents, execLog, executeLaneV2, executeWave, killV2LaneAgents } from "./execution.ts";
 import type { RuntimeBackend } from "./execution.ts";
 import type { MonitorUpdateCallback } from "./execution.ts";
 // classifyExit no longer called directly — Tier 0 uses exitDiagnostic.classification
@@ -1307,7 +1307,7 @@ async function attemptWorkerCrashRetry(
 				retryPauseSignal,
 				wsRoot,
 				isWsMode,
-				{ ORCH_BATCH_ID: batchState.batchId }, // TP-089: ensure mailbox works for retries
+				{ ORCH_BATCH_ID: batchState.batchId, ...buildReviewerEnv(runnerConfig?.reviewer) }, // TP-089: ensure mailbox works for retries
 			);
 
 			const retryOutcome = retryResult.tasks[0];
@@ -1566,7 +1566,7 @@ async function attemptModelFallbackRetry(
 			// Pass TASKPLANE_MODEL_FALLBACK=1 as extra env var to signal
 			// the task-runner to use the session model instead of configured model.
 			// TP-089: Also include ORCH_BATCH_ID so mailbox steering works for retries.
-			const modelFallbackEnv = { TASKPLANE_MODEL_FALLBACK: "1", ORCH_BATCH_ID: batchState.batchId };
+			const modelFallbackEnv = { TASKPLANE_MODEL_FALLBACK: "1", ORCH_BATCH_ID: batchState.batchId, ...buildReviewerEnv(runnerConfig?.reviewer) };
 			const retryResult = await executeLaneV2(
 				retryLane,
 				orchConfig,

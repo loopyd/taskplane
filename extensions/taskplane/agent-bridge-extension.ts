@@ -433,8 +433,9 @@ export default function (pi: ExtensionAPI) {
 			// Empty string means inherit from session default (no flag passed to pi CLI).
 			const reviewerModel = process.env.TASKPLANE_REVIEWER_MODEL || "";
 			const reviewerThinking = process.env.TASKPLANE_REVIEWER_THINKING || "";
-			// Fall back to the same default tool list that was previously hardcoded.
-			const reviewerTools = process.env.TASKPLANE_REVIEWER_TOOLS || "read,write,edit,bash,grep,find,ls";
+			// Fall back to the schema default reviewer tool list (read-only + bash/grep).
+			// Must match config-schema.ts reviewer.tools default to avoid capability expansion.
+			const reviewerTools = process.env.TASKPLANE_REVIEWER_TOOLS || "read,bash,grep,find,ls";
 
 			const cliPath = resolvePiCliPath();
 			const args = [
