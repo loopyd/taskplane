@@ -817,8 +817,9 @@ body {
 .worker-last-tool {
   color: var(--text-muted);
   max-width: 600px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: break-word;
+  word-break: break-all;
+  white-space: normal;
 }
 
 /* ─── Reviewer Sub-Row ─────────────────────────────────────────────── */
