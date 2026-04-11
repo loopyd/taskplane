@@ -2,7 +2,7 @@
 
 > **Status:** Draft — Pending Review  
 > **Created:** 2026-03-08  
-> **Related:** [task-runner extension](../../../extensions/task-runner.ts), task-runner.yaml (`.pi/task-runner.yaml`)
+> **Related:** task-runner.yaml (`.pi/task-runner.yaml`) *(Historical note: task-runner.ts was removed in v0.26.0)*
 
 ---
 
