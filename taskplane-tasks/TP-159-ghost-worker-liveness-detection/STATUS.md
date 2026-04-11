@@ -1,31 +1,31 @@
 # TP-159: Detect and recover ghost workers after silent subprocess death (#461) — Status
 
-**Current Step:** Not Started
-**Status:** 🔵 Ready for Execution
-**Last Updated:** 2026-04-10
+**Current Step:** Step 1: Wire orphan detection into the monitor poll loop
+**Status:** 🟡 In Progress
+**Last Updated:** 2026-04-11
 **Review Level:** 2
-**Review Counter:** 0
-**Iteration:** 0
+**Review Counter:** 1
+**Iteration:** 1
 **Size:** M
 
 ---
 
 ### Step 0: Preflight
-**Status:** ⬜ Not Started
+**Status:** ✅ Complete
 
-- [ ] Read `monitorLanes()` in `execution.ts`
-- [ ] Read `resolveTaskMonitorState()` — understand grace periods
-- [ ] Read `detectOrphans()` and `markOrphansCrashed()` in `process-registry.ts`
-- [ ] Verify test baseline
+- [x] Read `monitorLanes()` in `execution.ts`
+- [x] Read `resolveTaskMonitorState()` — understand grace periods
+- [x] Read `detectOrphans()` and `markOrphansCrashed()` in `process-registry.ts`
+- [x] Verify test baseline
 
 ---
 
 ### Step 1: Wire orphan detection into the monitor poll loop
-**Status:** ⬜ Not Started
+**Status:** ✅ Complete
 
-- [ ] Add orphan detection block after liveness registry refresh
-- [ ] Wrap in try/catch — monitor loop must never throw
-- [ ] Refresh cache after marking orphans
+- [x] Add orphan detection block after liveness registry refresh
+- [x] Wrap in try/catch — monitor loop must never throw
+- [x] Refresh cache after marking orphans
 
 ---
 
@@ -82,9 +82,12 @@
 | Timestamp | Action | Outcome |
 |-----------|--------|---------|
 | 2026-04-10 | Task staged | PROMPT.md and STATUS.md created |
+| 2026-04-11 00:05 | Task started | Runtime V2 lane-runner execution |
+| 2026-04-11 00:05 | Step 0 started | Preflight |
 
 ---
 
 ## Blockers
 
 *None*
+| 2026-04-11 00:10 | Review R001 | plan Step 1: APPROVE |
