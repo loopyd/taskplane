@@ -34,21 +34,21 @@
 ---
 
 ### Step 2: Create extensions/taskplane/context-window.ts
-**Status:** ⬜ Not Started
+**Status:** ✅ Complete
 
-- [ ] Export `FALLBACK_CONTEXT_WINDOW = 200_000`
-- [ ] Export `resolveContextWindow(configuredWindow: number | undefined, ctx: ExtensionContext | null)`
-- [ ] Same behavior as original, adapted signature
-- [ ] No task-runner type imports
+- [x] Export `FALLBACK_CONTEXT_WINDOW = 200_000`
+- [x] Export `resolveContextWindow(configuredWindow: number | undefined, ctx: ExtensionContext | null)`
+- [x] Same behavior as original, adapted signature
+- [x] No task-runner type imports
 
 ---
 
 ### Step 3: Export loadAgentDef from execution.ts
-**Status:** ⬜ Not Started
+**Status:** ✅ Complete
 
-- [ ] Read `loadAgentDef` in `task-runner.ts` — understand signature and behavior
-- [ ] Export equivalent from `execution.ts` near `loadBaseAgentPrompt`
-- [ ] Signature: `(cwd: string, name: string) => { systemPrompt: string; tools: string; model: string } | null`
+- [x] Read `loadAgentDef` in `task-runner.ts` — understand signature and behavior
+- [x] Export equivalent from `execution.ts` near `loadBaseAgentPrompt`
+- [x] Signature: `(cwd: string, name: string) => { systemPrompt: string; tools: string; model: string } | null`
 
 ---
 
