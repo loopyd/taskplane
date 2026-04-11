@@ -1,10 +1,10 @@
 # TP-164: Live merge agent telemetry in dashboard (#465) — Status
 
-**Current Step:** Step 3: Load and expose merge snapshots in dashboard server
+**Current Step:** Step 4: Testing & Verification
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-11
 **Review Level:** 2
-**Review Counter:** 5
+**Review Counter:** 6
 **Iteration:** 1
 **Size:** M
 
@@ -56,11 +56,11 @@
 ---
 
 ### Step 4: Testing & Verification
-**Status:** ⬜ Not Started
+**Status:** ✅ Complete
 
-- [ ] Full test suite passing
-- [ ] CLI smoke passing
-- [ ] Fix all failures
+- [x] Full test suite passing (3255/3255 — 2 test assertions updated for new spawnAgent signature)
+- [x] CLI smoke passing
+- [x] Fix all failures
 
 ---
 
@@ -105,3 +105,4 @@
 | 2026-04-11 04:58 | Review R003 | plan Step 2: REVISE |
 | 2026-04-11 05:02 | Review R004 | code Step 2: APPROVE |
 | 2026-04-11 05:03 | Review R005 | plan Step 3: APPROVE |
+| 2026-04-11 05:06 | Review R006 | code Step 3: APPROVE |
