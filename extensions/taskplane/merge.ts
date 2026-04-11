@@ -557,6 +557,7 @@ export async function spawnMergeAgentV2(
 	stateRoot?: string,
 	agentRoot?: string,
 	batchId?: string,
+	waveIndex?: number,
 ): Promise<AgentHostResult> {
 	execLog("merge", sessionName, "spawning merge agent via Runtime V2 (direct agent-host)", {
 		mergeWorkDir,
@@ -617,6 +618,9 @@ export async function spawnMergeAgentV2(
 	// Derive the 1-indexed merge number from the session name
 	// (e.g. "orch-henry-merge-1" → 1, "orch-henry-merge-2" → 2).
 	const mergeNumberMatch = sessionName.match(/-merge-(\d+)$/);
+	if (!mergeNumberMatch) {
+		execLog("merge", sessionName, "warning: could not parse merge number from session name — defaulting to 1", { sessionName });
+	}
 	const mergeNumber = mergeNumberMatch ? parseInt(mergeNumberMatch[1], 10) : 1;
 	const mergeStartedAt = Date.now();
 	const mergeStateRoot = stateRoot ?? repoRoot;
@@ -644,7 +648,7 @@ export async function spawnMergeAgentV2(
 				batchId: bid,
 				mergeNumber,
 				sessionName,
-				waveIndex: 0,
+				waveIndex: waveIndex ?? 0,
 				status: "running",
 				agent: buildAgentSnap(tel, "running"),
 				updatedAt: Date.now(),
@@ -662,7 +666,7 @@ export async function spawnMergeAgentV2(
 			batchId: bid,
 			mergeNumber,
 			sessionName,
-			waveIndex: 0,
+			waveIndex: waveIndex ?? 0,
 			status: "running",
 			agent: buildAgentSnap({}, "running"),
 			updatedAt: Date.now(),
@@ -688,14 +692,27 @@ export async function spawnMergeAgentV2(
 		// Write terminal snapshot. Promise resolves for both successful and
 		// failed exits, so derive status from result fields rather than
 		// relying on .catch to handle failures.
-		const terminalStatus: RuntimeMergeSnapshot["status"] =
-			(result.killed || result.exitCode !== 0 || !result.agentEnded) ? "failed" : "complete";
+		// Determine terminal status. A clean post-success kill sets registry
+		// manifest to "exited" via killMergeAgentV2(name, true=cleanExit).
+		// Check the registry first so a successful-then-killed agent is shown
+		// as "complete" rather than "failed".
+		let terminalStatus: RuntimeMergeSnapshot["status"] = "complete";
+		try {
+			const manifest = readManifest(mergeStateRoot, bid, sessionName as any);
+			if (manifest?.status === "exited") {
+				terminalStatus = "complete";
+			} else if (result.exitCode !== 0 || !result.agentEnded) {
+				terminalStatus = "failed";
+			}
+		} catch {
+			if (result.exitCode !== 0 || !result.agentEnded) terminalStatus = "failed";
+		}
 		try {
 			const snap: RuntimeMergeSnapshot = {
 				batchId: bid,
 				mergeNumber,
 				sessionName,
-				waveIndex: 0,
+				waveIndex: waveIndex ?? 0,
 				status: terminalStatus,
 				agent: buildAgentSnap(result, terminalStatus === "complete" ? "exited" : "crashed"),
 				updatedAt: Date.now(),
@@ -711,7 +728,7 @@ export async function spawnMergeAgentV2(
 				batchId: bid,
 				mergeNumber,
 				sessionName,
-				waveIndex: 0,
+				waveIndex: waveIndex ?? 0,
 				status: "failed",
 				agent: buildAgentSnap({}, "crashed"),
 				updatedAt: Date.now(),
@@ -1565,10 +1582,10 @@ export async function mergeWave(
 						// Re-spawn merge agent for the retry.
 						// Kill previous V2 agent handle to prevent orphan/duplicate.
 						killMergeAgentV2(sessionName);
-						await spawnMergeAgentV2(sessionName, repoRoot, mergeWorkDir, requestFilePath, config, stateRoot, agentRoot, batchId);
+						await spawnMergeAgentV2(sessionName, repoRoot, mergeWorkDir, requestFilePath, config, stateRoot, agentRoot, batchId, waveIndex);
 					} else {
 						// First attempt: spawn merge agent (Runtime V2)
-						await spawnMergeAgentV2(sessionName, repoRoot, mergeWorkDir, requestFilePath, config, stateRoot, agentRoot, batchId);
+						await spawnMergeAgentV2(sessionName, repoRoot, mergeWorkDir, requestFilePath, config, stateRoot, agentRoot, batchId, waveIndex);
 					}
 
 					try {
