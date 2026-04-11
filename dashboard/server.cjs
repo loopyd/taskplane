@@ -1121,18 +1121,19 @@ function buildDashboardState() {
 
   // TP-164: Inject merge snapshot telemetry into the telemetry map so
   // `telemetry[sessionName]` resolves for the merge pane.
-  // Only inject when a JSONL-backed entry is absent or stale — the snapshot
-  // provides real-time tool-call / cost / context data even before the
-  // JSONL accumulator has accumulated enough events.
+  // Snapshots are the PRIMARY source for merge telemetry — merge agents don't
+  // write to .pi/telemetry/*.jsonl (the JSONL path is for lane workers only).
+  // Inject snapshot data when no JSONL-backed entry exists for this session.
   for (const snap of Object.values(runtimeMergeSnapshots)) {
     const key = snap.sessionName;
     if (!key) continue;
     const agent = snap.agent;
     if (!agent) continue;
-    // Only inject if there is no existing telemetry entry, or if the snapshot
-    // is more recent than the latest accumulator update.
+    // Only inject if there is no existing JSONL-backed telemetry entry.
+    // Merge agents don't emit to .pi/telemetry/, so existing will always be
+    // absent unless something else wrote to it — in that case defer to it.
     const existing = telemetry[key];
-    if (!existing || (snap.updatedAt && snap.updatedAt > (existing._updatedAt || 0))) {
+    if (!existing) {
       telemetry[key] = {
         inputTokens: agent.inputTokens || 0,
         outputTokens: agent.outputTokens || 0,
