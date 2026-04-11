@@ -15,19 +15,10 @@ import { allocateLanes } from "./waves.ts";
 import { resolveOperatorId } from "./naming.ts";
 import { runGit } from "./git.ts";
 import { resolveTaskplanePackageFile, resolveTaskplaneAgentTemplate } from "./path-resolver.ts";
+import { resolvePointer, loadWorkspaceConfig } from "./workspace.ts";
 
 // ── Taskplane Package File Resolution ────────────────────────────────
 // getNpmGlobalRoot() and resolveTaskplanePackageFile() consolidated in path-resolver.ts (TP-157)
-
-// ── Task Runner Extension Path Resolution ────────────────────────────
-
-/**
- * Find the task-runner extension path for lane sessions.
- * @see resolveTaskplanePackageFile for resolution order
- */
-function resolveTaskRunnerExtensionPath(repoRoot: string): string {
-	return resolveTaskplanePackageFile(repoRoot, join("extensions", "task-runner.ts"));
-}
 
 // ── RPC Wrapper Path Resolution ──────────────────────────────────────
 
@@ -50,7 +41,7 @@ function resolveTaskRunnerExtensionPath(repoRoot: string): string {
 /**
  * Structured log helper for lane execution.
  *
- * All execution logs go to stderr (same pattern as task-runner.ts).
+ * All execution logs go to stderr.
  * Format: [orch] {laneId}/{taskId}: {message}
  * Correlation fields: batchId, laneId, taskId, sessionName.
  * No PII — only IDs and paths.
@@ -378,9 +369,8 @@ export function resolveCanonicalTaskPaths(
 
 	if (isWorkspaceMode) {
 		// Workspace mode: use worktree-relative path when the task folder is
-		// inside the lane's repo (same logic as TASK_AUTOSTART resolution).
-		// The worker writes .DONE and STATUS.md in the worktree, so the engine
-		// must look there too.
+		// inside the lane's repo. The worker writes .DONE and STATUS.md in
+		// the worktree, so the engine must look there too.
 		if (folderNorm.startsWith(repoRootNorm + "/")) {
 			const relPath = folderNorm.slice(repoRootNorm.length + 1);
 			resolvedFolder = join(worktreePath, relPath);
@@ -1392,7 +1382,7 @@ export function computeTransitiveDependents(
  *
  * Git worktrees only contain tracked (committed) files. If a user creates
  * task folders (PROMPT.md, STATUS.md) but doesn't commit them, the worktree
- * won't have those files and TASK_AUTOSTART will fail with "file not found".
+ * won't have those files and the worker will fail with "file not found".
  *
  * This function checks each wave task's folder for untracked or modified files,
  * stages them, and creates a commit on the current branch. This must run BEFORE
@@ -1640,7 +1630,7 @@ export function ensureTaskFilesCommitted(
 /**
  * Runtime backend selector for lane execution.
  *
- * - `"legacy"`: Session-backed path (spawnLaneSession → task-runner TASK_AUTOSTART)
+ * - `"legacy"`: Session-backed path (spawnLaneSession, deprecated)
  * - `"v2"`: Direct-child path (lane-runner → agent-host → pi --mode rpc)
  *
  * @since TP-105
@@ -1677,7 +1667,7 @@ export async function executeWave(
 	// ── Stage 0: Ensure task files are committed ────────────────
 	// Task folders may contain untracked files (PROMPT.md, STATUS.md) that
 	// won't appear in worktrees unless committed. Stage and commit them now,
-	// before worktree creation, so workers can find their TASK_AUTOSTART paths.
+	// before worktree creation, so workers can find their task files.
 	// Pass orchBranch so the staging commit is reflected in the orch branch
 	// before worktrees are allocated from it.
 	try {
@@ -2255,6 +2245,110 @@ function loadLocalAgentPrompt(stateRoot: string, agentName: string): string {
 		}
 	}
 	return "";
+}
+
+// ── Agent Definition Loading ─────────────────────────────────────────
+
+/** Track whether an agent pointer warning has been logged this session (log once). */
+let _execPointerWarningLogged = false;
+
+/**
+ * Reset agent pointer warning state for testing.
+ * @since TP-161
+ */
+export function resetPointerWarning(): void {
+	_execPointerWarningLogged = false;
+}
+
+/**
+ * Resolve agent files using the workspace pointer (workspace mode only).
+ * Returns the agentRoot from the pointer, or null in repo mode / on failure.
+ */
+function resolveAgentPointerRoot(): string | null {
+	const wsRoot = process.env.TASKPLANE_WORKSPACE_ROOT;
+	if (!wsRoot) return null;
+	try {
+		const wsConfig = loadWorkspaceConfig(wsRoot);
+		const result = resolvePointer(wsRoot, wsConfig);
+		if (result?.warning && !_execPointerWarningLogged) {
+			_execPointerWarningLogged = true;
+			console.error(`[execution] pointer: ${result.warning}`);
+		}
+		return result?.agentRoot ?? null;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Load a complete agent definition (systemPrompt + tools + model) by name.
+ *
+ * Resolution order:
+ *   1. cwd/.pi/agents/<name>.md
+ *   2. cwd/agents/<name>.md
+ *   3. pointer.agentRoot/<name>.md (workspace mode only)
+ *   4. Base package templates/agents/<name>.md
+ *
+ * If a local file has `standalone: true` in frontmatter, it is used as-is
+ * (no base composition). Otherwise, base + local are composed.
+ *
+ * @param cwd - Working directory (project root) to search for local agent files
+ * @param name - Agent name (e.g., "task-worker", "task-reviewer")
+ * @returns Composed agent definition, or null if no base and no local file found
+ * @since TP-161
+ */
+export function loadAgentDef(cwd: string, name: string): { systemPrompt: string; tools: string; model: string } | null {
+	const localPaths = [
+		join(cwd, ".pi", "agents", `${name}.md`),
+		join(cwd, "agents", `${name}.md`),
+	];
+
+	// In workspace mode, add pointer-resolved agent root as fallback
+	const agentRoot = resolveAgentPointerRoot();
+	if (agentRoot) {
+		localPaths.push(join(agentRoot, `${name}.md`));
+	}
+
+	// Load base from package
+	let baseDef: { fm: Record<string, string>; body: string } | null = null;
+	try {
+		const basePath = resolveTaskplaneAgentTemplate(name);
+		if (existsSync(basePath)) {
+			baseDef = parseAgentFile(basePath);
+		}
+	} catch { /* fall through */ }
+
+	// Load local override (first found wins)
+	let localDef: { fm: Record<string, string>; body: string } | null = null;
+	for (const p of localPaths) {
+		localDef = parseAgentFile(p);
+		if (localDef) break;
+	}
+
+	// No base and no local → null
+	if (!baseDef && !localDef) return null;
+
+	// Local with standalone: true → use local as-is, ignore base
+	if (localDef?.fm.standalone === "true") {
+		return {
+			systemPrompt: localDef.body,
+			tools: localDef.fm.tools || "read,grep,find,ls",
+			model: localDef.fm.model || "",
+		};
+	}
+
+	// Compose base + local
+	const basePrompt = baseDef?.body || "";
+	const localPrompt = localDef?.body || "";
+	const composedPrompt = localPrompt
+		? basePrompt + "\n\n---\n\n## Project-Specific Guidance\n\n" + localPrompt
+		: basePrompt;
+
+	// Local frontmatter overrides base (tools, model)
+	const tools = localDef?.fm.tools || baseDef?.fm.tools || "read,grep,find,ls";
+	const model = localDef?.fm.model || baseDef?.fm.model || "";
+
+	return { systemPrompt: composedPrompt.trim(), tools, model };
 }
 
 export function resolveRuntimeStateRoot(

@@ -14,11 +14,11 @@ import { join } from "path";
 import { tmpdir } from "os";
 import { writeFileSync, mkdirSync, rmSync, existsSync, appendFileSync } from "fs";
 import {
-	_tailSidecarJsonl as tailSidecarJsonl,
-	_createSidecarTailState as createSidecarTailState,
+	tailSidecarJsonl,
+	createSidecarTailState,
 	type SidecarTailState,
 	type SidecarTelemetryDelta,
-} from "../task-runner.ts";
+} from "../taskplane/sidecar-telemetry.ts";
 
 // ── Test helpers ─────────────────────────────────────────────────────
 

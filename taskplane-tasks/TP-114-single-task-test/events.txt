@@ -1,21 +1,35 @@
-Event types emitted by emitEvent() in extensions/taskplane/agent-host.ts
-=========================================================================
+agent-host.ts — Event Types Emitted by emitEvent()
+====================================================
+
+The emitEvent() function is defined at line 335:
+  function emitEvent(type: RuntimeAgentEventType, payload: Record<string, unknown> = {})
 
 Total distinct event types: 13
 
-String-literal calls:
-1.  agent_started       (line 635) - emitted when the agent process begins
-2.  prompt_sent         (line 637) - emitted after the initial prompt is sent to the agent
-3.  message_delivered   (line 411) - emitted when a mailbox message is delivered/injected
-4.  assistant_message   (line 540) - emitted when the agent produces an assistant message
-5.  tool_call           (line 569) - emitted when the agent makes a tool call
-6.  tool_result         (line 576) - emitted when a tool call result is received
-7.  retry_started       (line 581) - emitted when the agent retries after an error
-8.  compaction_started  (line 586) - emitted when context compaction begins
-9.  context_usage       (line 595) - emitted with context window usage stats
+Lifecycle events:
+  1. "agent_started"    — emitted when the agent process starts (line 635)
+  2. "prompt_sent"      — emitted when the initial prompt is sent to the agent (line 637)
+  3. "agent_exited"     — emitted on clean exit (exitCode 0 and agentEnded) (line 494)
+  4. "agent_crashed"    — emitted on unexpected exit / non-zero exit code (line 494)
+  5. "agent_timeout"    — emitted when the agent process times out (line 494)
+  6. "agent_killed"     — emitted when the agent process is killed (line 494)
 
-Variable-dispatched exit events (via exitEventType at line 489-494):
-10. agent_exited        - clean exit (exitCode=0 and agent signaled completion)
-11. agent_crashed       - abnormal exit (non-zero exit code without other cause)
-12. agent_timeout       - exit due to configured timeout being exceeded
-13. agent_killed        - exit because the process was explicitly killed
+Conversation events:
+  7. "assistant_message" — emitted when the agent produces a text message (line 540)
+  8. "tool_call"         — emitted when the agent calls a tool (line 569)
+  9. "tool_result"       — emitted when a tool result is received (line 576)
+
+Operational events:
+  10. "retry_started"      — emitted when the agent starts a retry attempt (line 581)
+  11. "compaction_started" — emitted when context compaction begins (line 586)
+  12. "context_usage"      — emitted with context window usage metrics (line 595)
+
+Steering/mailbox events:
+  13. "message_delivered"  — emitted when a mailbox message is delivered to the agent (line 411)
+
+Note: The four exit event types (agent_exited, agent_crashed, agent_timeout, agent_killed)
+are mutually exclusive — only one is emitted per agent run, determined by:
+  timedOut → "agent_timeout"
+  killed   → "agent_killed"
+  exitCode 0 && agentEnded → "agent_exited"
+  otherwise → "agent_crashed"

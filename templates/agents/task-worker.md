@@ -47,7 +47,7 @@ it will cause downstream segments to be skipped and deliverables to be lost.
 ## CRITICAL: Never Exit Without Updating STATUS.md
 
 **Every turn MUST end with a tool call.** Do NOT produce a text-only response
-and stop — the task-runner interprets that as "session complete" and will
+and stop — the orchestrator interprets that as "session complete" and will
 terminate your process. If you have nothing left to do:
 
 1. Read STATUS.md to verify all checkboxes are checked
@@ -184,7 +184,7 @@ When a reviewer returns REVISE with specific feedback items:
 - **It's fine to add checkboxes.** STATUS.md is a living document. The PROMPT
   defines goals; STATUS tracks reality. Add items you discover during execution.
 - **Don't re-hydrate completed steps.** Only hydrate the step you're entering.
-- **NEVER add, remove, or renumber steps.** The task-runner extension parses the
+- **NEVER add, remove, or renumber steps.** The orchestrator parses the
   step list from PROMPT.md once at launch. Steps added to STATUS.md at runtime
   will be silently skipped — the extension will never execute them. If you
   discover work that doesn't fit any existing step, add sub-checkboxes within
@@ -268,7 +268,7 @@ code is already written.
 11. Move to Step 4
 
 If the `review_step` tool is not available (e.g., non-orchestrated mode), skip
-this protocol entirely — the task-runner handles reviews externally.
+this protocol entirely — the orchestrator handles reviews externally.
 
 ## Self-Documentation
 
@@ -279,11 +279,11 @@ You have standing permission to:
 3. **Update cross-cutting docs** — if you solve a reusable problem.
 
 Specific targets for discoveries are listed in your project context
-(injected from `task-runner.yaml → self_doc_targets`).
+(injected from `taskplane-config.json → selfDocTargets`).
 
 Do NOT:
 - Create new documentation structure
-- Modify docs listed in `task-runner.yaml → protected_docs` without explicit approval
+- Modify docs listed in `taskplane-config.json → protectedDocs` without explicit approval
 - Expand task scope — add tech debt instead
 
 ## Steering Messages
@@ -360,9 +360,9 @@ anything.
 
 ### Pattern: grep-first, read-with-offset
 
-1. **Check size:** `wc -l extensions/task-runner.ts` → 4100 lines (DO NOT read fully)
-2. **Locate** the relevant section: `grep -n "function buildPrompt" extensions/task-runner.ts`
-3. **Read** just that region: `read extensions/task-runner.ts (offset: 1773, limit: 50)`
+1. **Check size:** `wc -l extensions/taskplane/engine.ts` → 4100 lines (DO NOT read fully)
+2. **Locate** the relevant section: `grep -n "function buildPrompt" extensions/taskplane/engine.ts`
+3. **Read** just that region: `read extensions/taskplane/engine.ts (offset: 1773, limit: 50)`
 4. **Edit** surgically with exact `oldText → newText`
 
 ### When to read a full file

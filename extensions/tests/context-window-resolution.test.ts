@@ -12,10 +12,10 @@
 import { describe, it } from "node:test";
 import { expect } from "./expect.ts";
 import {
-	_resolveContextWindow as resolveContextWindow,
-	_FALLBACK_CONTEXT_WINDOW as FALLBACK_CONTEXT_WINDOW,
-	loadConfig,
-} from "../task-runner.ts";
+	resolveContextWindow,
+	FALLBACK_CONTEXT_WINDOW,
+} from "../taskplane/context-window.ts";
+import { loadConfig } from "../taskplane/config-loader.ts";
 
 import {
 	DEFAULT_TASK_RUNNER_SECTION,
@@ -56,7 +56,7 @@ describe("resolveContextWindow", () => {
 		const config = makeConfig({ worker_context_window: 500_000 });
 		const ctx = makeCtx({ contextWindow: 1_000_000 });
 
-		const result = resolveContextWindow(config, ctx);
+		const result = resolveContextWindow(config.context.worker_context_window, ctx);
 
 		expect(result.contextWindow).toBe(500_000);
 		expect(result.source).toBe("explicit config");
@@ -66,7 +66,7 @@ describe("resolveContextWindow", () => {
 		const config = makeConfig({ worker_context_window: 0 });
 		const ctx = makeCtx({ contextWindow: 1_000_000, provider: "anthropic", id: "claude-opus-4-6" });
 
-		const result = resolveContextWindow(config, ctx);
+		const result = resolveContextWindow(config.context.worker_context_window, ctx);
 
 		expect(result.contextWindow).toBe(1_000_000);
 		expect(result.source).toContain("auto-detected");
@@ -77,7 +77,7 @@ describe("resolveContextWindow", () => {
 		const config = makeConfig({ worker_context_window: 0 });
 		const ctx = makeCtx(); // no model
 
-		const result = resolveContextWindow(config, ctx);
+		const result = resolveContextWindow(config.context.worker_context_window, ctx);
 
 		expect(result.contextWindow).toBe(FALLBACK_CONTEXT_WINDOW);
 		expect(result.contextWindow).toBe(200_000);
@@ -88,7 +88,7 @@ describe("resolveContextWindow", () => {
 		const config = makeConfig({ worker_context_window: 0 });
 		const ctx = makeCtx({ contextWindow: 0 });
 
-		const result = resolveContextWindow(config, ctx);
+		const result = resolveContextWindow(config.context.worker_context_window, ctx);
 
 		expect(result.contextWindow).toBe(FALLBACK_CONTEXT_WINDOW);
 		expect(result.source).toContain("fallback");
@@ -98,7 +98,7 @@ describe("resolveContextWindow", () => {
 		const config = makeConfig({ worker_context_window: 0 });
 		const ctx = makeCtx({ contextWindow: undefined });
 
-		const result = resolveContextWindow(config, ctx);
+		const result = resolveContextWindow(config.context.worker_context_window, ctx);
 
 		expect(result.contextWindow).toBe(FALLBACK_CONTEXT_WINDOW);
 	});
@@ -107,7 +107,7 @@ describe("resolveContextWindow", () => {
 		const config = makeConfig({ worker_context_window: 0 });
 		const ctx = { model: undefined } as any;
 
-		const result = resolveContextWindow(config, ctx);
+		const result = resolveContextWindow(config.context.worker_context_window, ctx);
 
 		expect(result.contextWindow).toBe(FALLBACK_CONTEXT_WINDOW);
 	});
@@ -116,7 +116,7 @@ describe("resolveContextWindow", () => {
 		const config = makeConfig({ worker_context_window: 0 });
 		const ctx = {} as any;
 
-		const result = resolveContextWindow(config, ctx);
+		const result = resolveContextWindow(config.context.worker_context_window, ctx);
 
 		expect(result.contextWindow).toBe(FALLBACK_CONTEXT_WINDOW);
 	});
@@ -125,7 +125,7 @@ describe("resolveContextWindow", () => {
 		const config = makeConfig({ worker_context_window: 1 });
 		const ctx = makeCtx({ contextWindow: 1_000_000 });
 
-		const result = resolveContextWindow(config, ctx);
+		const result = resolveContextWindow(config.context.worker_context_window, ctx);
 
 		expect(result.contextWindow).toBe(1);
 		expect(result.source).toBe("explicit config");
@@ -135,7 +135,7 @@ describe("resolveContextWindow", () => {
 		const config = makeConfig({ worker_context_window: 0 });
 		const ctx = makeCtx({ contextWindow: 128_000, provider: "openai", id: "gpt-5.3-codex" });
 
-		const result = resolveContextWindow(config, ctx);
+		const result = resolveContextWindow(config.context.worker_context_window, ctx);
 
 		expect(result.contextWindow).toBe(128_000);
 		expect(result.source).toContain("openai/gpt-5.3-codex");

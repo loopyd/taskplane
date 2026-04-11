@@ -3184,7 +3184,7 @@ ${c.bold}Examples:${c.reset}
 ${c.bold}Getting started:${c.reset}
   1. pi install npm:taskplane       # Install the pi package
   2. cd my-project && taskplane init    # Scaffold project config
-  3. pi                             # Start pi — /task and /orch are ready
+  3. pi                             # Start pi — /orch is ready
 `);
 }
 

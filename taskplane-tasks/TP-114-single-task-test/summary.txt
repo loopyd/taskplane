@@ -1,30 +1,5 @@
-Runtime V2 is a proposed redesign of Taskplane's execution control plane. Its core
-thesis is that Taskplane's durable data plane — STATUS.md, .DONE, batch-state.json,
-dependency DAGs, worktrees, and the supervisor/dashboard concepts — is sound and
-should be preserved. What needs replacing is the fragile runtime control plane that
-currently relies on TMUX as correctness infrastructure, sidecar-file tailing as a
-live telemetry transport, and deeply nested session layers where ownership and
-liveness are ambiguous.
+Runtime V2 is a redesigned control plane for Taskplane that eliminates the project's dependency on TMUX as a correctness infrastructure. The core diagnosis behind the redesign is that the existing system has too many overlapping layers — from the operator Pi session all the way down through tmux lane sessions, rpc-wrappers, and Pi worker sessions — causing ambiguous process ownership, transport inversion (related processes communicating via files instead of direct IPC), and fragile terminal dependency. Runtime V2 replaces this with a clean, deterministic process hierarchy: extension owns the engine, the engine owns lane-runners and merge hosts, lane-runners own worker/reviewer agent-hosts, and each agent-host owns its Pi child. Every spawned process has exactly one deterministic owner, eliminating the ambiguity that caused recurring instability.
 
-The target architecture replaces the multi-layered TMUX hierarchy with a clean,
-deterministic process tree: the extension owns an engine process, the engine owns
-lane-runners and merge hosts, and each lane-runner owns its worker and reviewer
-via an agent-host adapter around "pi --mode rpc". Every spawned process has
-exactly one deterministic owner, eliminating the ownership ambiguity and transport
-inversion that caused recurring instability in the current system. The new
-lane-runner is a dedicated component that handles the full task execution state
-machine — STATUS parsing, step progression, checkpoint discipline, and .DONE
-handling — replacing the current pattern where a lane is a Pi session loading the
-task-runner extension.
+The three new core components introduced by Runtime V2 are the engine process, the lane-runner process, and the agent-host process. The engine process handles discovery, DAG wave planning, lane allocation, batch state persistence, and aggregate policy decisions (pause, resume, abort, retry, skip). The lane-runner process — a new deterministic runtime component — owns exactly one lane worktree at a time, executing tasks serially with a proper state machine, handling STATUS.md parsing, step progression, checkpoint discipline, .DONE handling, and reviewer orchestration for that lane. The agent-host process is a transport adapter around `pi --mode rpc` that owns the Pi subprocess lifecycle, live RPC event parsing, telemetry normalization, mailbox polling and steer injection, conversation and event persistence, and exit summary generation.
 
-Runtime V2 defines five key invariants: file-backed memory (STATUS.md and .DONE)
-stays authoritative; batch state in .pi/batch-state.json remains resumable; live
-control uses direct parent-to-child IPC instead of file polling between siblings;
-the mailbox is the only supported steering path for operators and agents; and no
-task outcome may depend on terminal infrastructure like TMUX. A new batch-scoped
-runtime directory under .pi/runtime/{batchId}/ provides structured storage for
-agent manifests, event logs, lane snapshots, and process registries. Runtime V2
-is considered architecturally complete when worker, reviewer, and merge lifecycle
-no longer depend on TMUX, the dashboard can show full agent conversations from
-structured logs without pane capture, and workspace/segment execution uses
-explicit packet-path authority end-to-end.
+Runtime V2 preserves the durable data plane that makes Taskplane reliable: STATUS.md remains the execution memory, .DONE remains the completion marker, and `.pi/batch-state.json` remains the canonical orchestration state for resumability. Live control uses direct process ownership rather than file polling between sibling processes — parents receive child telemetry directly while files persist durable history and snapshots. The redesign also introduces a batch-scoped runtime storage layout under `.pi/runtime/{batchId}/` containing per-agent manifests, event logs, stderr logs, exit summaries, and lane snapshots. Success criteria for Runtime V2 include worker/reviewer/merge lifecycle no longer depending on TMUX, dashboard visibility without pane capture, and the lane execution path no longer depending on the legacy task-runner.ts session lifecycle.

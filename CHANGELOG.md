@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-04-11
+
+### Breaking
+- **task-runner.ts deleted** — The original `/task` command extension (2,784 lines) has been removed entirely. `/task`, `/task-status`, `/task-pause`, and `/task-resume` no longer exist. Use `/orch` for all task execution.
+
+### New
+- **`sidecar-telemetry.ts`** — New canonical module for sidecar JSONL tailing utilities (extracted from task-runner.ts).
+- **`context-window.ts`** — New canonical module for context window resolution (extracted from task-runner.ts).
+- **`loadConfig`, `_resetPointerWarning`** — Moved to `config-loader.ts`.
+- **`loadAgentDef`** — Exported from `execution.ts`.
+
+### Fixed / Improved
+- **TP-163 (#471):** ENOENT crash when task folders are uncommitted at batch start — orch branch now fast-forwarded after staging commit.
+- **TP-164 (#465):** Live merge agent telemetry in dashboard — merge agents show tool calls, cost, context %, elapsed during merge phase.
+- **Reviewer model threading (TP-160):** Configured reviewer model/thinking/tools now correctly passed to reviewer subprocess on all execution paths (initial waves, resume, retries).
+- **Ghost worker detection (TP-159 #461):** Orphaned workers detected within one poll cycle and marked crashed immediately.
+- **Config reload on /orch start (TP-158 #460):** Config changes take effect without restarting pi.
+- **Path resolver consolidation (TP-157):** All npm/package path resolution centralized in `path-resolver.ts`, fixing macOS Homebrew/nvm failures.
+- **Supervisor hang fix:** `/orch` no longer hangs the terminal on activation.
+- **Settings live reload:** `/taskplane-settings` changes apply immediately without restart.
+
 ## [0.24.31] - 2026-04-07
 
 ### New

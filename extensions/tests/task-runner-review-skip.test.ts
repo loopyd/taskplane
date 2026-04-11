@@ -14,7 +14,7 @@
 
 import { describe, it } from "node:test";
 import { expect } from "./expect.ts";
-import { isLowRiskStep } from "../task-runner.ts";
+import { isLowRiskStep } from "../taskplane/task-executor-core.ts";
 
 // ══════════════════════════════════════════════════════════════════════
 // 1.x — isLowRiskStep pure function
