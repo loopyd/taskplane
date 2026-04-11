@@ -4,7 +4,7 @@
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-11
 **Review Level:** 1
-**Review Counter:** 3
+**Review Counter:** 4
 **Iteration:** 1
 **Size:** M
 
@@ -38,15 +38,15 @@
 ---
 
 ### Step 3: Delete task-runner.ts
-**Status:** ⬜ Not Started
+**Status:** ✅ Complete
 
-- [ ] Export `loadConfig` and `_resetPointerWarning` from config-loader.ts (move pointer logic there)
-- [ ] Update imports in 3 test files: context-window-autodetect, context-window-resolution, project-config-loader
-- [ ] Delete 9 source-extraction test files that entirely test task-runner.ts internals
-- [ ] Remove TP-090 describe block from mailbox.test.ts
-- [ ] Remove "task-runner.ts TASKPLANE_MODEL_FALLBACK" describe block from runtime-model-fallback.test.ts
-- [ ] Final check: no remaining imports or source-reading refs
-- [ ] **Delete `extensions/task-runner.ts`**
+- [x] Export `loadConfig` and `_resetPointerWarning` from config-loader.ts (move pointer logic there)
+- [x] Update imports in 3 test files: context-window-autodetect, context-window-resolution, project-config-loader
+- [x] Delete 9 source-extraction test files that entirely test task-runner.ts internals
+- [x] Remove TP-090 describe block from mailbox.test.ts
+- [x] Remove "task-runner.ts TASKPLANE_MODEL_FALLBACK" describe block from runtime-model-fallback.test.ts
+- [x] Final check: no remaining imports or source-reading refs
+- [x] **Delete `extensions/task-runner.ts`**
 
 ---
 
@@ -117,3 +117,4 @@
 | 2026-04-11 06:21 | Review R001 | plan Step 1: APPROVE |
 | 2026-04-11 06:22 | Review R002 | plan Step 2: APPROVE |
 | 2026-04-11 06:25 | Review R003 | plan Step 3: REVISE |
+| 2026-04-11 06:28 | Review R004 | plan Step 3: APPROVE |

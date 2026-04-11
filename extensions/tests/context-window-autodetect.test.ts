@@ -15,7 +15,7 @@ import {
 	resolveContextWindow,
 	FALLBACK_CONTEXT_WINDOW,
 } from "../taskplane/context-window.ts";
-import { loadConfig as taskRunnerLoadConfig } from "../task-runner.ts";
+import { loadConfig as taskRunnerLoadConfig } from "../taskplane/config-loader.ts";
 import {
 	loadProjectConfig,
 	toTaskConfig,
