@@ -34,14 +34,14 @@
 ---
 
 ### Step 2: Write snapshots from spawnMergeAgentV2
-**Status:** 🟨 In Progress
+**Status:** ✅ Complete
 
-- [ ] Add `onTelemetry` callback to `spawnAgent` call in `spawnMergeAgentV2`
-- [ ] Write initial `running` snapshot immediately after spawn
-- [ ] Write `running` snapshot on each telemetry update
-- [ ] Write terminal snapshot in `.then(result)` with correct status mapping (killed||exitCode!==0||!agentEnded = "failed", else "complete")
-- [ ] Keep `.catch` as exceptional fallback writing `failed` snapshot
-- [ ] All snapshot writes wrapped in try/catch
+- [x] Add `onTelemetry` callback to `spawnAgent` call in `spawnMergeAgentV2`
+- [x] Write initial `running` snapshot immediately after spawn
+- [x] Write `running` snapshot on each telemetry update
+- [x] Write terminal snapshot in `.then(result)` with correct status mapping (killed||exitCode!==0||!agentEnded = "failed", else "complete")
+- [x] Keep `.catch` as exceptional fallback writing `failed` snapshot
+- [x] All snapshot writes wrapped in try/catch
 
 ---
 
