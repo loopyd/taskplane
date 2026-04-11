@@ -4,7 +4,7 @@
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-11
 **Review Level:** 2
-**Review Counter:** 4
+**Review Counter:** 5
 **Iteration:** 1
 **Size:** M
 
@@ -41,7 +41,7 @@
 ---
 
 ### Step 3: Verify supervisor/operator visibility
-**Status:** ⬜ Not Started
+**Status:** 🟨 In Progress
 
 - [ ] Confirm read_agent_status / list_active_agents reflect crashed status
 - [ ] Trace failed task path through monitor loop to engine failure handling
@@ -86,6 +86,7 @@
 | 2026-04-10 | Task staged | PROMPT.md and STATUS.md created |
 | 2026-04-11 00:05 | Task started | Runtime V2 lane-runner execution |
 | 2026-04-11 00:05 | Step 0 started | Preflight |
+| 2026-04-11 00:32 | Snapshot refresh disabled | Lane 2, task TP-159: 5 consecutive emitSnapshot failures |
 
 ---
 
@@ -96,3 +97,4 @@
 | 2026-04-11 00:18 | Review R002 | code Step 1: APPROVE |
 | 2026-04-11 00:25 | Review R003 | plan Step 2: REVISE |
 | 2026-04-11 00:28 | Review R004 | plan Step 2: APPROVE |
+| 2026-04-11 00:37 | Review R005 | code Step 2: REVISE |

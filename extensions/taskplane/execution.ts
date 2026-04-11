@@ -932,6 +932,12 @@ export async function resolveTaskMonitorState(
 				!isV2AgentAlive(sessionName, runtimeBackend, v2Context?.laneNumber)
 			) {
 				// Ghost worker confirmed: PID dead, snapshot stale beyond half the stall timeout
+				execLog("monitor", taskId, "ghost worker fast-fail — dead PID + stale snapshot", {
+					session: sessionName,
+					snapStaleMs: now - snap.updatedAt,
+					trackerAgeMs,
+					halfStallTimeoutMs: stallTimeoutMs / 2,
+				});
 				sessionAlive = false;
 			} else {
 				sessionAlive = snap.status === "running";
