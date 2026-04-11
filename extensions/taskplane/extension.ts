@@ -426,6 +426,20 @@ export function executeIntegration(
 ): IntegrationResult {
 	const { orchBranch, currentBranch, batchId } = context;
 
+	// Check if the orch branch is already an ancestor of the current branch
+	// (i.e., already merged — supervisor may have done a manual conflict resolution).
+	// If so, skip the merge entirely and go straight to cleanup.
+	const alreadyMergedCheck = deps.runGit(["merge-base", "--is-ancestor", orchBranch, "HEAD"]);
+	if (alreadyMergedCheck.ok) {
+		return performCleanup(deps, orchBranch, {
+			success: true,
+			integratedLocally: true,
+			commitCount: "0",
+			message: `ℹ️ Orch branch was already merged into ${currentBranch} (manual integration detected). Running cleanup.`,
+			error: "",
+		});
+	}
+
 	if (mode === "ff") {
 		// Fast-forward merge.
 		// Stash any dirty working tree files first — workspace mode leaves
