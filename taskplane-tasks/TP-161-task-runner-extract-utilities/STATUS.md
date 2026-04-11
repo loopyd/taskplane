@@ -1,25 +1,25 @@
 # TP-161: Extract task-runner utilities into taskplane library — Status
 
-**Current Step:** Not Started
-**Status:** 🔵 Ready for Execution
+**Current Step:** Step 0: Preflight — full reference inventory (BLOCKING)
+**Status:** 🟡 In Progress
 **Last Updated:** 2026-04-11
 **Review Level:** 2
 **Review Counter:** 0
-**Iteration:** 0
+**Iteration:** 1
 **Size:** M
 
 ---
 
 ### Step 0: Preflight — full reference inventory (BLOCKING)
-**Status:** ⬜ Not Started
+**Status:** ✅ Complete
 
-- [ ] Grep: `grep -rn "from.*task-runner" extensions/tests/`
-- [ ] Grep: `grep -rn "task-runner\.ts" extensions/tests/` (source-reading tests)
-- [ ] Grep: `grep -rn "task-runner" extensions/taskplane/ extensions/task-orchestrator.ts`
-- [ ] Verify `isLowRiskStep` in `task-executor-core.ts`
-- [ ] Verify `getSidecarDir` NOT in `execution.ts` / `lane-runner.ts`
-- [ ] Run test baseline: `cd extensions && npm run test:fast`
-- [ ] Document ALL findings in Discoveries table
+- [x] Grep: `grep -rn "from.*task-runner" extensions/tests/`
+- [x] Grep: `grep -rn "task-runner\.ts" extensions/tests/` (source-reading tests)
+- [x] Grep: `grep -rn "task-runner" extensions/taskplane/ extensions/task-orchestrator.ts`
+- [x] Verify `isLowRiskStep` in `task-executor-core.ts`
+- [x] Verify `getSidecarDir` NOT in `execution.ts` / `lane-runner.ts`
+- [x] Run test baseline: `cd extensions && npm run test:fast`
+- [x] Document ALL findings in Discoveries table
 
 ---
 
@@ -97,6 +97,15 @@
 
 | Discovery | Disposition | Location |
 |-----------|-------------|----------|
+| **Direct import files**: `context-pressure-cache.test.ts` (`_tailSidecarJsonl`, `_createSidecarTailState`, type imports), `context-window-autodetect.test.ts` (`_resolveContextWindow`, `_FALLBACK_CONTEXT_WINDOW`, `loadConfig`), `context-window-resolution.test.ts` (`_resolveContextWindow`, `_FALLBACK_CONTEXT_WINDOW`, `loadConfig`), `project-config-loader.test.ts` (line 48: `loadConfig`; line 1514: `_loadAgentDef`, `_resetPointerWarning`), `sidecar-tailing.test.ts` (sidecar utils), `task-runner-review-skip.test.ts` (`isLowRiskStep`) | Must update in Step 4 | `extensions/tests/` |
+| **Source-reading tests** (read task-runner.ts as text via readFileSync/path constants): `crash-recovery-spawn-reliability`, `mailbox`, `persistent-reviewer-context`, `persistent-worker-context`, `runtime-model-fallback`, `task-runner-duplicate-log`, `task-runner-exit-diagnostic`, `task-runner-orchestration`, `task-runner-rpc`, `task-runner-rpc-integration`, `task-runner-step-status` | All test **dead behavior** of legacy /task command; task-runner.ts NOT deleted in TP-161 so they still pass; leave untouched | `extensions/tests/` |
+| **`isLowRiskStep`** already in `task-executor-core.ts` at line 352 | `task-runner-review-skip.test.ts` just needs import update | `extensions/taskplane/task-executor-core.ts:352` |
+| **`getSidecarDir()`** has NO parameters in task-runner.ts (PROMPT signature was idealized future API from spec); verbatim extraction means no-param version | Export no-param `getSidecarDir()` from sidecar-telemetry.ts | `extensions/task-runner.ts:390` |
+| **`createSidecarTailState()`** has NO parameters in task-runner.ts; `tailSidecarJsonl(filePath, tailState)` has 2 params | Verbatim extraction | `extensions/task-runner.ts:1121,1168` |
+| **`resolveContextWindow`** currently takes `(config: TaskConfig, ctx: ExtensionContext)` - test calls use `resolveContextWindow(config, ctx)` | New module uses adapted signature `(configuredWindow: number \| undefined, ctx: ExtensionContext \| null)`; test call sites must be updated to `resolveContextWindow(config.context.worker_context_window, ctx)` | `extensions/task-runner.ts:362` |
+| **`_resetPointerWarning`** resets module-level `_pointerWarningLogged` flag in task-runner.ts; tests use it between test cases | Need to export `resetPointerWarning()` from `execution.ts` alongside `loadAgentDef` | `extensions/task-runner.ts:268` |
+| **`loadConfig` in context tests**: `context-window-autodetect.test.ts` and `context-window-resolution.test.ts` both import `loadConfig` from task-runner.ts for their sections 2+3 | Keep `loadConfig` import from `task-runner.ts` in those test files for now (task-runner.ts not deleted in TP-161) | `extensions/tests/` |
+| **Test baseline**: 3255 tests, 0 failures | Baseline established | `npm run test:fast` output |
 
 ---
 
@@ -105,6 +114,8 @@
 | Timestamp | Action | Outcome |
 |-----------|--------|---------|
 | 2026-04-11 | Task staged | PROMPT.md and STATUS.md created |
+| 2026-04-11 05:52 | Task started | Runtime V2 lane-runner execution |
+| 2026-04-11 05:52 | Step 0 started | Preflight — full reference inventory (BLOCKING) |
 
 ---
 
