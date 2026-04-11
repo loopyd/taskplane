@@ -12,10 +12,10 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import { expect } from "./expect.ts";
 import {
-	_resolveContextWindow as resolveContextWindow,
-	_FALLBACK_CONTEXT_WINDOW as FALLBACK_CONTEXT_WINDOW,
-	loadConfig as taskRunnerLoadConfig,
-} from "../task-runner.ts";
+	resolveContextWindow,
+	FALLBACK_CONTEXT_WINDOW,
+} from "../taskplane/context-window.ts";
+import { loadConfig as taskRunnerLoadConfig } from "../task-runner.ts";
 import {
 	loadProjectConfig,
 	toTaskConfig,
@@ -127,7 +127,7 @@ describe("resolveContextWindow — resolution order", () => {
 		const config = makeConfig({ worker_context_window: 500_000 });
 		const ctx = makeCtx({ contextWindow: 1_000_000 });
 
-		const result = resolveContextWindow(config, ctx);
+		const result = resolveContextWindow(config.context.worker_context_window, ctx);
 		expect(result.contextWindow).toBe(500_000);
 		expect(result.source).toBe("explicit config");
 	});
@@ -136,7 +136,7 @@ describe("resolveContextWindow — resolution order", () => {
 		const config = makeConfig({ worker_context_window: 0 });
 		const ctx = makeCtx({ contextWindow: 1_000_000, provider: "anthropic", id: "claude-opus-4-6" });
 
-		const result = resolveContextWindow(config, ctx);
+		const result = resolveContextWindow(config.context.worker_context_window, ctx);
 		expect(result.contextWindow).toBe(1_000_000);
 		expect(result.source).toContain("auto-detected");
 		expect(result.source).toContain("anthropic/claude-opus-4-6");
@@ -146,7 +146,7 @@ describe("resolveContextWindow — resolution order", () => {
 		const config = makeConfig({ worker_context_window: 0 });
 		const ctx = makeCtx(); // model is undefined
 
-		const result = resolveContextWindow(config, ctx);
+		const result = resolveContextWindow(config.context.worker_context_window, ctx);
 		expect(result.contextWindow).toBe(200_000);
 		expect(result.source).toContain("fallback");
 	});
@@ -155,7 +155,7 @@ describe("resolveContextWindow — resolution order", () => {
 		const config = makeConfig({ worker_context_window: 0 });
 		const ctx = makeCtx({ contextWindow: 0 });
 
-		const result = resolveContextWindow(config, ctx);
+		const result = resolveContextWindow(config.context.worker_context_window, ctx);
 		expect(result.contextWindow).toBe(200_000);
 		expect(result.source).toContain("fallback");
 	});
@@ -164,7 +164,7 @@ describe("resolveContextWindow — resolution order", () => {
 		const config = makeConfig({ worker_context_window: 0 });
 		const ctx = makeCtx({ contextWindow: undefined });
 
-		const result = resolveContextWindow(config, ctx);
+		const result = resolveContextWindow(config.context.worker_context_window, ctx);
 		expect(result.contextWindow).toBe(200_000);
 		expect(result.source).toContain("fallback");
 	});
@@ -173,7 +173,7 @@ describe("resolveContextWindow — resolution order", () => {
 		const config = makeConfig({ worker_context_window: 0 });
 		const ctx = { model: null };
 
-		const result = resolveContextWindow(config, ctx);
+		const result = resolveContextWindow(config.context.worker_context_window, ctx);
 		expect(result.contextWindow).toBe(200_000);
 		expect(result.source).toContain("fallback");
 	});
@@ -186,7 +186,7 @@ describe("resolveContextWindow — resolution order", () => {
 		const config = makeConfig({ worker_context_window: 0 });
 		const ctx = makeCtx({ contextWindow: 500_000, provider: "openai", id: "gpt-5" });
 
-		const result = resolveContextWindow(config, ctx);
+		const result = resolveContextWindow(config.context.worker_context_window, ctx);
 		expect(result.contextWindow).toBe(500_000);
 		expect(result.source).toBe("auto-detected from openai/gpt-5");
 	});
@@ -195,7 +195,7 @@ describe("resolveContextWindow — resolution order", () => {
 		const config = makeConfig({ worker_context_window: 1 });
 		const ctx = makeCtx({ contextWindow: 1_000_000 });
 
-		const result = resolveContextWindow(config, ctx);
+		const result = resolveContextWindow(config.context.worker_context_window, ctx);
 		expect(result.contextWindow).toBe(1);
 		expect(result.source).toBe("explicit config");
 	});

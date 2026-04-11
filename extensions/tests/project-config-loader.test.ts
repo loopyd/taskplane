@@ -1508,10 +1508,8 @@ describe("pointer-threaded config resolution (TP-016)", () => {
 
 // ── 6.x: Agent resolution with pointer + warning surfacing ──────────
 
-import {
-	_loadAgentDef,
-	_resetPointerWarning,
-} from "../task-runner.ts";
+import { loadAgentDef as _loadAgentDef } from "../taskplane/execution.ts";
+import { _resetPointerWarning } from "../task-runner.ts";
 
 describe("agent resolution precedence with pointer (TP-016)", () => {
 	/** Helper: write a minimal agent markdown file. */

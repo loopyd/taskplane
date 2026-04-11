@@ -18,10 +18,10 @@ import { join } from "path";
 import { tmpdir } from "os";
 
 import {
-	_tailSidecarJsonl as tailSidecarJsonl,
-	_createSidecarTailState as createSidecarTailState,
-} from "../task-runner.ts";
-import type { SidecarTailState, SidecarTelemetryDelta } from "../task-runner.ts";
+	tailSidecarJsonl,
+	createSidecarTailState,
+} from "../taskplane/sidecar-telemetry.ts";
+import type { SidecarTailState, SidecarTelemetryDelta } from "../taskplane/sidecar-telemetry.ts";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 

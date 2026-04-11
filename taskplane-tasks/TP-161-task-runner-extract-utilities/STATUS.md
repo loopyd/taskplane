@@ -4,7 +4,7 @@
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-11
 **Review Level:** 2
-**Review Counter:** 2
+**Review Counter:** 3
 **Iteration:** 1
 **Size:** M
 
@@ -53,15 +53,15 @@
 ---
 
 ### Step 4: Update all test imports
-**Status:** ⬜ Not Started
+**Status:** ✅ Complete
 
-- [ ] `context-pressure-cache.test.ts` → import sidecar utils from `../taskplane/sidecar-telemetry`
-- [ ] `context-window-autodetect.test.ts` → import `resolveContextWindow`, `FALLBACK_CONTEXT_WINDOW` from `../taskplane/context-window`; update all `resolveContextWindow(config, ctx)` call sites to `resolveContextWindow(config.context.worker_context_window, ctx)`; keep `loadConfig as taskRunnerLoadConfig` from `task-runner.ts`
-- [ ] `context-window-resolution.test.ts` → import `resolveContextWindow`, `FALLBACK_CONTEXT_WINDOW` from `../taskplane/context-window`; update all call sites; keep `loadConfig` from `task-runner.ts`
-- [ ] `sidecar-tailing.test.ts` → import from `../taskplane/sidecar-telemetry`
-- [ ] `project-config-loader.test.ts` → change `_loadAgentDef` to `loadAgentDef` from `../taskplane/execution`; keep `_resetPointerWarning` from `task-runner.ts` (tests 6.4-6.6 test task-runner.ts state which stays in TP-162); keep `loadConfig as taskRunnerLoadConfig` from `task-runner.ts`
-- [ ] `task-runner-review-skip.test.ts` → `isLowRiskStep` from `../taskplane/task-executor-core`
-- [ ] Source-reading legacy tests: intentionally left unchanged in TP-161 (task-runner.ts not deleted until TP-162)
+- [x] `context-pressure-cache.test.ts` → import sidecar utils from `../taskplane/sidecar-telemetry`
+- [x] `context-window-autodetect.test.ts` → import `resolveContextWindow`, `FALLBACK_CONTEXT_WINDOW` from `../taskplane/context-window`; update all `resolveContextWindow(config, ctx)` call sites to `resolveContextWindow(config.context.worker_context_window, ctx)`; keep `loadConfig as taskRunnerLoadConfig` from `task-runner.ts`
+- [x] `context-window-resolution.test.ts` → import `resolveContextWindow`, `FALLBACK_CONTEXT_WINDOW` from `../taskplane/context-window`; update all call sites; keep `loadConfig` from `task-runner.ts`
+- [x] `sidecar-tailing.test.ts` → import from `../taskplane/sidecar-telemetry`
+- [x] `project-config-loader.test.ts` → change `_loadAgentDef` to `loadAgentDef` from `../taskplane/execution`; keep `_resetPointerWarning` from `task-runner.ts` (tests 6.4-6.6 test task-runner.ts state which stays in TP-162); keep `loadConfig as taskRunnerLoadConfig` from `task-runner.ts`
+- [x] `task-runner-review-skip.test.ts` → `isLowRiskStep` from `../taskplane/task-executor-core`
+- [x] Source-reading legacy tests: intentionally left unchanged in TP-161 (task-runner.ts not deleted until TP-162)
 
 ---
 
@@ -120,3 +120,4 @@
 *None*
 | 2026-04-11 05:59 | Review R001 | plan Step 1: APPROVE |
 | 2026-04-11 06:03 | Review R002 | plan Step 4: REVISE |
+| 2026-04-11 06:04 | Review R003 | plan Step 4: APPROVE |
