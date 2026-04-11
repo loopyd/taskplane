@@ -15,7 +15,6 @@
   },
   "pi": {
     "extensions": [
-      "./extensions/task-runner.ts",
       "./extensions/task-orchestrator.ts"
     ],
     "skills": [
@@ -29,7 +28,6 @@
   "files": [
     "bin/",
     "dashboard/",
-    "extensions/task-runner.ts",
     "extensions/task-orchestrator.ts",
     "extensions/reviewer-extension.ts",
     "extensions/taskplane/",

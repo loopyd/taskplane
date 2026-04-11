@@ -4,7 +4,7 @@
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-11
 **Review Level:** 1
-**Review Counter:** 0
+**Review Counter:** 3
 **Iteration:** 1
 **Size:** M
 
@@ -21,27 +21,31 @@
 ---
 
 ### Step 1: Remove from package.json
-**Status:** ⬜ Not Started
+**Status:** ✅ Complete
 
-- [ ] Remove from `pi.extensions` array
-- [ ] Remove from `files` array
-- [ ] Validate JSON: `node -e "require('./package.json')"`
+- [x] Remove from `pi.extensions` array
+- [x] Remove from `files` array
+- [x] Validate JSON: `node -e "require('./package.json')"`
 
 ---
 
 ### Step 2: Remove dead code from execution.ts
-**Status:** ⬜ Not Started
+**Status:** ✅ Complete
 
-- [ ] Delete `resolveTaskRunnerExtensionPath()`
-- [ ] Clean TASK_AUTOSTART legacy comments
+- [x] Delete `resolveTaskRunnerExtensionPath()`
+- [x] Clean TASK_AUTOSTART legacy comments
 
 ---
 
 ### Step 3: Delete task-runner.ts
 **Status:** ⬜ Not Started
 
-- [ ] Final check: no remaining imports
-- [ ] Final check: no source-reading references in tests
+- [ ] Export `loadConfig` and `_resetPointerWarning` from config-loader.ts (move pointer logic there)
+- [ ] Update imports in 3 test files: context-window-autodetect, context-window-resolution, project-config-loader
+- [ ] Delete 9 source-extraction test files that entirely test task-runner.ts internals
+- [ ] Remove TP-090 describe block from mailbox.test.ts
+- [ ] Remove "task-runner.ts TASKPLANE_MODEL_FALLBACK" describe block from runtime-model-fallback.test.ts
+- [ ] Final check: no remaining imports or source-reading refs
 - [ ] **Delete `extensions/task-runner.ts`**
 
 ---
@@ -110,3 +114,6 @@
 ## Blockers
 
 *None*
+| 2026-04-11 06:21 | Review R001 | plan Step 1: APPROVE |
+| 2026-04-11 06:22 | Review R002 | plan Step 2: APPROVE |
+| 2026-04-11 06:25 | Review R003 | plan Step 3: REVISE |

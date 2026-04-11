@@ -20,16 +20,6 @@ import { resolvePointer, loadWorkspaceConfig } from "./workspace.ts";
 // ── Taskplane Package File Resolution ────────────────────────────────
 // getNpmGlobalRoot() and resolveTaskplanePackageFile() consolidated in path-resolver.ts (TP-157)
 
-// ── Task Runner Extension Path Resolution ────────────────────────────
-
-/**
- * Find the task-runner extension path for lane sessions.
- * @see resolveTaskplanePackageFile for resolution order
- */
-function resolveTaskRunnerExtensionPath(repoRoot: string): string {
-	return resolveTaskplanePackageFile(repoRoot, join("extensions", "task-runner.ts"));
-}
-
 // ── RPC Wrapper Path Resolution ──────────────────────────────────────
 
 /**
@@ -379,9 +369,8 @@ export function resolveCanonicalTaskPaths(
 
 	if (isWorkspaceMode) {
 		// Workspace mode: use worktree-relative path when the task folder is
-		// inside the lane's repo (same logic as TASK_AUTOSTART resolution).
-		// The worker writes .DONE and STATUS.md in the worktree, so the engine
-		// must look there too.
+		// inside the lane's repo. The worker writes .DONE and STATUS.md in
+		// the worktree, so the engine must look there too.
 		if (folderNorm.startsWith(repoRootNorm + "/")) {
 			const relPath = folderNorm.slice(repoRootNorm.length + 1);
 			resolvedFolder = join(worktreePath, relPath);
@@ -1393,7 +1382,7 @@ export function computeTransitiveDependents(
  *
  * Git worktrees only contain tracked (committed) files. If a user creates
  * task folders (PROMPT.md, STATUS.md) but doesn't commit them, the worktree
- * won't have those files and TASK_AUTOSTART will fail with "file not found".
+ * won't have those files and the worker will fail with "file not found".
  *
  * This function checks each wave task's folder for untracked or modified files,
  * stages them, and creates a commit on the current branch. This must run BEFORE
@@ -1641,7 +1630,7 @@ export function ensureTaskFilesCommitted(
 /**
  * Runtime backend selector for lane execution.
  *
- * - `"legacy"`: Session-backed path (spawnLaneSession → task-runner TASK_AUTOSTART)
+ * - `"legacy"`: Session-backed path (spawnLaneSession, deprecated)
  * - `"v2"`: Direct-child path (lane-runner → agent-host → pi --mode rpc)
  *
  * @since TP-105
@@ -1678,7 +1667,7 @@ export async function executeWave(
 	// ── Stage 0: Ensure task files are committed ────────────────
 	// Task folders may contain untracked files (PROMPT.md, STATUS.md) that
 	// won't appear in worktrees unless committed. Stage and commit them now,
-	// before worktree creation, so workers can find their TASK_AUTOSTART paths.
+	// before worktree creation, so workers can find their task files.
 	// Pass orchBranch so the staging commit is reflected in the orch branch
 	// before worktrees are allocated from it.
 	try {
