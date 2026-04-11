@@ -4,7 +4,7 @@
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-11
 **Review Level:** 2
-**Review Counter:** 5
+**Review Counter:** 6
 **Iteration:** 1
 **Size:** M
 
@@ -41,15 +41,15 @@
 ---
 
 ### Step 3: Verify supervisor/operator visibility
-**Status:** 🟨 In Progress
+**Status:** ✅ Complete
 
-- [ ] Confirm read_agent_status / list_active_agents reflect crashed status
-- [ ] Trace failed task path through monitor loop to engine failure handling
+- [x] Confirm read_agent_status / list_active_agents reflect crashed status
+- [x] Trace failed task path through monitor loop to engine failure handling
 
 ---
 
 ### Step 4: Testing & Verification
-**Status:** ⬜ Not Started
+**Status:** 🟨 In Progress
 
 - [ ] Full test suite passing
 - [ ] CLI smoke passing
@@ -98,3 +98,4 @@
 | 2026-04-11 00:25 | Review R003 | plan Step 2: REVISE |
 | 2026-04-11 00:28 | Review R004 | plan Step 2: APPROVE |
 | 2026-04-11 00:37 | Review R005 | code Step 2: REVISE |
+| 2026-04-11 00:47 | Review R006 | code Step 2: APPROVE |
