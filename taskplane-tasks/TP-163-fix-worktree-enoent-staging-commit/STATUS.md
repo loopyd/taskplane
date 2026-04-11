@@ -1,10 +1,10 @@
 # TP-163: Fix ENOENT when task folders are uncommitted at batch start (#471) — Status
 
-**Current Step:** Step 1: Fast-forward orch branch after staging commit
+**Current Step:** Step 2: Testing & Verification
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-11
 **Review Level:** 2
-**Review Counter:** 2
+**Review Counter:** 3
 **Iteration:** 1
 **Size:** S
 
@@ -35,11 +35,11 @@
 ---
 
 ### Step 2: Testing & Verification
-**Status:** ⬜ Not Started
+**Status:** ✅ Complete
 
-- [ ] Full test suite passing
-- [ ] CLI smoke passing
-- [ ] Fix all failures
+- [x] Full test suite passing
+- [x] CLI smoke passing
+- [x] Fix all failures
 
 ---
 
@@ -56,6 +56,8 @@
 | # | Type | Step | Verdict | File |
 |---|------|------|---------|------|
 | R001 | plan | 1 | REVISE | .reviews/R001-plan-step1.md |
+| R002 | plan | 1 | APPROVE | .reviews/R002-plan-step1.md |
+| R003 | code | 1 | APPROVE | — |
 
 ---
 
@@ -81,3 +83,4 @@
 *None*
 | 2026-04-11 03:48 | Review R001 | plan Step 1: REVISE |
 | 2026-04-11 03:51 | Review R002 | plan Step 1: APPROVE |
+| 2026-04-11 03:58 | Review R003 | code Step 1: APPROVE |
