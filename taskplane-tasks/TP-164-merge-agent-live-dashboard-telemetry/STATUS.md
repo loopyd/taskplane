@@ -1,10 +1,10 @@
 # TP-164: Live merge agent telemetry in dashboard (#465) — Status
 
-**Current Step:** Step 2: Write snapshots from spawnMergeAgentV2
+**Current Step:** Step 3: Load and expose merge snapshots in dashboard server
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-11
 **Review Level:** 2
-**Review Counter:** 3
+**Review Counter:** 4
 **Iteration:** 1
 **Size:** M
 
@@ -46,7 +46,7 @@
 ---
 
 ### Step 3: Load and expose merge snapshots in dashboard server
-**Status:** ⬜ Not Started
+**Status:** 🟨 In Progress
 
 - [ ] Add `loadRuntimeMergeSnapshots(batchId)` to `server.cjs`
 - [ ] Update `getActiveSessions()` to return active merger session names from registry
@@ -103,3 +103,4 @@
 | 2026-04-11 04:55 | Review R001 | plan Step 1: APPROVE |
 | 2026-04-11 04:57 | Review R002 | code Step 1: APPROVE |
 | 2026-04-11 04:58 | Review R003 | plan Step 2: REVISE |
+| 2026-04-11 05:02 | Review R004 | code Step 2: APPROVE |
