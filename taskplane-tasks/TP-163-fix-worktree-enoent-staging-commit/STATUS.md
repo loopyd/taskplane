@@ -1,6 +1,6 @@
 # TP-163: Fix ENOENT when task folders are uncommitted at batch start (#471) — Status
 
-**Current Step:** Step 0: Preflight
+**Current Step:** Step 1: Fast-forward orch branch after staging commit
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-11
 **Review Level:** 2
@@ -22,7 +22,7 @@
 ---
 
 ### Step 1: Fast-forward orch branch after staging commit
-**Status:** ⬜ Not Started
+**Status:** 🟨 In Progress
 
 - [ ] Add `orchBranch?: string` param to `ensureTaskFilesCommitted`
 - [ ] After successful staging commit, fast-forward via `git update-ref`
