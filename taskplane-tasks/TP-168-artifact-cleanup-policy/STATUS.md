@@ -1,10 +1,10 @@
 # TP-168: Artifact Cleanup Policy — Status
 
-**Current Step:** Step 1: Expand Age Sweep Scope
+**Current Step:** Step 2: Add Size Cap and Batch-Start Cleanup
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-12
 **Review Level:** 2
-**Review Counter:** 2
+**Review Counter:** 4
 **Iteration:** 1
 **Size:** M
 
@@ -47,11 +47,12 @@
 ---
 
 ### Step 2: Add Size Cap and Batch-Start Cleanup
-**Status:** ⬜ Not Started
+**Status:** 🟨 In Progress
 
 - [ ] Implement telemetry size cap (500MB, oldest-first eviction)
-- [ ] Wire into preflight cleanup
-- [ ] Add batch-start cleanup for prior batch artifacts
+- [ ] Wire size cap into preflight cleanup (engine.ts batch-start path)
+- [ ] Add batch-start cleanup for prior completed batch artifacts (never delete active batch)
+- [ ] Make thresholds clearly documented as named exported constants
 - [ ] Run targeted tests
 
 ---
@@ -110,3 +111,5 @@
 GitHub issue: #296
 | 2026-04-12 00:46 | Review R001 | plan Step 1: APPROVE |
 | 2026-04-12 00:49 | Review R002 | code Step 1: REVISE |
+| 2026-04-12 00:51 | Review R003 | code Step 1: APPROVE |
+| 2026-04-12 00:52 | Review R004 | plan Step 2: REVISE |
