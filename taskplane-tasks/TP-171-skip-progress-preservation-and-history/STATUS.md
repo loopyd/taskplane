@@ -23,7 +23,7 @@
 ---
 
 ### Step 1: Preserve Skipped Task Progress
-**Status:** 🟨 In Progress (REVISE R004)
+**Status:** ✅ Done
 
 - [x] Add skipped-lane task artifacts to mergeWave() artifact staging: include lanes with skipped tasks (but not in mergeableLanes) in the artifact staging loop so STATUS.md/reviews are copied to the merge worktree
 - [x] Handle the edge case where mergeWorkDir may not exist (all tasks skipped, no mergeable lanes) — create a lightweight artifact-only commit on the orch branch
@@ -35,9 +35,9 @@
 - [x] R002: Re-run targeted tests
 - [x] R003-1: Fix workspace-mode multi-repo gap — skipped-only repos bypassed when other repos have mergeable lanes
 - [x] R003: Re-run targeted tests
-- [ ] R004-1: Remove .DONE from skipped-artifact staging allowlist (only STATUS.md, REVIEW_VERDICT.json, .reviews)
-- [ ] R004-2: Gate post-loop skipped-only staging behind !anyRollbackFailed in mergeWaveByRepo
-- [ ] R004: Re-run targeted tests
+- [x] R004-1: Remove .DONE from skipped-artifact staging allowlist (only STATUS.md, REVIEW_VERDICT.json, .reviews)
+- [x] R004-2: Gate post-loop skipped-only staging behind !anyRollbackFailed in mergeWaveByRepo
+- [x] R004: Re-run targeted tests
 
 ---
 

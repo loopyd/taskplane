@@ -411,7 +411,9 @@ function stageSkippedArtifactsToTargetBranch(
 	repoRoot: string,
 	targetBranch: string,
 ): void {
-	const ALLOWED_NAMES = [".DONE", "STATUS.md", "REVIEW_VERDICT.json"];
+	// TP-171: Do NOT include .DONE — skipped tasks' code was not merged,
+	// so staging .DONE would create false completion markers.
+	const ALLOWED_NAMES = ["STATUS.md", "REVIEW_VERDICT.json"];
 	const ALLOWED_DIRS = [".reviews"];
 	const resolvedRepoRoot = resolve(repoRoot);
 
@@ -2089,10 +2091,19 @@ export async function mergeWave(
 			return files;
 		};
 
-		// TP-171: Include skipped-artifact lanes in artifact staging so their
-		// STATUS.md / .reviews are preserved through merge/integration.
+		// TP-171: Skipped-artifact lanes get a restricted allowlist — no .DONE
+		// because their code was not merged; staging .DONE would create false
+		// completion markers on the orch branch.
+		const SKIPPED_ARTIFACT_NAMES = ["STATUS.md", "REVIEW_VERDICT.json"];
+		const skippedArtifactLaneNumbers = new Set(skippedArtifactLanes.map(l => l.laneNumber));
+
+		// Include both merged lanes and skipped-artifact lanes in staging.
 		const artifactStagingLanes = [...orderedLanes, ...skippedArtifactLanes];
 		for (const lane of artifactStagingLanes) {
+			// Select allowlist based on lane type
+			const isSkippedOnly = skippedArtifactLaneNumbers.has(lane.laneNumber);
+			const nameAllowlist = isSkippedOnly ? SKIPPED_ARTIFACT_NAMES : ALLOWED_ARTIFACT_NAMES;
+
 			for (const allocTask of lane.tasks) {
 				if (!allocTask.task?.taskFolder?.trim()) {
 					execLog("merge", `W${waveIndex}`, `skipping task with missing taskFolder (possibly dynamically expanded)`, {
@@ -2112,7 +2123,7 @@ export async function mergeWave(
 					continue;
 				}
 
-				for (const name of ALLOWED_ARTIFACT_NAMES) {
+				for (const name of nameAllowlist) {
 					const rp = `${relFolder}/${name}`;
 					allowedRelPaths.add(rp);
 					relPathToWorktree.set(rp, join(lane.worktreePath, rp));
@@ -2655,7 +2666,9 @@ export async function mergeWaveByRepo(
 		if (!outcome) return false;
 		return outcome.tasks.some(t => t.status === "skipped");
 	});
-	if (skippedOnlyRepoLanes.length > 0) {
+	// TP-171 R004: Gate artifact staging behind safe-stop — do not advance
+	// any branch refs when a rollback failure has been detected.
+	if (skippedOnlyRepoLanes.length > 0 && !anyRollbackFailed) {
 		const skippedRepoGroups = groupLanesByRepo(skippedOnlyRepoLanes);
 		for (const group of skippedRepoGroups) {
 			const groupRepoRoot = resolveRepoRoot(group.repoId, repoRoot, workspaceConfig);
