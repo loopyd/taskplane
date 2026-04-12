@@ -1,24 +1,24 @@
 # TP-166: Wave Planner Excessive Waves and Global Lane Cap — Status
 
-**Current Step:** Not Started
-**Status:** 🔵 Ready for Execution
+**Current Step:** Step 0: Preflight and Analysis
+**Status:** 🟡 In Progress
 **Last Updated:** 2026-04-12
 **Review Level:** 2
 **Review Counter:** 0
-**Iteration:** 0
+**Iteration:** 1
 **Size:** M
 
 ---
 
 ### Step 0: Preflight and Analysis
-**Status:** ⬜ Not Started
+**Status:** ✅ Done
 
-- [ ] Read waves.ts wave planning logic for multi-segment tasks
-- [ ] Reproduce excessive-waves scenario (8 tasks → 6 waves instead of 3)
-- [ ] Read `enforceGlobalLaneCap` and trace call sites
-- [ ] Identify root cause of phantom waves
-- [ ] Identify per-repo vs global maxLanes gap
-- [ ] Document findings in STATUS.md
+- [x] Read waves.ts wave planning logic for multi-segment tasks
+- [x] Reproduce excessive-waves scenario (8 tasks → 5 waves instead of 3)
+- [x] Read `enforceGlobalLaneCap` and trace call sites
+- [x] Identify root cause of phantom waves
+- [x] Identify per-repo vs global maxLanes gap
+- [x] Document findings in STATUS.md
 
 ---
 
@@ -73,6 +73,9 @@
 
 | Discovery | Disposition | Location |
 |-----------|-------------|----------|
+| Phantom waves root cause: `buildSegmentFrontierWaves` (engine.ts ~1093) pre-expands each task-level wave into N segment rounds (N = max segments per task in wave). 3 task-level waves → 5 segment rounds when workspace tasks touch 2 repos. | Fix in Step 1 | engine.ts:1093 |
+| `enforceGlobalLaneCap` IS correctly wired at waves.ts:1295 in `allocateLanes`. 12 per-repo lanes → 4 after cap. Verified via test. | Already working | waves.ts:998,1295 |
+| `computeWaveAssignments` (used for /orch-deps display) doesn't do repo-grouping or global cap — treats all tasks as one flat group. Display-only issue; execution is correct. | Out of scope — display | waves.ts:1501 |
 
 ---
 
@@ -81,6 +84,8 @@
 | Timestamp | Action | Outcome |
 |-----------|--------|---------|
 | 2026-04-12 | Task staged | PROMPT.md and STATUS.md created |
+| 2026-04-12 14:34 | Task started | Runtime V2 lane-runner execution |
+| 2026-04-12 14:34 | Step 0 started | Preflight and Analysis |
 
 ---
 
