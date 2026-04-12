@@ -1,6 +1,6 @@
 # TP-166: Wave Planner Excessive Waves and Global Lane Cap — Status
 
-**Current Step:** Step 0: Preflight and Analysis
+**Current Step:** Step 1: Fix Excessive Wave Generation
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-12
 **Review Level:** 2
@@ -23,13 +23,12 @@
 ---
 
 ### Step 1: Fix Excessive Wave Generation
-**Status:** ⬜ Not Started
+**Status:** 🟨 In Progress
 
-> ⚠️ Hydrate: Expand based on root cause analysis in Step 0
-
-- [ ] Eliminate phantom/duplicate waves
-- [ ] Wave count matches dependency graph depth
-- [ ] Run targeted tests
+- [ ] Modify `buildSegmentFrontierWaves` to not pre-expand waves into segment rounds (return task-level waves, let continuation mechanism handle segment advancement)
+- [ ] Track task-level wave count separately from segment rounds — store `taskLevelWaveCount` on batchState
+- [ ] Update wave messages to use task-level wave count for the "of N" display
+- [ ] Run targeted tests: waves*.test.ts
 
 ---
 
