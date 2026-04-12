@@ -4,7 +4,7 @@
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-12
 **Review Level:** 2
-**Review Counter:** 0
+**Review Counter:** 1
 **Iteration:** 1
 **Size:** L
 
@@ -35,7 +35,8 @@
 - [ ] Add `onPrematureExit` callback and `maxExitInterceptions` to AgentHostOptions
 - [ ] Track last assistant message text in state accumulator (capture from message_end events)
 - [ ] Modify agent_end handler: if callback provided and under limit, call callback instead of closeStdin; send new prompt or close based on result
-- [ ] Emit `exit_intercepted` telemetry event with assistant message and interception count
+- [ ] Emit `exit_intercepted` telemetry event with full payload: assistantMessage, interceptionCount, supervisorConsulted, action (reprompt|close)
+- [ ] Add async callback safety: bounded internal timeout + try/catch fallback to closeStdin with diagnostic telemetry
 - [ ] Run targeted tests
 
 ---
@@ -90,6 +91,7 @@
 
 | # | Type | Step | Verdict | File |
 |---|------|------|---------|------|
+| R001 | plan | 1 | REVISE | .reviews/R001-plan-step1.md |
 
 ---
 
@@ -127,3 +129,4 @@ This task addresses the root cause of TP-165's repeated failures: workers exit
 with code 0 after reading code without making edits, losing their analysis
 context on each re-spawn. The supervisor-in-the-loop design preserves the
 worker's conversation context and provides targeted guidance from the supervisor.
+| 2026-04-12 02:56 | Review R001 | plan Step 1: REVISE |
