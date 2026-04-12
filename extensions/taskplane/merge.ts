@@ -2644,6 +2644,25 @@ export async function mergeWaveByRepo(
 		}
 	}
 
+	// TP-171: Stage artifacts for repos that have only skipped lanes but were
+	// not included in the mergeable repoGroups.
+	const processedRepoIds = new Set(repoGroups.map(g => g.repoId));
+	const skippedOnlyRepoLanes = completedLanes.filter(lane => {
+		if (!lane.worktreePath) return false;
+		const laneRepoId = lane.repoId ?? undefined;
+		if (processedRepoIds.has(laneRepoId)) return false; // already handled by mergeWave
+		const outcome = laneOutcomeByNumber.get(lane.laneNumber);
+		if (!outcome) return false;
+		return outcome.tasks.some(t => t.status === "skipped");
+	});
+	if (skippedOnlyRepoLanes.length > 0) {
+		const skippedRepoGroups = groupLanesByRepo(skippedOnlyRepoLanes);
+		for (const group of skippedRepoGroups) {
+			const groupRepoRoot = resolveRepoRoot(group.repoId, repoRoot, workspaceConfig);
+			stageSkippedArtifactsToTargetBranch(group.lanes, waveIndex, groupRepoRoot, baseBranch);
+		}
+	}
+
 	// ── Aggregate status ─────────────────────────────────────────
 	// Use both lane-level and repo-level evidence for correct classification:
 	// - anyLaneSucceeded: at least one lane merged successfully across all repos
