@@ -563,23 +563,48 @@ describe("TP-165 resolveTaskWorkerAgentId worker ID resolution", () => {
 		expect(result).toBe("orch-henry-lane-1-worker");
 	});
 
-	it("falls back to lane-derived worker agent ID when outcome sessionName is empty", () => {
+	it("falls back to canonical worker agent ID via agentIdPrefix when outcome sessionName is empty", () => {
 		const outcomes: any[] = [{
 			taskId: "TP-100",
 			sessionName: "",
 			status: "succeeded",
 		}];
 		const laneByTaskId = new Map([
-			["TP-100", { laneSessionId: "orch-henry-lane-1" } as any],
+			["TP-100", { laneSessionId: "orch-henry-lane-1", laneNumber: 1 } as any],
 		]);
-		const result = resolveTaskWorkerAgentId("TP-100", outcomes, laneByTaskId);
+		const result = resolveTaskWorkerAgentId("TP-100", outcomes, laneByTaskId, "orch-henry");
 		expect(result).toBe("orch-henry-lane-1-worker");
 	});
 
-	it("falls back to lane-derived worker agent ID when no outcome exists", () => {
+	it("falls back to canonical worker agent ID when no outcome exists", () => {
 		const outcomes: any[] = [];
 		const laneByTaskId = new Map([
-			["TP-100", { laneSessionId: "orch-henry-lane-2" } as any],
+			["TP-100", { laneSessionId: "orch-henry-lane-2", laneNumber: 2 } as any],
+		]);
+		const result = resolveTaskWorkerAgentId("TP-100", outcomes, laneByTaskId, "orch-henry");
+		expect(result).toBe("orch-henry-lane-2-worker");
+	});
+
+	it("uses global laneNumber in workspace mode (not repo-scoped laneSessionId)", () => {
+		// In workspace mode, laneSessionId includes repoId and local lane number
+		// (e.g., "orch-op-api-lane-1"), but the worker agent ID uses the global
+		// laneNumber (e.g., lane 3 globally → "orch-op-lane-3-worker").
+		const outcomes: any[] = [{
+			taskId: "TP-200",
+			sessionName: "",
+			status: "succeeded",
+		}];
+		const laneByTaskId = new Map([
+			["TP-200", { laneSessionId: "orch-op-api-lane-1", laneNumber: 3 } as any],
+		]);
+		const result = resolveTaskWorkerAgentId("TP-200", outcomes, laneByTaskId, "orch-op");
+		expect(result).toBe("orch-op-lane-3-worker");
+	});
+
+	it("falls back to laneSessionId-worker when agentIdPrefix is not provided", () => {
+		const outcomes: any[] = [];
+		const laneByTaskId = new Map([
+			["TP-100", { laneSessionId: "orch-henry-lane-2", laneNumber: 2 } as any],
 		]);
 		const result = resolveTaskWorkerAgentId("TP-100", outcomes, laneByTaskId);
 		expect(result).toBe("orch-henry-lane-2-worker");
