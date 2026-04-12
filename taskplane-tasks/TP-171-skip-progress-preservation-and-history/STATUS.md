@@ -1,6 +1,6 @@
 # TP-171: Skip Progress Preservation and Batch History Gap — Status
 
-**Current Step:** Step 0: Preflight and Analysis
+**Current Step:** Step 1: Preserve Skipped Task Progress
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-12
 **Review Level:** 2
@@ -23,13 +23,12 @@
 ---
 
 ### Step 1: Preserve Skipped Task Progress
-**Status:** ⬜ Not Started
+**Status:** 🟨 In Progress
 
-> ⚠️ Hydrate: Expand based on analysis in Step 0
-
-- [ ] Preserve STATUS.md and worker commits for skipped tasks
-- [ ] Ensure skipped STATUS.md reflects actual progress
-- [ ] Run targeted tests
+- [ ] Add skipped-lane task artifacts to mergeWave() artifact staging: include lanes with skipped tasks (but not in mergeableLanes) in the artifact staging loop so STATUS.md/reviews are copied to the merge worktree
+- [ ] Handle the edge case where mergeWorkDir may not exist (all tasks skipped, no mergeable lanes) — create a lightweight artifact-only commit on the orch branch
+- [ ] Verify safety-net auto-commit in engine.ts already captures skipped lane work (TP-147, line 3121-3123) — already confirmed present
+- [ ] Run targeted tests: tests/merge*.test.ts
 
 ---
 
