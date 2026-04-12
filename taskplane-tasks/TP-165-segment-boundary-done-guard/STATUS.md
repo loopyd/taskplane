@@ -1,6 +1,6 @@
 # TP-165: Segment Boundary .DONE Guard and Expansion Consumption — Status
 
-**Current Step:** Step 1: Fix Premature .DONE Creation
+**Current Step:** Step 2: Fix Segment Expansion Consumption
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-12
 **Review Level:** 2
@@ -43,12 +43,11 @@ The `resolveTaskWorkerAgentId` function falls back to `lane.laneSessionId` (e.g.
 ---
 
 ### Step 2: Fix Segment Expansion Consumption
-**Status:** ⬜ Not Started
+**Status:** 🟨 In Progress
 
-> ⚠️ Hydrate: Expand based on root cause analysis in Step 0
-
-- [ ] Fix gating condition preventing consumption at segment boundaries
-- [ ] Ensure consumed requests renamed to `.processed`
+- [ ] Fix `resolveTaskWorkerAgentId` fallback: append `-worker` role to `lane.laneSessionId` so outbox lookup uses correct agent ID
+- [ ] Verify `.processed` renaming already works (markSegmentExpansionRequestFile call at line ~2713)
+- [ ] Add test for `resolveTaskWorkerAgentId` returning correct worker agent ID
 - [ ] Run targeted tests
 
 ---
@@ -96,6 +95,7 @@ The `resolveTaskWorkerAgentId` function falls back to `lane.laneSessionId` (e.g.
 | 2026-04-12 04:52 | Exit intercept close | Supervisor directed session close: "STOP ANALYZING. MAKE THE EDIT NOW.
 | 2026-04-12 04:52 | Worker iter 2 | done in 91s, tools: 17 |
 | 2026-04-12 04:52 | Soft progress | Iteration 2: 0 new checkboxes but uncommitted source changes detected — not counting as stall |
+| 2026-04-12 04:58 | Snapshot refresh disabled | Lane 1, task TP-165: 5 consecutive emitSnapshot failures |
 
 The fix is at engine.ts line 2688. Replace this:
 
