@@ -1,7 +1,7 @@
 # TP-165: Segment Boundary .DONE Guard and Expansion Consumption — Status
 
-**Current Step:** Step 3: Testing & Verification
-**Status:** 🟡 In Progress
+**Current Step:** Step 4: Documentation & Delivery
+**Status:** ✅ Complete
 **Last Updated:** 2026-04-12
 **Review Level:** 2
 **Review Counter:** 4
@@ -63,10 +63,10 @@ The `resolveTaskWorkerAgentId` function falls back to `lane.laneSessionId` (e.g.
 ---
 
 ### Step 4: Documentation & Delivery
-**Status:** ⬜ Not Started
+**Status:** ✅ Complete
 
-- [ ] Docs reviewed for segment lifecycle references
-- [ ] Discoveries logged
+- [x] Docs reviewed for segment lifecycle references (no updates needed — internal engine behavior)
+- [x] Discoveries logged
 
 ---
 
@@ -81,6 +81,9 @@ The `resolveTaskWorkerAgentId` function falls back to `lane.laneSessionId` (e.g.
 
 | Discovery | Disposition | Location |
 |-----------|-------------|----------|
+| `laneSessionId` vs worker agent ID diverge in workspace mode (repo-scoped local numbering vs global) | Fixed: `resolveTaskWorkerAgentId` now uses `agentIdPrefix` + global `laneNumber` | `engine.ts:150-175` |
+| Engine .DONE safety-net used `task.packetTaskPath` (workspace root path) instead of worktree-resolved path | Fixed: uses `resolveCanonicalTaskPaths` with lane worktree | `engine.ts:2690-2712` |
+| `syncTaskOutcomesFromMonitor` preserves existing `sessionName` (no overwrite risk) | Verified | `persistence.ts:189+` |
 
 ---
 
