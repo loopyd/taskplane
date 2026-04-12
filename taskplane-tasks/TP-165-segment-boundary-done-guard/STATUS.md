@@ -99,6 +99,8 @@ The `resolveTaskWorkerAgentId` function falls back to `lane.laneSessionId` (e.g.
 | 2026-04-12 04:52 | Worker iter 2 | done in 91s, tools: 17 |
 | 2026-04-12 04:52 | Soft progress | Iteration 2: 0 new checkboxes but uncommitted source changes detected — not counting as stall |
 | 2026-04-12 04:58 | Snapshot refresh disabled | Lane 1, task TP-165: 5 consecutive emitSnapshot failures |
+| 2026-04-12 05:14 | Worker iter 3 | done in 1373s, tools: 174 |
+| 2026-04-12 05:14 | Task complete | .DONE created |
 
 The fix is at engine.ts line 2688. Replace this:
 
