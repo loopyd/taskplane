@@ -42,15 +42,16 @@
 ---
 
 ### Step 2: Add Supervisor Escalation to lane-runner
-**Status:** ⬜ Not Started
+**Status:** 🟨 In Progress
 
-> ⚠️ Hydrate: Expand based on Step 1 implementation
+> Step 1 provides `onPrematureExit: (assistantMessage: string) => Promise<string|null>` callback.
+> Lane-runner implements this callback to: check progress, escalate to supervisor via alert,
+> poll worker mailbox inbox for supervisor reply, and return the reply as new prompt.
 
-- [ ] Compose escalation message with worker context
-- [ ] Send to supervisor via IPC, await reply with timeout
-- [ ] Pass supervisor instructions as new worker prompt
-- [ ] Fallback to corrective re-spawn if supervisor doesn't respond
-- [ ] Run targeted tests
+- [ ] Implement `onPrematureExit` callback in hostOpts: check checkbox progress, if no progress escalate to supervisor
+- [ ] Compose structured escalation alert with worker's last message, current step, unchecked checkboxes
+- [ ] Poll worker mailbox inbox for supervisor reply with 60s timeout, fallback to null (let corrective re-spawn handle it)
+- [ ] Run targeted tests (lane-runner-v2)
 
 ---
 
