@@ -147,7 +147,7 @@ function buildSegmentDependencyMap(plan: TaskSegmentPlan): Map<string, string[]>
 	return depsBySegmentId;
 }
 
-function resolveTaskWorkerAgentId(
+export function resolveTaskWorkerAgentId(
 	taskId: string,
 	allTaskOutcomes: LaneTaskOutcome[],
 	laneByTaskId: Map<string, AllocatedLane>,
@@ -156,8 +156,14 @@ function resolveTaskWorkerAgentId(
 	if (outcome?.sessionName) {
 		return outcome.sessionName;
 	}
+	// TP-165: The fallback must derive the *worker* agent ID, not the lane
+	// session ID. The outbox lives under the worker agent ID
+	// (e.g., "orch-henry-lane-1-worker"), not the lane session
+	// (e.g., "orch-henry-lane-1"). Without the -worker suffix the engine
+	// looks in the wrong directory and never finds expansion request files.
 	const lane = laneByTaskId.get(taskId);
-	return lane?.laneSessionId ?? null;
+	if (!lane) return null;
+	return `${lane.laneSessionId}-worker`;
 }
 
 function listPendingSegmentExpansionRequestFiles(stateRoot: string, batchId: string, agentId: string): string[] {

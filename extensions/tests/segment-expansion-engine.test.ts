@@ -6,6 +6,7 @@ import {
 	applySegmentExpansionMutation,
 	collectProcessedSegmentExpansionRequestIds,
 	processSegmentExpansionRequestAtBoundary,
+	resolveTaskWorkerAgentId,
 } from "../taskplane/engine.ts";
 import {
 	buildResumeRuntimeWavePlan,
@@ -545,5 +546,47 @@ describe("TP-145 expansion edge validation anchor-repo fix", () => {
 			new Set<string>(),
 		);
 		expect(result.ok).toBe(true);
+	});
+});
+
+// ── TP-165: resolveTaskWorkerAgentId fallback fix ───────────────────
+
+describe("TP-165 resolveTaskWorkerAgentId worker ID resolution", () => {
+	it("returns outcome.sessionName when present", () => {
+		const outcomes: any[] = [{
+			taskId: "TP-100",
+			sessionName: "orch-henry-lane-1-worker",
+			status: "succeeded",
+		}];
+		const laneByTaskId = new Map();
+		const result = resolveTaskWorkerAgentId("TP-100", outcomes, laneByTaskId);
+		expect(result).toBe("orch-henry-lane-1-worker");
+	});
+
+	it("falls back to lane-derived worker agent ID when outcome sessionName is empty", () => {
+		const outcomes: any[] = [{
+			taskId: "TP-100",
+			sessionName: "",
+			status: "succeeded",
+		}];
+		const laneByTaskId = new Map([
+			["TP-100", { laneSessionId: "orch-henry-lane-1" } as any],
+		]);
+		const result = resolveTaskWorkerAgentId("TP-100", outcomes, laneByTaskId);
+		expect(result).toBe("orch-henry-lane-1-worker");
+	});
+
+	it("falls back to lane-derived worker agent ID when no outcome exists", () => {
+		const outcomes: any[] = [];
+		const laneByTaskId = new Map([
+			["TP-100", { laneSessionId: "orch-henry-lane-2" } as any],
+		]);
+		const result = resolveTaskWorkerAgentId("TP-100", outcomes, laneByTaskId);
+		expect(result).toBe("orch-henry-lane-2-worker");
+	});
+
+	it("returns null when no outcome and no lane found", () => {
+		const result = resolveTaskWorkerAgentId("TP-100", [], new Map());
+		expect(result).toBe(null);
 	});
 });
