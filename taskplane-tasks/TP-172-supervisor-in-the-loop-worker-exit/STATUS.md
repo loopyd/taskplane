@@ -4,7 +4,7 @@
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-12
 **Review Level:** 2
-**Review Counter:** 2
+**Review Counter:** 3
 **Iteration:** 1
 **Size:** L
 
@@ -51,6 +51,7 @@
 - [ ] Implement `onPrematureExit` callback in hostOpts: check checkbox progress, if no progress escalate to supervisor
 - [ ] Compose structured escalation alert with worker's last message, current step, unchecked checkboxes
 - [ ] Poll worker mailbox inbox for supervisor reply with 60s timeout, fallback to null (let corrective re-spawn handle it)
+- [ ] Interpret supervisor reply: instructional content → reprompt, close directives ("skip"/"let it fail") → return null
 - [ ] Run targeted tests (lane-runner-v2)
 
 ---
@@ -132,3 +133,4 @@ context on each re-spawn. The supervisor-in-the-loop design preserves the
 worker's conversation context and provides targeted guidance from the supervisor.
 | 2026-04-12 02:56 | Review R001 | plan Step 1: REVISE |
 | 2026-04-12 02:57 | Review R002 | plan Step 1: APPROVE |
+| 2026-04-12 03:02 | Review R003 | plan Step 2: REVISE |
