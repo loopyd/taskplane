@@ -2100,16 +2100,19 @@ export async function resumeOrchBatch(
 		persistRuntimeState("wave-execution-complete", batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discovery, stateRoot);
 
 		const elapsedSec = Math.round((waveResult.endedAt - waveResult.startedAt) / 1000);
-		onNotify(
-			ORCH_MESSAGES.orchWaveComplete(
-				waveIdx + 1,
-				waveResult.succeededTaskIds.length,
-				waveResult.failedTaskIds.length,
-				waveResult.skippedTaskIds.length,
-				elapsedSec,
-			),
-			waveResult.failedTaskIds.length > 0 ? "warning" : "info",
-		);
+		{
+			const { displayWave: completeDisplayWave } = resolveDisplayWaveNumber(waveIdx, roundToTaskWave, taskLevelWaveCount);
+			onNotify(
+				ORCH_MESSAGES.orchWaveComplete(
+					completeDisplayWave,
+					waveResult.succeededTaskIds.length,
+					waveResult.failedTaskIds.length,
+					waveResult.skippedTaskIds.length,
+					elapsedSec,
+				),
+				waveResult.failedTaskIds.length > 0 ? "warning" : "info",
+			);
+		}
 
 		// Check failure policy
 		if (waveResult.stoppedEarly) {

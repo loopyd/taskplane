@@ -3048,16 +3048,19 @@ export async function executeOrchBatch(
 		persistRuntimeState("wave-execution-complete", batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discoveryRef, stateRoot);
 
 		const elapsedSec = Math.round((waveResult.endedAt - waveResult.startedAt) / 1000);
-		onNotify(
-			ORCH_MESSAGES.orchWaveComplete(
-				waveIdx + 1,
-				waveResult.succeededTaskIds.length,
-				waveResult.failedTaskIds.length,
-				waveResult.skippedTaskIds.length,
-				elapsedSec,
-			),
-			waveResult.failedTaskIds.length > 0 ? "warning" : "info",
-		);
+		{
+			const { displayWave: completeDisplayWave } = resolveDisplayWaveNumber(waveIdx, roundToTaskWave, taskLevelWaveCount);
+			onNotify(
+				ORCH_MESSAGES.orchWaveComplete(
+					completeDisplayWave,
+					waveResult.succeededTaskIds.length,
+					waveResult.failedTaskIds.length,
+					waveResult.skippedTaskIds.length,
+					elapsedSec,
+				),
+				waveResult.failedTaskIds.length > 0 ? "warning" : "info",
+			);
+		}
 
 		// NOTE: No explicit wave_complete event in the spec event set. The supervisor
 		// infers wave completion from the sequence of task_complete/task_failed events
@@ -3768,7 +3771,7 @@ export async function executeOrchBatch(
 
 			if (totalResetWorktrees > 0) {
 				onNotify(
-					ORCH_MESSAGES.orchWorktreeReset(waveIdx + 1, totalResetWorktrees),
+					ORCH_MESSAGES.orchWorktreeReset(resolveDisplayWaveNumber(waveIdx, roundToTaskWave, taskLevelWaveCount).displayWave, totalResetWorktrees),
 					"info",
 				);
 			}
