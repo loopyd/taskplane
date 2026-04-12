@@ -1,6 +1,6 @@
 # TP-171: Skip Progress Preservation and Batch History Gap — Status
 
-**Current Step:** Step 1: Preserve Skipped Task Progress
+**Current Step:** Step 2: Fix Batch History Task Gap
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-12
 **Review Level:** 2
@@ -42,13 +42,12 @@
 ---
 
 ### Step 2: Fix Batch History Task Gap
-**Status:** ⬜ Not Started
+**Status:** 🟨 In Progress
 
-> ⚠️ Hydrate: Expand based on analysis in Step 0
-
-- [ ] All wave-planned tasks recorded in history
-- [ ] Include skipped/failed/never-started tasks
-- [ ] Run targeted tests
+- [ ] Verify TP-147 gap-filling logic in engine.ts covers all cases (skipped, failed, blocked, never-started)
+- [ ] Check if dynamically expanded tasks (segment expansion) are included in wavePlan
+- [ ] Add edge-case handling for tasks that appear in allTaskOutcomes but not wavePlan (and vice versa)
+- [ ] Run targeted tests: tests/batch-history-persistence.test.ts
 
 ---
 
