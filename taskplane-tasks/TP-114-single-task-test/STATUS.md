@@ -1,6 +1,6 @@
 # TP-114: Single Task Test — Status
 
-**Current Step:** Step 0: Preflight
+**Current Step:** Step 1: Create Test Files
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-12
 **Review Level:** 0
@@ -17,17 +17,27 @@
 
 ---
 
-### Step 1: Write Test File
-**Status:** ⬜ Not Started
+### Step 1: Create Test Files
+**Status:** 🟨 In Progress
 
 - [ ] Create `hello.txt` in this task folder with content "Runtime V2 works!"
+- [ ] Create `fibonacci.txt` with the first 20 Fibonacci numbers, one per line
+- [ ] Create `summary.txt` with a 3-paragraph summary of Runtime V2 architecture
 
 ---
 
-### Step 2: Documentation & Delivery
+### Step 2: Code Analysis
 **Status:** ⬜ Not Started
 
-- [ ] Log completion in STATUS.md
+- [ ] Read `lane-runner.ts` and write exported function count + names to `analysis.txt`
+- [ ] Read `agent-host.ts` and write all emitEvent() event types to `events.txt`
+
+---
+
+### Step 3: Documentation & Delivery
+**Status:** ⬜ Not Started
+
+- [ ] Log completion in STATUS.md with a summary of all files created
 
 ---
 
