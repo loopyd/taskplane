@@ -1,5 +1,31 @@
-Runtime V2 is a redesigned control plane for Taskplane that eliminates the project's dependency on TMUX as a correctness infrastructure. The core diagnosis behind the redesign is that the existing system has too many overlapping layers — from the operator Pi session all the way down through tmux lane sessions, rpc-wrappers, and Pi worker sessions — causing ambiguous process ownership, transport inversion (related processes communicating via files instead of direct IPC), and fragile terminal dependency. Runtime V2 replaces this with a clean, deterministic process hierarchy: extension owns the engine, the engine owns lane-runners and merge hosts, lane-runners own worker/reviewer agent-hosts, and each agent-host owns its Pi child. Every spawned process has exactly one deterministic owner, eliminating the ambiguity that caused recurring instability.
+Runtime V2 is a redesign of Taskplane's runtime control plane that replaces the
+fragile TMUX-based session infrastructure with a deterministic, Node.js-based
+process hierarchy. The existing durable data plane — PROMPT.md, STATUS.md,
+.DONE files, batch-state.json, the dependency DAG, waves, lanes, worktrees,
+and orchestrator branches — all remain intact. What changes is how processes
+are spawned, owned, and monitored: instead of deeply nested TMUX sessions
+communicating through sidecar files, Runtime V2 introduces a clean ownership
+chain where the extension owns the engine, the engine owns lane-runners and
+merge hosts, lane-runners own worker and reviewer agent-hosts, and each
+agent-host owns its Pi subprocess.
 
-The three new core components introduced by Runtime V2 are the engine process, the lane-runner process, and the agent-host process. The engine process handles discovery, DAG wave planning, lane allocation, batch state persistence, and aggregate policy decisions (pause, resume, abort, retry, skip). The lane-runner process — a new deterministic runtime component — owns exactly one lane worktree at a time, executing tasks serially with a proper state machine, handling STATUS.md parsing, step progression, checkpoint discipline, .DONE handling, and reviewer orchestration for that lane. The agent-host process is a transport adapter around `pi --mode rpc` that owns the Pi subprocess lifecycle, live RPC event parsing, telemetry normalization, mailbox polling and steer injection, conversation and event persistence, and exit summary generation.
+The core architectural principle is that every spawned process has exactly one
+deterministic owner. This eliminates the ambiguous ownership, transport
+inversion, and terminal dependency problems that plagued the original design.
+Key new components include the lane-runner (a deterministic Node process that
+manages serial task execution, STATUS parsing, step progression, and checkpoint
+discipline for a single lane) and the agent-host (a transport adapter around
+Pi RPC that handles subprocess lifecycle, live telemetry normalization, mailbox
+polling, and conversation persistence). Steering flows through a structured
+mailbox path — the operator talks to the supervisor, the supervisor talks to
+agents, and agents reply through outbox channels — with no correctness
+dependency on terminal infrastructure.
 
-Runtime V2 preserves the durable data plane that makes Taskplane reliable: STATUS.md remains the execution memory, .DONE remains the completion marker, and `.pi/batch-state.json` remains the canonical orchestration state for resumability. Live control uses direct process ownership rather than file polling between sibling processes — parents receive child telemetry directly while files persist durable history and snapshots. The redesign also introduces a batch-scoped runtime storage layout under `.pi/runtime/{batchId}/` containing per-agent manifests, event logs, stderr logs, exit summaries, and lane snapshots. Success criteria for Runtime V2 include worker/reviewer/merge lifecycle no longer depending on TMUX, dashboard visibility without pane capture, and the lane execution path no longer depending on the legacy task-runner.ts session lifecycle.
+Runtime V2 also introduces a batch-scoped storage layout under
+.pi/runtime/{batchId}/ for agent manifests, event streams, and lane snapshots,
+while preserving existing top-level durable files for backward compatibility.
+The /task command path is deprecated in favor of /orch as the authoritative
+execution path, even for single-task runs. Success is defined by the complete
+elimination of TMUX dependencies for worker, reviewer, and merge lifecycle;
+dashboard visibility through structured event logs rather than pane capture;
+and explicit packet-path authority for all segment and workspace execution.
