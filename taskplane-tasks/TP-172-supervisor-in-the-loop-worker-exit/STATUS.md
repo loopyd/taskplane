@@ -4,7 +4,7 @@
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-12
 **Review Level:** 2
-**Review Counter:** 1
+**Review Counter:** 2
 **Iteration:** 1
 **Size:** L
 
@@ -26,18 +26,18 @@
 ---
 
 ### Step 1: Add Exit Interception to agent-host
-**Status:** 🟨 In Progress
+**Status:** ✅ Complete
 
 > RPC Protocol finding: `agent_end` keeps process alive. We intercept before `closeStdin()`,
 > call async callback, then either send `{type:"prompt"}` or `closeStdin()`.
 > Need to track last assistant message text from `message_end` events.
 
-- [ ] Add `onPrematureExit` callback and `maxExitInterceptions` to AgentHostOptions
-- [ ] Track last assistant message text in state accumulator (capture from message_end events)
-- [ ] Modify agent_end handler: if callback provided and under limit, call callback instead of closeStdin; send new prompt or close based on result
-- [ ] Emit `exit_intercepted` telemetry event with full payload: assistantMessage, interceptionCount, supervisorConsulted, action (reprompt|close)
-- [ ] Add async callback safety: bounded internal timeout + try/catch fallback to closeStdin with diagnostic telemetry
-- [ ] Run targeted tests
+- [x] Add `onPrematureExit` callback and `maxExitInterceptions` to AgentHostOptions
+- [x] Track last assistant message text in state accumulator (capture from message_end events)
+- [x] Modify agent_end handler: if callback provided and under limit, call callback instead of closeStdin; send new prompt or close based on result
+- [x] Emit `exit_intercepted` telemetry event with full payload: assistantMessage, interceptionCount, supervisorConsulted, action (reprompt|close)
+- [x] Add async callback safety: bounded internal timeout + try/catch fallback to closeStdin with diagnostic telemetry
+- [x] Run targeted tests (lane-runner-v2: 48/48, conversation-event-fidelity: 19/19, exit-classification: 46/46)
 
 ---
 
@@ -130,3 +130,4 @@ with code 0 after reading code without making edits, losing their analysis
 context on each re-spawn. The supervisor-in-the-loop design preserves the
 worker's conversation context and provides targeted guidance from the supervisor.
 | 2026-04-12 02:56 | Review R001 | plan Step 1: REVISE |
+| 2026-04-12 02:57 | Review R002 | plan Step 1: APPROVE |

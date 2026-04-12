@@ -4017,7 +4017,9 @@ export type RuntimeAgentEventType =
 	// Review / bridge
 	| "review_requested"
 	| "review_completed"
-	| "review_failed";
+	| "review_failed"
+	// Exit interception (TP-172)
+	| "exit_intercepted";
 
 // ── Runtime V2 Path Helpers (TP-102) ─────────────────────────────────
 
