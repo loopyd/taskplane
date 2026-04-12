@@ -1,6 +1,6 @@
 # TP-169: Segment Expansion Resume Crash and Workspace Orch Branch — Status
 
-**Current Step:** Step 0: Preflight and Root Cause Analysis
+**Current Step:** Step 1: Fix Segment Expansion Resume Crash
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-12
 **Review Level:** 2
@@ -23,13 +23,13 @@
 ---
 
 ### Step 1: Fix Segment Expansion Resume Crash
-**Status:** ⬜ Not Started
+**Status:** 🟨 In Progress
 
-> ⚠️ Hydrate: Expand based on root cause analysis in Step 0
-
-- [ ] Populate taskFolder for dynamically-added segments
-- [ ] Ensure PersistedSegmentRecord fields complete
-- [ ] Run targeted tests
+- [ ] Fix `reconstructAllocatedLanes` to always set `taskFolder` on task stubs (resume.ts)
+- [ ] Add guard in `buildExecutionUnit` for missing/empty `taskFolder` (execution.ts)
+- [ ] Add guard in `buildMergeRequest` and merge sort for null `task` stubs (merge.ts)
+- [ ] Add guard in abort.ts for null task stubs
+- [ ] Run targeted tests: resume*.test.ts
 
 ---
 
