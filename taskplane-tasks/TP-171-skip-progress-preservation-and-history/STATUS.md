@@ -4,7 +4,7 @@
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-12
 **Review Level:** 2
-**Review Counter:** 0
+**Review Counter:** 1
 **Iteration:** 1
 **Size:** L
 
@@ -23,12 +23,12 @@
 ---
 
 ### Step 1: Preserve Skipped Task Progress
-**Status:** 🟨 In Progress
+**Status:** ✅ Done
 
-- [ ] Add skipped-lane task artifacts to mergeWave() artifact staging: include lanes with skipped tasks (but not in mergeableLanes) in the artifact staging loop so STATUS.md/reviews are copied to the merge worktree
-- [ ] Handle the edge case where mergeWorkDir may not exist (all tasks skipped, no mergeable lanes) — create a lightweight artifact-only commit on the orch branch
-- [ ] Verify safety-net auto-commit in engine.ts already captures skipped lane work (TP-147, line 3121-3123) — already confirmed present
-- [ ] Run targeted tests: tests/merge*.test.ts
+- [x] Add skipped-lane task artifacts to mergeWave() artifact staging: include lanes with skipped tasks (but not in mergeableLanes) in the artifact staging loop so STATUS.md/reviews are copied to the merge worktree
+- [x] Handle the edge case where mergeWorkDir may not exist (all tasks skipped, no mergeable lanes) — create a lightweight artifact-only commit on the orch branch
+- [x] Verify safety-net auto-commit in engine.ts already captures skipped lane work (TP-147, line 3121-3123) — already confirmed present
+- [x] Run targeted tests: tests/merge*.test.ts
 
 ---
 
@@ -95,3 +95,4 @@
 ## Notes
 
 GitHub issues: #453, #455
+| 2026-04-12 15:54 | Review R001 | plan Step 1: APPROVE |
