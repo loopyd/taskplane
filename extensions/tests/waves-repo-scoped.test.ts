@@ -464,3 +464,82 @@ describe("enforceGlobalLaneCap", () => {
 		expect(webEntries.length).toBe(1);
 	});
 });
+
+// TP-166: Regression test for global lane cap (#451)
+describe("TP-166 global lane cap regression", () => {
+	it("workspace with 3 repos, maxLanes=4, unique file scopes → total lanes ≤ 4", () => {
+		// 3 repos × 4 tasks each with unique file scopes → 12 potential lanes
+		const entries: Array<{
+			globalLane: number;
+			localLane: number;
+			repoId: string | undefined;
+			assignments: Array<{ taskId: string; lane: number; task: ParsedTask }>;
+		}> = [];
+		let offset = 0;
+		for (const repoId of ["api", "web", "shared"]) {
+			for (let i = 1; i <= 4; i++) {
+				const taskId = `TP-${repoId}-${i}`;
+				entries.push({
+					globalLane: offset + i,
+					localLane: i,
+					repoId,
+					assignments: [{
+						taskId,
+						lane: i,
+						task: makeParsedTask(taskId, {
+							resolvedRepoId: repoId,
+							fileScope: [`${repoId}/src/module${i}.ts`],
+						}),
+					}],
+				});
+			}
+			offset += 4;
+		}
+
+		expect(entries.length).toBe(12);
+
+		// Cap to 4 lanes
+		enforceGlobalLaneCap(entries, 4);
+
+		expect(entries.length).toBe(4);
+
+		// All 12 task IDs should still be present
+		const allTaskIds = entries.flatMap(e => e.assignments.map(a => a.taskId)).sort();
+		expect(allTaskIds.length).toBe(12);
+
+		// Each repo should have at least 1 lane
+		const repoIds = new Set(entries.map(e => e.repoId));
+		expect(repoIds.size).toBe(3);
+
+		// Global lane numbers should be sequential 1..4
+		expect(entries.map(e => e.globalLane)).toEqual([1, 2, 3, 4]);
+	});
+
+	it("single-repo mode (no repoId) stays within maxLanes", () => {
+		const entries: Array<{
+			globalLane: number;
+			localLane: number;
+			repoId: string | undefined;
+			assignments: Array<{ taskId: string; lane: number; task: ParsedTask }>;
+		}> = [];
+		// 6 lanes, no repo ID (single repo mode)
+		for (let i = 1; i <= 6; i++) {
+			entries.push({
+				globalLane: i,
+				localLane: i,
+				repoId: undefined,
+				assignments: [{
+					taskId: `TP-${String(i).padStart(3, '0')}`,
+					lane: i,
+					task: makeParsedTask(`TP-${String(i).padStart(3, '0')}`),
+				}],
+			});
+		}
+
+		enforceGlobalLaneCap(entries, 3);
+
+		expect(entries.length).toBe(3);
+		const allTaskIds = entries.flatMap(e => e.assignments.map(a => a.taskId)).sort();
+		expect(allTaskIds.length).toBe(6);
+	});
+});
