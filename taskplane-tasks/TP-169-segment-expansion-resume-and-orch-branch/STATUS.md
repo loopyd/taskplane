@@ -1,24 +1,24 @@
 # TP-169: Segment Expansion Resume Crash and Workspace Orch Branch — Status
 
-**Current Step:** Not Started
-**Status:** 🔵 Ready for Execution
+**Current Step:** Step 0: Preflight and Root Cause Analysis
+**Status:** 🟡 In Progress
 **Last Updated:** 2026-04-12
 **Review Level:** 2
 **Review Counter:** 0
-**Iteration:** 0
+**Iteration:** 1
 **Size:** L
 
 ---
 
 ### Step 0: Preflight and Root Cause Analysis
-**Status:** ⬜ Not Started
+**Status:** ✅ Done
 
-- [ ] Read resume.ts — task allocation reconstruction from persisted state
-- [ ] Read engine.ts — how expanded segments are persisted
-- [ ] Read execution.ts — orch branch creation per-repo in workspace mode
-- [ ] Trace `allocTask.task.taskFolder undefined` crash
-- [ ] Trace workspace orch branch gaps
-- [ ] Document findings
+- [x] Read resume.ts — task allocation reconstruction from persisted state
+- [x] Read engine.ts — how expanded segments are persisted
+- [x] Read execution.ts — orch branch creation per-repo in workspace mode
+- [x] Trace `allocTask.task.taskFolder undefined` crash
+- [x] Trace workspace orch branch gaps
+- [x] Document findings
 
 ---
 
@@ -72,6 +72,9 @@
 
 | Discovery | Disposition | Location |
 |-----------|-------------|----------|
+| Bug #1 root cause: `reconstructAllocatedLanes` in resume.ts creates task stubs without `taskFolder` when `persistedTask.taskFolder` is empty string (falsy check). The stub has other fields (segmentIds, etc.) so it's not null, but `taskFolder` is `undefined`. Crash when `buildExecutionUnit` (execution.ts:2097) or merge code accesses `task.task.taskFolder`. | Fix in Step 1 | resume.ts:161, execution.ts:2097, merge.ts:1945 |
+| Bug #2 root cause: `ensureTaskFilesCommitted` (execution.ts:1399) commits task files on the primary repo's current branch (e.g. main), not the orch branch. The orch branch is updated via ff/merge afterward, but the base branch is also modified, breaking isolation. | Fix in Step 2 | execution.ts:1399-1580 |
+| Bug #2 additional: In resume path, orch branch is not re-verified in all workspace repos before wave execution. If orch branch was deleted/corrupted, `resolveBaseBranch` silently falls back to repo's current branch. | Fix in Step 2 | resume.ts, waves.ts:564 |
 
 ---
 
@@ -80,6 +83,8 @@
 | Timestamp | Action | Outcome |
 |-----------|--------|---------|
 | 2026-04-12 | Task staged | PROMPT.md and STATUS.md created |
+| 2026-04-12 15:16 | Task started | Runtime V2 lane-runner execution |
+| 2026-04-12 15:16 | Step 0 started | Preflight and Root Cause Analysis |
 
 ---
 
