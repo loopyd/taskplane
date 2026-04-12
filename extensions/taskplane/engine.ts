@@ -6,7 +6,7 @@ import { existsSync, readdirSync, readFileSync, renameSync, unlinkSync } from "f
 import { join, resolve } from "path";
 
 import { formatDiscoveryResults, runDiscovery } from "./discovery.ts";
-import { buildReviewerEnv, computeTransitiveDependents, execLog, executeLaneV2, executeWave, killV2LaneAgents } from "./execution.ts";
+import { buildReviewerEnv, computeTransitiveDependents, execLog, executeLaneV2, executeWave, killV2LaneAgents, resolveCanonicalTaskPaths } from "./execution.ts";
 import type { RuntimeBackend } from "./execution.ts";
 import type { MonitorUpdateCallback } from "./execution.ts";
 // classifyExit no longer called directly — Tier 0 uses exitDiagnostic.classification
@@ -2685,16 +2685,30 @@ export async function executeOrchBatch(
 							// segments have been added and must execute first.
 							// Only delete if segments were actually inserted (avoid
 							// reopening a completed task on no-op mutations).
-							const doneDir = task.packetTaskPath || task.taskFolder;
-							if (doneDir && mutation.insertedSegmentIds.length > 0) {
-								const donePath = join(doneDir, ".DONE");
-								if (existsSync(donePath)) {
-									try {
-										unlinkSync(donePath);
-										execLog("batch", batchState.batchId, "removed premature .DONE after segment expansion", {
-											taskId, donePath, requestId,
-										});
-									} catch { /* non-fatal */ }
+							//
+							// TP-165: Resolve .DONE path via the lane worktree, not
+							// task.packetTaskPath/task.taskFolder (which may point to the
+							// workspace root, not the worktree where .DONE was created).
+							if (mutation.insertedSegmentIds.length > 0) {
+								const lane = laneByTaskId.get(taskId);
+								const doneDir = lane
+									? resolveCanonicalTaskPaths(
+										task.taskFolder,
+										lane.worktreePath,
+										repoRoot,
+										!!workspaceConfig,
+									).taskFolderResolved
+									: task.packetTaskPath || task.taskFolder;
+								if (doneDir) {
+									const donePath = join(doneDir, ".DONE");
+									if (existsSync(donePath)) {
+										try {
+											unlinkSync(donePath);
+											execLog("batch", batchState.batchId, "removed premature .DONE after segment expansion", {
+												taskId, donePath, requestId,
+											});
+										} catch { /* non-fatal */ }
+									}
 								}
 							}
 

@@ -15,7 +15,7 @@
  * @since TP-105
  */
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync } from "fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync, readdirSync } from "fs";
 import { join, dirname, resolve, basename } from "path";
 import { execSync } from "child_process";
 import { fileURLToPath } from "url";
@@ -741,7 +741,15 @@ export async function executeTaskV2(
 		&& unit.task.segmentIds.length > 1
 		&& unit.task.segmentIds[unit.task.segmentIds.length - 1] !== segmentId;
 
-	if (isNonFinalSegment) {
+	// TP-165: Check for pending expansion requests in the worker's outbox.
+	// If the worker filed expansion requests, more segments may be added by the
+	// engine at the segment boundary — .DONE must not be created even if this
+	// appears to be the final segment based on the static segmentIds list.
+	const hasPendingExpansionRequests = segmentId != null && hasPendingExpansionRequestFiles(
+		config.stateRoot, config.batchId, workerAgentId,
+	);
+
+	if (isNonFinalSegment || hasPendingExpansionRequests) {
 		// Segment succeeded but more segments remain — suppress .DONE and "✅ Complete" status.
 		// The engine will advance the frontier and dispatch the next segment.
 		// Also delete any .DONE the worker may have created directly (workers have
@@ -760,8 +768,11 @@ export async function executeTaskV2(
 			logExecution(statusPath, "Segment complete",
 				`Segment ${segmentId} succeeded (not final — .DONE suppressed)`);
 		}
+		const suppressionReason = isNonFinalSegment
+			? "non-final"
+			: "pending expansion requests";
 		return makeResult(taskId, segmentId, workerAgentId, "succeeded", startTime,
-			"Segment completed (non-final — .DONE suppressed)", false, totalIterations, cumulativeCostUsd, cumulativeTokens, config, statusPath, reviewerStatePath, lastTelemetry);
+			`Segment completed (${suppressionReason} — .DONE suppressed)`, false, totalIterations, cumulativeCostUsd, cumulativeTokens, config, statusPath, reviewerStatePath, lastTelemetry);
 	}
 
 	// Create .DONE if not already present (final segment or single-segment/whole-task execution)
@@ -776,6 +787,30 @@ export async function executeTaskV2(
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────
+
+/**
+ * TP-165: Check if the worker's outbox contains pending segment expansion requests.
+ *
+ * Pending expansion request files match `segment-expansion-*.json` (not renamed
+ * to `.processed`, `.rejected`, etc.). If any exist, the engine will process them
+ * at the segment boundary — and may add more segments to the task.
+ *
+ * @returns true if at least one pending expansion request file exists
+ */
+export function hasPendingExpansionRequestFiles(
+	stateRoot: string,
+	batchId: string,
+	agentId: string,
+): boolean {
+	const outboxDir = join(stateRoot, ".pi", "mailbox", batchId, agentId, "outbox");
+	if (!existsSync(outboxDir)) return false;
+	try {
+		const entries = readdirSync(outboxDir);
+		return entries.some((entry) => /^segment-expansion-.+\.json$/.test(entry));
+	} catch {
+		return false;
+	}
+}
 
 export function mapLaneTaskStatusToTerminalSnapshotStatus(
 	status: LaneTaskStatus,

@@ -4,8 +4,8 @@
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-12
 **Review Level:** 2
-**Review Counter:** 0
-**Iteration:** 1
+**Review Counter:** 1
+**Iteration:** 3
 **Size:** L
 
 > **Hydration:** Checkboxes represent meaningful outcomes, not individual code
@@ -34,11 +34,11 @@ The `resolveTaskWorkerAgentId` function falls back to `lane.laneSessionId` (e.g.
 ---
 
 ### Step 1: Fix Premature .DONE Creation
-**Status:** 🟨 In Progress
+**Status:** ✅ Complete
 
-- [ ] Add outbox expansion-request check in lane-runner before .DONE creation — suppress .DONE if pending requests exist
-- [ ] Fix engine .DONE removal safety net to use worktree-resolved path (via laneByTaskId)
-- [ ] Run targeted tests
+- [x] Add outbox expansion-request check in lane-runner before .DONE creation — suppress .DONE if pending requests exist
+- [x] Fix engine .DONE removal safety net to use worktree-resolved path (via laneByTaskId)
+- [x] Run targeted tests
 
 ---
 
@@ -92,6 +92,15 @@ The `resolveTaskWorkerAgentId` function falls back to `lane.laneSessionId` (e.g.
 | 2026-04-12 | Task staged | PROMPT.md and STATUS.md created |
 | 2026-04-12 04:29 | Task started | Runtime V2 lane-runner execution |
 | 2026-04-12 04:29 | Step 0 started | Preflight and Root Cause Analysis |
+| 2026-04-12 04:50 | Worker iter 1 | done in 1262s, tools: 132 |
+| 2026-04-12 04:52 | Exit intercept close | Supervisor directed session close: "STOP ANALYZING. MAKE THE EDIT NOW.
+| 2026-04-12 04:52 | Worker iter 2 | done in 91s, tools: 17 |
+| 2026-04-12 04:52 | Soft progress | Iteration 2: 0 new checkboxes but uncommitted source changes detected — not counting as stall |
+
+The fix is at engine.ts line 2688. Replace this:
+
+```
+const done" |
 
 ---
 
@@ -104,3 +113,4 @@ The `resolveTaskWorkerAgentId` function falls back to `lane.laneSessionId` (e.g.
 ## Notes
 
 GitHub issues: #457, #452
+| 2026-04-12 04:48 | Review R001 | plan Step 1: APPROVE |
