@@ -9,6 +9,7 @@ import {
 	collectDoneTaskIdsForResume,
 	computeResumePoint,
 	reconcileTaskStates,
+	reconstructAllocatedLanes,
 	reconstructSegmentFrontier,
 } from "../taskplane/resume.ts";
 import { defaultBatchDiagnostics, defaultResilienceState } from "../taskplane/types.ts";
@@ -436,5 +437,118 @@ describe("TP-135 resume segment fallback behavior", () => {
 
 		const reconciled = reconcileTaskStates(state, new Set(), new Set(), new Set(["TP-040"]));
 		expect(reconciled[0].action).toBe("re-execute");
+	});
+});
+
+// ── TP-169 Regression Tests ──────────────────────────────────────────
+
+describe("TP-169 resume after segment expansion — no crash, taskFolder populated", () => {
+	it("taskFolder is set on task stub even when persisted record has empty taskFolder", () => {
+		const state = makeState({
+			lanes: [{
+				laneNumber: 1,
+				laneId: "lane-1",
+				laneSessionId: "orch-lane-1",
+				worktreePath: "/tmp/wt-1",
+				branch: "task/lane-1",
+				taskIds: ["TP-070"],
+			}],
+			tasks: [{
+				taskId: "TP-070",
+				laneNumber: 1,
+				sessionName: "orch-lane-1",
+				status: "running",
+				taskFolder: "", // empty — not enriched from discovery
+				startedAt: Date.now() - 1000,
+				endedAt: null,
+				doneFileFound: false,
+				exitReason: "",
+				segmentIds: ["TP-070::api", "TP-070::web"],
+				activeSegmentId: "TP-070::web",
+			}],
+			segments: [
+				makeSegment({ taskId: "TP-070", segmentId: "TP-070::api", status: "succeeded", endedAt: Date.now() - 500 }),
+				makeSegment({ taskId: "TP-070", segmentId: "TP-070::web", repoId: "web", status: "pending", dependsOnSegmentIds: ["TP-070::api"], expandedFrom: "TP-070::api", expansionRequestId: "exp-070" } as any),
+			],
+		});
+
+		const lanes = reconstructAllocatedLanes(state.lanes, state.tasks);
+		// Task stub must have taskFolder property (even if empty string)
+		const task = lanes[0].tasks[0];
+		expect(task.task).not.toBe(null);
+		expect(typeof task.task.taskFolder).toBe("string");
+		// taskFolder should be "" (the persisted value), NOT undefined
+		expect(task.task.taskFolder).toBe("");
+		// Segment metadata should be carried forward
+		expect(task.task.segmentIds).toEqual(["TP-070::api", "TP-070::web"]);
+		expect(task.task.activeSegmentId).toBe("TP-070::web");
+	});
+
+	it("taskFolder is preserved on task stub when persisted record has a valid path", () => {
+		const state = makeState({
+			lanes: [{
+				laneNumber: 1,
+				laneId: "lane-1",
+				laneSessionId: "orch-lane-1",
+				worktreePath: "/tmp/wt-1",
+				branch: "task/lane-1",
+				taskIds: ["TP-071"],
+			}],
+			tasks: [{
+				taskId: "TP-071",
+				laneNumber: 1,
+				sessionName: "orch-lane-1",
+				status: "running",
+				taskFolder: "/tmp/tasks/TP-071",
+				startedAt: Date.now() - 1000,
+				endedAt: null,
+				doneFileFound: false,
+				exitReason: "",
+				segmentIds: ["TP-071::api", "TP-071::web"],
+				activeSegmentId: "TP-071::web",
+			}],
+			segments: [
+				makeSegment({ taskId: "TP-071", segmentId: "TP-071::api", status: "succeeded", endedAt: Date.now() - 500 }),
+				makeSegment({ taskId: "TP-071", segmentId: "TP-071::web", repoId: "web", status: "pending", dependsOnSegmentIds: ["TP-071::api"] }),
+			],
+		});
+
+		const lanes = reconstructAllocatedLanes(state.lanes, state.tasks);
+		const task = lanes[0].tasks[0];
+		expect(task.task).not.toBe(null);
+		expect(task.task.taskFolder).toBe("/tmp/tasks/TP-071");
+	});
+
+	it("task stub is not null when only segment fields are set (no repoId)", () => {
+		const state = makeState({
+			lanes: [{
+				laneNumber: 1,
+				laneId: "lane-1",
+				laneSessionId: "orch-lane-1",
+				worktreePath: "/tmp/wt-1",
+				branch: "task/lane-1",
+				taskIds: ["TP-072"],
+			}],
+			tasks: [{
+				taskId: "TP-072",
+				laneNumber: 1,
+				sessionName: "orch-lane-1",
+				status: "pending",
+				taskFolder: "",
+				startedAt: null,
+				endedAt: null,
+				doneFileFound: false,
+				exitReason: "",
+				// Only segment fields, no repoId/resolvedRepoId
+				segmentIds: ["TP-072::default"],
+				activeSegmentId: "TP-072::default",
+			}],
+		});
+
+		const lanes = reconstructAllocatedLanes(state.lanes, state.tasks);
+		const task = lanes[0].tasks[0];
+		// Even with only segment fields, task should NOT be null
+		expect(task.task).not.toBe(null);
+		expect(typeof task.task.taskFolder).toBe("string");
 	});
 });

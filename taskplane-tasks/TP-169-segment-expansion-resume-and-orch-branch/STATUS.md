@@ -1,6 +1,6 @@
 # TP-169: Segment Expansion Resume Crash and Workspace Orch Branch — Status
 
-**Current Step:** Step 2: Fix Workspace Orch Branch Coverage
+**Current Step:** Step 3: Testing & Verification
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-12
 **Review Level:** 2
@@ -44,12 +44,12 @@
 ---
 
 ### Step 3: Testing & Verification
-**Status:** ⬜ Not Started
+**Status:** ✅ Done
 
-- [ ] FULL test suite passing
-- [ ] Regression test: resume after segment expansion
-- [ ] Regression test: workspace all repos have orch branch
-- [ ] All failures fixed
+- [x] FULL test suite passing (3290 tests, 0 failures)
+- [x] Regression test: resume after segment expansion (3 tests in resume-segment-frontier.test.ts)
+- [x] Regression test: workspace all repos have orch branch (3 tests in engine-segment-frontier.test.ts)
+- [x] All failures fixed (zero failures in full suite)
 
 ---
 

@@ -12,7 +12,7 @@ import {
 	scheduleContinuationSegmentRound,
 	upsertPendingExpandedSegmentRecords,
 } from "../taskplane/engine.ts";
-import { buildExecutionUnit } from "../taskplane/execution.ts";
+import { buildExecutionUnit, ensureTaskFilesCommitted } from "../taskplane/execution.ts";
 import type { AllocatedLane, AllocatedTask, ParsedTask, SegmentExpansionRequest, TaskSegmentPlan } from "../taskplane/types.ts";
 
 function makeTask(taskId: string, repoId?: string): ParsedTask {
@@ -703,5 +703,86 @@ describe("TP-166 resolveDisplayWaveNumber", () => {
 			displayWave: 1,
 			displayTotal: 3,
 		});
+	});
+});
+
+// ── TP-169 Regression Tests: buildExecutionUnit guard ────────────────
+
+describe("TP-169 buildExecutionUnit taskFolder guard", () => {
+	it("throws EXEC_MISSING_TASK_FOLDER when taskFolder is empty", () => {
+		const lane: AllocatedLane = {
+			laneNumber: 1,
+			laneId: "lane-1",
+			laneSessionId: "orch-lane-1",
+			worktreePath: "/tmp/wt-1",
+			branch: "task/lane-1",
+			tasks: [],
+			strategy: "round-robin",
+			estimatedLoad: 0,
+			estimatedMinutes: 0,
+		};
+		const task: AllocatedTask = {
+			taskId: "TP-080",
+			order: 0,
+			task: { taskFolder: "" } as unknown as ParsedTask,
+			estimatedMinutes: 0,
+		};
+
+		let threw = false;
+		let errCode = "";
+		try {
+			buildExecutionUnit(lane, task, "/repos/main");
+		} catch (err: any) {
+			threw = true;
+			errCode = err.code ?? "";
+		}
+		expect(threw).toBe(true);
+		expect(errCode).toBe("EXEC_MISSING_TASK_FOLDER");
+	});
+
+	it("throws EXEC_MISSING_TASK_FOLDER when task.task is null", () => {
+		const lane: AllocatedLane = {
+			laneNumber: 1,
+			laneId: "lane-1",
+			laneSessionId: "orch-lane-1",
+			worktreePath: "/tmp/wt-1",
+			branch: "task/lane-1",
+			tasks: [],
+			strategy: "round-robin",
+			estimatedLoad: 0,
+			estimatedMinutes: 0,
+		};
+		const task: AllocatedTask = {
+			taskId: "TP-081",
+			order: 0,
+			task: null as unknown as ParsedTask,
+			estimatedMinutes: 0,
+		};
+
+		let threw = false;
+		try {
+			buildExecutionUnit(lane, task, "/repos/main");
+		} catch {
+			threw = true;
+		}
+		expect(threw).toBe(true);
+	});
+});
+
+describe("TP-169 workspace orch branch: ensureTaskFilesCommitted is exported", () => {
+	it("ensureTaskFilesCommitted accepts orchBranch parameter", () => {
+		// Structural test: ensureTaskFilesCommitted signature includes orchBranch
+		const execSrc = readFileSync(
+			new URL("../taskplane/execution.ts", import.meta.url),
+			"utf-8",
+		);
+		const fnIdx = execSrc.indexOf("function ensureTaskFilesCommitted");
+		const sig = execSrc.slice(fnIdx, fnIdx + 300);
+		expect(sig).toContain("orchBranch");
+		// TP-169: Must use GIT_INDEX_FILE for orch branch isolation
+		const fnBody = execSrc.slice(fnIdx, fnIdx + 5000);
+		expect(fnBody).toContain("GIT_INDEX_FILE");
+		expect(fnBody).toContain("commit-tree");
+		expect(fnBody).toContain("update-ref");
 	});
 });
