@@ -57,14 +57,17 @@
 ---
 
 ### Step 3: Add Escalation Handler to Supervisor
-**Status:** ⬜ Not Started
+**Status:** 🟨 In Progress
 
-> ⚠️ Hydrate: Expand based on Steps 1-2 implementation
+> `worker-exit-intercept` category already added to types.ts in Step 2.
+> Alert is fired by lane-runner; supervisor receives it via IPC.
+> Supervisor replies via `send_agent_message` tool which writes to worker inbox.
+> Lane-runner polls inbox for the reply. Wire is already complete.
+> This step focuses on: supervisor-primer guidance + event tailer formatting.
 
-- [ ] Add `worker-exit-intercept` alert category
-- [ ] Format structured escalation message
-- [ ] Wire reply delivery back to lane-runner
-- [ ] Run targeted tests
+- [ ] Add `worker-exit-intercept` to supervisor event tailer significant events list
+- [ ] Add formatting for `worker-exit-intercept` alert in supervisor prompt/primer guidance
+- [ ] Run targeted tests (supervisor-related tests)
 
 ---
 
