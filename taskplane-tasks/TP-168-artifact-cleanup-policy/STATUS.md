@@ -1,7 +1,7 @@
 # TP-168: Artifact Cleanup Policy — Status
 
-**Current Step:** Step 3: Testing & Verification
-**Status:** 🟡 In Progress
+**Current Step:** Step 4: Documentation & Delivery
+**Status:** ✅ Complete
 **Last Updated:** 2026-04-12
 **Review Level:** 2
 **Review Counter:** 6
@@ -69,10 +69,10 @@
 ---
 
 ### Step 4: Documentation & Delivery
-**Status:** ⬜ Not Started
+**Status:** ✅ Complete
 
-- [ ] Docs reviewed
-- [ ] Discoveries logged
+- [x] Docs reviewed — no doc changes needed (cleanup thresholds are internal constants, not user-configurable)
+- [x] Discoveries logged
 
 ---
 
@@ -87,6 +87,8 @@
 
 | Discovery | Disposition | Location |
 |-----------|-------------|----------|
+| `runPreflightCleanup`/`formatPreflightCleanup` imported but never called in engine.ts (individual functions used instead) | Left as-is — unused imports, minor tech debt | `extensions/taskplane/engine.ts:26` |
+| `sweepStaleArtifacts`/`rotateSupervisorLogs` imported but never called in extension.ts | Left as-is — unused imports, minor tech debt | `extensions/taskplane/extension.ts:35` |
 
 ---
 
