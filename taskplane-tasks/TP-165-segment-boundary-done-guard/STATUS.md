@@ -1,10 +1,10 @@
 # TP-165: Segment Boundary .DONE Guard and Expansion Consumption — Status
 
-**Current Step:** Step 2: Fix Segment Expansion Consumption
+**Current Step:** Step 3: Testing & Verification
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-12
 **Review Level:** 2
-**Review Counter:** 3
+**Review Counter:** 4
 **Iteration:** 3
 **Size:** L
 
@@ -53,12 +53,12 @@ The `resolveTaskWorkerAgentId` function falls back to `lane.laneSessionId` (e.g.
 ---
 
 ### Step 3: Testing & Verification
-**Status:** ⬜ Not Started
+**Status:** ✅ Complete
 
-- [ ] FULL test suite passing
-- [ ] Regression test: multi-segment .DONE guard
-- [ ] Regression test: expansion request consumption
-- [ ] All failures fixed
+- [x] FULL test suite passing (3268 tests, 0 failures)
+- [x] Regression test: multi-segment .DONE guard (5 tests in segment-boundary-done-guard.test.ts)
+- [x] Regression test: expansion request consumption (3 tests + 6 tests in segment-expansion-engine.test.ts)
+- [x] All failures fixed (none found)
 
 ---
 
@@ -116,3 +116,4 @@ GitHub issues: #457, #452
 | 2026-04-12 04:48 | Review R001 | plan Step 1: APPROVE |
 | 2026-04-12 05:02 | Review R002 | plan Step 2: APPROVE |
 | 2026-04-12 05:06 | Review R003 | code Step 2: REVISE |
+| 2026-04-12 05:10 | Review R004 | code Step 2: APPROVE |
