@@ -343,7 +343,8 @@ describe("10.x: Packet-home authority (TP-109)", () => {
 	it("10.4: buildExecutionUnit resolves packet paths via resolveCanonicalTaskPaths", () => {
 		const execSrc = readFileSync(join(__dirname, "..", "taskplane", "execution.ts"), "utf-8");
 		const fnIdx = execSrc.indexOf("function buildExecutionUnit");
-		const block = execSrc.slice(fnIdx, fnIdx + 1000);
+		// TP-169: Increased slice size to accommodate taskFolder guard code
+		const block = execSrc.slice(fnIdx, fnIdx + 1500);
 		expect(block).toContain("resolveCanonicalTaskPaths");
 		expect(block).toContain("packetHomeRepoId");
 	});

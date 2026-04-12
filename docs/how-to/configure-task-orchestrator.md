@@ -34,7 +34,7 @@ taskplane init
 }
 ```
 
-- `maxLanes` — max parallel lanes.
+- `maxLanes` — max parallel lanes (applied **globally** across all repos in workspace mode, not per-repo).
 - `worktreeLocation`:
   - `"subdirectory"` → `.worktrees/<prefix>-<N>`
   - `"sibling"` → `../<prefix>-<N>`
@@ -185,6 +185,7 @@ Start conservative, then increase parallelism after stable runs.
 ## Tuning tips
 
 - Increase `maxLanes` only if your tests/CI and machine can handle it.
+- In workspace mode, `maxLanes` is enforced as a **global cap** across all repos — not per-repo. With `maxLanes: 4` and 3 repos, each repo gets at least 1 lane, with remaining lanes allocated proportionally.
 - Keep `onMergeFailure: "pause"` so humans can resolve conflicts and `/orch-resume`.
 - Keep `verify` short and deterministic to avoid slow merge bottlenecks.
 

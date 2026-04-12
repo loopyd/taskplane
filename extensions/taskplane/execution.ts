@@ -13,7 +13,7 @@ import { resolvePacketPaths, buildRuntimeAgentId } from "./types.ts";
 import { readRegistrySnapshot, readLaneSnapshot, isTerminalStatus, isProcessAlive, detectOrphans, markOrphansCrashed, buildRegistrySnapshot, writeRegistrySnapshot } from "./process-registry.ts";
 import { allocateLanes } from "./waves.ts";
 import { resolveOperatorId } from "./naming.ts";
-import { runGit } from "./git.ts";
+import { runGit, runGitWithEnv } from "./git.ts";
 import { resolveTaskplanePackageFile, resolveTaskplaneAgentTemplate } from "./path-resolver.ts";
 import { resolvePointer, loadWorkspaceConfig } from "./workspace.ts";
 
@@ -1436,6 +1436,124 @@ export function ensureTaskFilesCommitted(
 
 	if (foldersToStage.length === 0) return;
 
+	// TP-169: When an orch branch is provided, commit task files directly on
+	// the orch branch using a temporary git index file. This avoids polluting
+	// the repo's current branch (e.g. main) with orchestrator-internal staging
+	// commits, maintaining proper branch isolation in workspace mode.
+	//
+	// Approach:
+	// 1. Read the orch branch's tree into a temporary index
+	// 2. Add new/modified task files to the temporary index
+	// 3. Write the combined tree
+	// 4. Create a commit on the orch branch
+	// 5. Update the orch branch ref
+	// 6. Clean up the temporary index
+	//
+	// Fallback: if orch branch plumbing fails or orchBranch is not provided,
+	// fall back to the legacy path of committing on HEAD.
+	if (orchBranch) {
+		const orchTipRes = runGit(["rev-parse", `refs/heads/${orchBranch}`], repoRoot);
+		if (orchTipRes.ok) {
+			const orchTip = orchTipRes.stdout.trim();
+			const tmpIdx = join(repoRoot, ".git", `tmp-staging-idx-wave-${waveIndex}`);
+
+			try {
+				// Read orch branch tree into temporary index
+				const readTreeRes = runGitWithEnv(
+					["read-tree", orchTip],
+					repoRoot,
+					{ GIT_INDEX_FILE: tmpIdx },
+				);
+				if (!readTreeRes.ok) {
+					execLog("wave", `W${waveIndex}`, `orch branch staging: read-tree failed, falling back to HEAD commit`, {
+						error: readTreeRes.stderr,
+					});
+					// Fall through to legacy path
+				} else {
+					// Add task files to temporary index
+					let addFailed = false;
+					for (const folder of foldersToStage) {
+						const addRes = runGitWithEnv(
+							["add", "--", folder],
+							repoRoot,
+							{ GIT_INDEX_FILE: tmpIdx },
+						);
+						if (!addRes.ok) {
+							execLog("wave", `W${waveIndex}`, `orch branch staging: git add failed for ${folder}, falling back`, {
+								error: addRes.stderr,
+							});
+							addFailed = true;
+							break;
+						}
+					}
+
+					if (!addFailed) {
+						// Write tree from temporary index
+						const writeTreeRes = runGitWithEnv(
+							["write-tree"],
+							repoRoot,
+							{ GIT_INDEX_FILE: tmpIdx },
+						);
+
+						if (writeTreeRes.ok) {
+							const tree = writeTreeRes.stdout.trim();
+							const taskIds = foldersToStage.map(f => f.split("/").pop() || f).join(", ");
+							const commitMsg = `chore: stage task files for orchestrator wave ${waveIndex} (${taskIds})`;
+
+							// Create commit directly on orch branch
+							const commitTreeRes = runGit(
+								["commit-tree", tree, "-p", orchTip, "-m", commitMsg],
+								repoRoot,
+							);
+
+							if (commitTreeRes.ok) {
+								const newCommit = commitTreeRes.stdout.trim();
+								const refUpdateRes = runGit(
+									["update-ref", `refs/heads/${orchBranch}`, newCommit, orchTip],
+									repoRoot,
+								);
+
+								if (refUpdateRes.ok) {
+									execLog("wave", `W${waveIndex}`, `committed ${foldersToStage.length} task folder(s) directly on orch branch`, {
+										orchBranch,
+										folders: foldersToStage,
+										from: orchTip.slice(0, 8),
+										to: newCommit.slice(0, 8),
+									});
+									// Clean up temp index and return — no need for legacy path
+									try { unlinkSync(tmpIdx); } catch { /* best effort */ }
+									return;
+								}
+								execLog("wave", `W${waveIndex}`, `orch branch staging: ref update failed, falling back`, {
+									error: refUpdateRes.stderr,
+								});
+							} else {
+								execLog("wave", `W${waveIndex}`, `orch branch staging: commit-tree failed, falling back`, {
+									error: commitTreeRes.stderr,
+								});
+							}
+						} else {
+							execLog("wave", `W${waveIndex}`, `orch branch staging: write-tree failed, falling back`, {
+								error: writeTreeRes.stderr,
+							});
+						}
+					}
+				}
+			} catch (err: unknown) {
+				execLog("wave", `W${waveIndex}`, `orch branch staging: unexpected error, falling back to HEAD commit`, {
+					error: err instanceof Error ? err.message : String(err),
+				});
+			} finally {
+				// Always clean up temp index
+				try { unlinkSync(tmpIdx); } catch { /* best effort */ }
+			}
+		}
+	}
+
+	// Legacy fallback: commit on HEAD and sync orch branch.
+	// This path is used when orchBranch is not provided, or when the
+	// plumbing-based approach above failed.
+
 	// Stage only the task folders
 	for (const folder of foldersToStage) {
 		const addResult = runGit(["add", "--", folder], repoRoot);
@@ -1472,15 +1590,6 @@ export function ensureTaskFilesCommitted(
 	// Fast-forward (or merge) the orch branch to include the staging commit so
 	// that worktrees—which branch from orchBranch—see the new task files and
 	// workers can find their PROMPT.md / STATUS.md without an ENOENT crash.
-	//
-	// The orch branch was created from baseBranch before executeWave runs, so in
-	// wave 1 it is always an ancestor of HEAD and a plain fast-forward applies.
-	// In wave 2+ the orch branch may have advanced due to prior wave merges
-	// (commits from worker worktrees merged back). In that case we create a merge
-	// commit so the task files become visible without rewinding any wave history.
-	//
-	// Failure here is non-fatal: the commit already succeeded; if the ref update
-	// fails the subsequent worktree allocation will produce a clear error.
 	if (orchBranch) {
 		try {
 			const headRes = runGit(["rev-parse", "HEAD"], repoRoot);
@@ -1490,16 +1599,12 @@ export function ensureTaskFilesCommitted(
 				const newHead = headRes.stdout.trim();
 				const orchTip = orchTipRes.stdout.trim();
 
-				// Check whether the orch branch tip is an ancestor of the new HEAD
-				// (i.e., a fast-forward is safe and sufficient).
 				const ancestorCheck = runGit(
 					["merge-base", "--is-ancestor", orchTip, newHead],
 					repoRoot,
 				);
 
 				if (ancestorCheck.ok) {
-					// FF case: orch branch is behind HEAD — move it forward.
-					// Expected-old-sha semantics guard against concurrent ref moves.
 					const ffResult = runGit(
 						["update-ref", `refs/heads/${orchBranch}`, newHead, orchTip],
 						repoRoot,
@@ -1517,29 +1622,16 @@ export function ensureTaskFilesCommitted(
 						});
 					}
 				} else {
-					// Non-FF case: orch branch has advanced due to prior wave merges.
-					// Create a merge commit so the new task files become visible in
-					// worktrees without discarding any accumulated wave history.
-					// Requires git ≥ 2.38 for `merge-tree --write-tree`.
 					const mergeTreeRes = runGit(
 						["merge-tree", "--write-tree", orchTip, newHead],
 						repoRoot,
 					);
 					if (mergeTreeRes.ok) {
-						// First line of stdout is the merged tree SHA.
-						// git merge-tree --write-tree exits 0 on clean merge, non-zero on conflicts.
-						// Since it exited 0, the tree should be conflict-free, but validate
-						// the SHA looks like a valid 40-hex OID before using it.
 						const mergedTree = mergeTreeRes.stdout.trim().split("\n")[0];
-						if (!/^[0-9a-f]{40}$/i.test(mergedTree)) {
-							execLog("wave", `W${waveIndex}`, `warning: merge-tree returned unexpected output (non-fatal)`, {
-								orchBranch,
-								output: mergedTree.slice(0, 60),
-							});
-						} else {
-							const mergeCommitMsg = `merge: include staged task files for wave ${waveIndex} into orch branch`;
+						if (/^[0-9a-f]{40}$/i.test(mergedTree)) {
+							const mergeMsg = `merge: include staged task files for wave ${waveIndex} into orch branch`;
 							const commitTreeRes = runGit(
-								["commit-tree", mergedTree, "-p", orchTip, "-p", newHead, "-m", mergeCommitMsg],
+								["commit-tree", mergedTree, "-p", orchTip, "-p", newHead, "-m", mergeMsg],
 								repoRoot,
 							);
 							if (commitTreeRes.ok) {
@@ -1551,28 +1643,11 @@ export function ensureTaskFilesCommitted(
 								if (refUpdateRes.ok) {
 									execLog("wave", `W${waveIndex}`, `merged staging commit into orch branch (non-FF wave)`, {
 										orchBranch,
-										orchTip: orchTip.slice(0, 8),
-										newHead: newHead.slice(0, 8),
 										mergeCommit: mergeCommitSha.slice(0, 8),
 									});
-								} else {
-									execLog("wave", `W${waveIndex}`, `warning: failed to update orch branch ref after merge-tree (non-fatal)`, {
-										orchBranch,
-										error: refUpdateRes.stderr,
-									});
 								}
-							} else {
-								execLog("wave", `W${waveIndex}`, `warning: failed to create merge commit for orch branch (non-fatal)`, {
-									orchBranch,
-									error: commitTreeRes.stderr,
-								});
 							}
-						} // end valid tree SHA
-					} else {
-						execLog("wave", `W${waveIndex}`, `warning: failed to compute merge-tree for orch branch (non-fatal; requires git ≥ 2.38)`, {
-							orchBranch,
-							error: mergeTreeRes.stderr,
-						});
+						}
 					}
 				}
 			}
@@ -2093,8 +2168,23 @@ export function buildExecutionUnit(
 	repoRoot: string,
 	isWorkspaceMode?: boolean,
 ): ExecutionUnit {
+	// TP-169: Guard against missing taskFolder. This can happen when
+	// reconstructAllocatedLanes creates task stubs from persisted state
+	// where taskFolder enrichment failed (e.g., dynamically-expanded
+	// segments whose persisted records had empty taskFolder).
+	const taskFolder = task.task?.taskFolder;
+	if (!taskFolder) {
+		throw new ExecutionError(
+			"EXEC_MISSING_TASK_FOLDER",
+			`Cannot build execution unit for task ${task.taskId}: taskFolder is ${taskFolder === "" ? "empty" : "undefined"}. ` +
+			`This typically means the task's persisted record was not enriched with discovery data. ` +
+			`Re-run discovery or check that the task exists in the task area.`,
+			"execution",
+			task.taskId,
+		);
+	}
 	const resolved = resolveCanonicalTaskPaths(
-		task.task.taskFolder,
+		taskFolder,
 		lane.worktreePath,
 		repoRoot,
 		isWorkspaceMode,
