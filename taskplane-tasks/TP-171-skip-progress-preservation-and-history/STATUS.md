@@ -11,7 +11,7 @@
 ---
 
 ### Step 0: Preflight and Analysis
-**Status:** ✅ Done
+**Status:** ✅ Complete
 
 - [x] Read merge.ts — succeeded-only lane filter
 - [x] Read engine.ts — skip propagation to lane state
@@ -23,7 +23,7 @@
 ---
 
 ### Step 1: Preserve Skipped Task Progress
-**Status:** ✅ Done
+**Status:** ✅ Complete
 
 - [x] Add skipped-lane task artifacts to mergeWave() artifact staging: include lanes with skipped tasks (but not in mergeableLanes) in the artifact staging loop so STATUS.md/reviews are copied to the merge worktree
 - [x] Handle the edge case where mergeWorkDir may not exist (all tasks skipped, no mergeable lanes) — create a lightweight artifact-only commit on the orch branch
@@ -42,7 +42,7 @@
 ---
 
 ### Step 2: Fix Batch History Task Gap
-**Status:** ✅ Done
+**Status:** ✅ Complete
 
 - [x] Verify TP-147 gap-filling logic in engine.ts covers all cases (skipped, failed, blocked, never-started)
 - [x] Check if dynamically expanded tasks (segment expansion) are included in wavePlan — confirmed: segment expansion uses same task IDs, only adds continuation rounds to runtimeSegmentRounds (not wavePlan); task IDs are already in wavePlan from original wave computation
@@ -52,7 +52,7 @@
 ---
 
 ### Step 3: Testing & Verification
-**Status:** ✅ Done
+**Status:** ✅ Complete
 
 - [x] FULL test suite passing (3290/3290 pass)
 - [x] Regression test: skipped task progress preserved (13 tests in skip-progress-preservation.test.ts)
@@ -62,7 +62,7 @@
 ---
 
 ### Step 4: Documentation & Delivery
-**Status:** ✅ Done
+**Status:** ✅ Complete
 
 - [x] Discoveries logged
 
@@ -93,6 +93,8 @@
 | 2026-04-12 | Task staged | PROMPT.md and STATUS.md created |
 | 2026-04-12 15:49 | Task started | Runtime V2 lane-runner execution |
 | 2026-04-12 15:49 | Step 0 started | Preflight and Analysis |
+| 2026-04-12 16:24 | Worker iter 1 | done in 2069s, tools: 186 |
+| 2026-04-12 16:24 | Task complete | .DONE created |
 
 ---
 
