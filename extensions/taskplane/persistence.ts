@@ -1359,6 +1359,9 @@ export function serializeBatchState(
 		endedAt: state.endedAt,
 		currentWaveIndex: state.currentWaveIndex,
 		totalWaves: state.totalWaves,
+		// TP-166: Persist task-level wave metadata for correct display after resume
+		...(state.taskLevelWaveCount != null ? { taskLevelWaveCount: state.taskLevelWaveCount } : {}),
+		...(state.roundToTaskWave != null ? { roundToTaskWave: [...state.roundToTaskWave] } : {}),
 		wavePlan,
 		lanes: laneRecords,
 		tasks: taskRecords,

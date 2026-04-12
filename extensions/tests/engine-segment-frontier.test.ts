@@ -52,6 +52,8 @@ describe("TP-133 segment frontier helpers", () => {
 
 		const frontier = buildSegmentFrontierWaves([["TP-001"]], pending);
 		expect(frontier.waves).toEqual([["TP-001"]]);
+		expect(frontier.taskLevelWaveCount).toBe(1);
+		expect(frontier.roundToTaskWave).toEqual([0]);
 
 		const task = pending.get("TP-001")!;
 		expect(task.segmentIds).toEqual(["TP-001::api"]);
@@ -99,6 +101,9 @@ describe("TP-133 segment frontier helpers", () => {
 		);
 
 		expect(frontier.waves).toEqual([["TP-010"], ["TP-010"], ["TP-010"]]);
+		// TP-166: Task-level wave count should be 1 (one original wave), not 3
+		expect(frontier.taskLevelWaveCount).toBe(1);
+		expect(frontier.roundToTaskWave).toEqual([0, 0, 0]);
 		const state = frontier.taskStateById.get("TP-010")!;
 		expect(state.orderedSegments.map((s) => s.segmentId)).toEqual([
 			"TP-010::api",
