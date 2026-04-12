@@ -1,7 +1,7 @@
 # TP-172: Supervisor-in-the-Loop Worker Exit Interception — Status
 
-**Current Step:** Step 4: Testing & Verification
-**Status:** 🟡 In Progress
+**Current Step:** Step 5: Documentation & Delivery
+**Status:** ✅ Complete
 **Last Updated:** 2026-04-12
 **Review Level:** 2
 **Review Counter:** 10
@@ -84,11 +84,11 @@
 ---
 
 ### Step 5: Documentation & Delivery
-**Status:** ⬜ Not Started
+**Status:** ✅ Complete
 
-- [ ] Update supervisor-primer.md with new alert category
-- [ ] Check execution-model.md and architecture.md
-- [ ] Discoveries logged
+- [x] Update supervisor-primer.md with new alert category (Section 13c added in Step 3)
+- [x] Check execution-model.md and architecture.md (added TP-172 section to execution-model.md; architecture.md unchanged — no structural changes)
+- [x] Discoveries logged
 
 ---
 
