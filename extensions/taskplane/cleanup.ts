@@ -293,9 +293,6 @@ export function sweepStaleArtifacts(
 		(name.startsWith("merge-request-") && name.endsWith(".txt")),
 	);
 
-	// Sweep stale verification snapshots (.pi/verification/)
-	sweepDir(join(stateRoot, ".pi", "verification"), () => true);
-
 	// Sweep stale worker conversation logs (.pi/worker-conversation-*.jsonl)
 	sweepDir(join(stateRoot, ".pi"), (name) =>
 		name.startsWith("worker-conversation-") && name.endsWith(".jsonl"),
@@ -306,7 +303,7 @@ export function sweepStaleArtifacts(
 		name.startsWith("lane-state-") && name.endsWith(".json"),
 	);
 
-	// Sweep stale batch directories under a parent (mailbox, context-snapshots)
+	// Sweep stale batch directories under a parent (mailbox, context-snapshots, verification)
 	const sweepBatchDirs = (parentDir: string, label: string): void => {
 		if (!existsSync(parentDir)) return;
 		try {
@@ -334,6 +331,9 @@ export function sweepStaleArtifacts(
 
 	// Sweep stale context-snapshot batch directories (.pi/context-snapshots/{batchId}/)
 	sweepBatchDirs(join(stateRoot, ".pi", "context-snapshots"), "context-snapshots");
+
+	// Sweep stale verification snapshot directories (.pi/verification/{opId}/)
+	sweepBatchDirs(join(stateRoot, ".pi", "verification"), "verification");
 
 	return result;
 }

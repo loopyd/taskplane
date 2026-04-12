@@ -42,7 +42,7 @@
 - [x] Add worker-conversation-*.jsonl to sweep
 - [x] Add lane-state-*.json to sweep
 - [x] Run targeted tests
-- [ ] R002: Fix verification cleanup to sweep per-op subdirectories (not top-level files)
+- [x] R002: Fix verification cleanup to sweep per-op subdirectories (not top-level files)
 
 ---
 
