@@ -6,7 +6,7 @@ import { existsSync, readdirSync, readFileSync, renameSync, unlinkSync } from "f
 import { join, resolve } from "path";
 
 import { formatDiscoveryResults, runDiscovery } from "./discovery.ts";
-import { buildReviewerEnv, computeTransitiveDependents, execLog, executeLaneV2, executeWave, killV2LaneAgents } from "./execution.ts";
+import { buildReviewerEnv, computeTransitiveDependents, execLog, executeLaneV2, executeWave, killV2LaneAgents, resolveCanonicalTaskPaths } from "./execution.ts";
 import type { RuntimeBackend } from "./execution.ts";
 import type { MonitorUpdateCallback } from "./execution.ts";
 // classifyExit no longer called directly — Tier 0 uses exitDiagnostic.classification
@@ -147,17 +147,31 @@ function buildSegmentDependencyMap(plan: TaskSegmentPlan): Map<string, string[]>
 	return depsBySegmentId;
 }
 
-function resolveTaskWorkerAgentId(
+export function resolveTaskWorkerAgentId(
 	taskId: string,
 	allTaskOutcomes: LaneTaskOutcome[],
 	laneByTaskId: Map<string, AllocatedLane>,
+	agentIdPrefix?: string,
 ): string | null {
 	const outcome = allTaskOutcomes.find((candidate) => candidate.taskId === taskId);
 	if (outcome?.sessionName) {
 		return outcome.sessionName;
 	}
+	// TP-165: The fallback must derive the *worker* agent ID, not the lane
+	// session ID. The outbox lives under the worker agent ID
+	// (e.g., "orch-op-lane-2-worker"), not the lane session
+	// (e.g., "orch-op-api-lane-1"). In workspace mode these differ because
+	// laneSessionId uses repo-scoped local numbering while the worker ID
+	// uses the global laneNumber.
 	const lane = laneByTaskId.get(taskId);
-	return lane?.laneSessionId ?? null;
+	if (!lane) return null;
+	if (agentIdPrefix) {
+		// Canonical path: reconstruct the exact same ID that executeLaneV2 builds
+		// via buildRuntimeAgentId(agentIdPrefix, lane.laneNumber, "worker").
+		return `${agentIdPrefix}-lane-${lane.laneNumber}-worker`;
+	}
+	// Legacy/defensive fallback when prefix is unavailable.
+	return `${lane.laneSessionId}-worker`;
 }
 
 function listPendingSegmentExpansionRequestFiles(stateRoot: string, batchId: string, agentId: string): string[] {
@@ -2170,6 +2184,8 @@ export async function executeOrchBatch(
 	// The orch branch isolates all batch work from the user's current branch.
 	// Worktrees branch from it; merges target it via update-ref.
 	const opId = resolveOperatorId(orchConfig);
+	const sessionPrefix = orchConfig.orchestrator?.sessionPrefix ?? "orch";
+	const agentIdPrefix = `${sessionPrefix}-${opId}`;
 	const orchBranch = `orch/${opId}-${batchState.batchId}`;
 
 	// In workspace mode, create the orch branch in every repo that might
@@ -2595,7 +2611,7 @@ export async function executeOrchBatch(
 				segmentState.statusBySegmentId.set(activeSegmentId, "succeeded");
 				upsertTerminalSegmentRecord(batchState, task, segmentState, activeSegmentId, "succeeded", outcome, laneByTaskId.get(taskId));
 
-				const workerAgentId = resolveTaskWorkerAgentId(taskId, allTaskOutcomes, laneByTaskId);
+				const workerAgentId = resolveTaskWorkerAgentId(taskId, allTaskOutcomes, laneByTaskId, agentIdPrefix);
 				if (workerAgentId) {
 					const pendingExpansionFiles = listPendingSegmentExpansionRequestFiles(stateRoot, batchState.batchId, workerAgentId);
 					if (pendingExpansionFiles.length > 0) {
@@ -2685,16 +2701,30 @@ export async function executeOrchBatch(
 							// segments have been added and must execute first.
 							// Only delete if segments were actually inserted (avoid
 							// reopening a completed task on no-op mutations).
-							const doneDir = task.packetTaskPath || task.taskFolder;
-							if (doneDir && mutation.insertedSegmentIds.length > 0) {
-								const donePath = join(doneDir, ".DONE");
-								if (existsSync(donePath)) {
-									try {
-										unlinkSync(donePath);
-										execLog("batch", batchState.batchId, "removed premature .DONE after segment expansion", {
-											taskId, donePath, requestId,
-										});
-									} catch { /* non-fatal */ }
+							//
+							// TP-165: Resolve .DONE path via the lane worktree, not
+							// task.packetTaskPath/task.taskFolder (which may point to the
+							// workspace root, not the worktree where .DONE was created).
+							if (mutation.insertedSegmentIds.length > 0) {
+								const lane = laneByTaskId.get(taskId);
+								const doneDir = lane
+									? resolveCanonicalTaskPaths(
+										task.taskFolder,
+										lane.worktreePath,
+										repoRoot,
+										!!workspaceConfig,
+									).taskFolderResolved
+									: task.packetTaskPath || task.taskFolder;
+								if (doneDir) {
+									const donePath = join(doneDir, ".DONE");
+									if (existsSync(donePath)) {
+										try {
+											unlinkSync(donePath);
+											execLog("batch", batchState.batchId, "removed premature .DONE after segment expansion", {
+												taskId, donePath, requestId,
+											});
+										} catch { /* non-fatal */ }
+									}
 								}
 							}
 
@@ -2766,7 +2796,7 @@ export async function executeOrchBatch(
 				segmentState.statusBySegmentId.set(activeSegmentId, "failed");
 				upsertTerminalSegmentRecord(batchState, task, segmentState, activeSegmentId, "failed", failOutcome, laneByTaskId.get(taskId));
 
-				const workerAgentId = resolveTaskWorkerAgentId(taskId, allTaskOutcomes, laneByTaskId);
+				const workerAgentId = resolveTaskWorkerAgentId(taskId, allTaskOutcomes, laneByTaskId, agentIdPrefix);
 				if (workerAgentId) {
 					const pendingExpansionFiles = listPendingSegmentExpansionRequestFiles(stateRoot, batchState.batchId, workerAgentId);
 					if (pendingExpansionFiles.length > 0) {
