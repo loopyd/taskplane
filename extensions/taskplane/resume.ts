@@ -1381,6 +1381,44 @@ export async function resumeOrchBatch(
 		batchState._extraFields = persistedState._extraFields;
 	}
 
+	// ── 6b. TP-169: Verify orch branch exists in all workspace repos ────
+	// During the original batch start, the orch branch was created in every
+	// workspace repo. On resume, we verify it still exists. If it's missing
+	// in any repo (e.g., deleted by user, corrupted), re-create it from the
+	// repo's current branch so that worktree creation doesn't silently fall
+	// back to the base branch, bypassing orch branch isolation.
+	if (workspaceConfig && batchState.orchBranch) {
+		for (const [repoId, repoConf] of workspaceConfig.repos) {
+			const rRoot = repoConf.path;
+			const check = runGit(["rev-parse", "--verify", `refs/heads/${batchState.orchBranch}`], rRoot);
+			if (!check.ok) {
+				// Orch branch missing in this repo — re-create from current HEAD
+				const repoBranch = getCurrentBranch(rRoot) || "HEAD";
+				const createRes = runGit(["branch", batchState.orchBranch, repoBranch], rRoot);
+				if (createRes.ok) {
+					execLog("resume", batchState.batchId, `re-created missing orch branch in ${repoId}`, {
+						orchBranch: batchState.orchBranch,
+						base: repoBranch,
+					});
+					onNotify(
+						`⚠️ Orch branch "${batchState.orchBranch}" was missing in repo "${repoId}" — re-created from ${repoBranch}`,
+						"warning",
+					);
+				} else {
+					execLog("resume", batchState.batchId, `failed to re-create orch branch in ${repoId}`, {
+						orchBranch: batchState.orchBranch,
+						error: createRes.stderr,
+					});
+					onNotify(
+						`⚠️ Could not re-create orch branch in ${repoId}: ${createRes.stderr}. ` +
+						`Worktrees for this repo may use the base branch instead.`,
+						"warning",
+					);
+				}
+			}
+		}
+	}
+
 	// ── 7. Re-run discovery for ParsedTask metadata ──────────────
 	// We need fresh ParsedTask data (taskFolder, promptPath) for execution.
 	// Use "all" to discover all areas.

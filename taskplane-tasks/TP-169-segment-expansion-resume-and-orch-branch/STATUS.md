@@ -34,12 +34,12 @@
 ---
 
 ### Step 2: Fix Workspace Orch Branch Coverage
-**Status:** 🟨 In Progress
+**Status:** ✅ Done
 
-- [ ] Refactor `ensureTaskFilesCommitted` to commit on orch branch, not base branch (execution.ts)
-- [ ] Add `runGitWithEnv` helper to git.ts for plumbing-based orch branch commits
-- [ ] Add orch branch existence verification in resume path (resume.ts)
-- [ ] Run targeted tests: workspace*.test.ts, engine*.test.ts
+- [x] Refactor `ensureTaskFilesCommitted` to commit on orch branch, not base branch (execution.ts)
+- [x] Add `runGitWithEnv` helper to git.ts for plumbing-based orch branch commits
+- [x] Add orch branch existence verification in resume path (resume.ts)
+- [x] Run targeted tests: workspace*.test.ts (94 pass), engine*.test.ts (78 pass)
 
 ---
 
