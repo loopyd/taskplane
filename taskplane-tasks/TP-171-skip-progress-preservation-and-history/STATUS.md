@@ -1,7 +1,7 @@
 # TP-171: Skip Progress Preservation and Batch History Gap — Status
 
-**Current Step:** Step 3: Testing & Verification
-**Status:** 🟡 In Progress
+**Current Step:** Step 4: Documentation & Delivery
+**Status:** ✅ Complete
 **Last Updated:** 2026-04-12
 **Review Level:** 2
 **Review Counter:** 6
@@ -62,9 +62,9 @@
 ---
 
 ### Step 4: Documentation & Delivery
-**Status:** ⬜ Not Started
+**Status:** ✅ Done
 
-- [ ] Discoveries logged
+- [x] Discoveries logged
 
 ---
 
@@ -80,7 +80,9 @@
 | Discovery | Disposition | Location |
 |-----------|-------------|----------|
 | **#453 root cause:** `mergeWave()` artifact staging (merge.ts:1944) only iterates `orderedLanes` (mergeable lanes with >=1 succeeded task). Skipped-only lanes are excluded from `mergeableLanes` filter, so their STATUS.md is never staged into the merge worktree. `preserveSkippedLaneProgress()` saves the branch but doesn't integrate artifacts into the orch branch. | Fix in Step 1 | merge.ts:1299-1329, 1944 |
-| **#455 root cause:** TP-147 already added gap-filling code (engine.ts:4055-4074) that adds tasks from `wavePlan` not in `allTaskOutcomes`. However, tasks that are skipped MID-wave (e.g., by stop-wave policy when a sibling fails) may be added to `allTaskOutcomes` with status "skipped" but their task ID might not match the wave plan due to dynamic segment expansion or be missing from `wavePlan` altogether. Also, when tasks were blocked by upstream failure, they were added as blocked but if `blockedTaskIds` set was stale, they could be missed. Need to verify the gap-filling is exhaustive and handles all edge cases. | Verify in Step 2 | engine.ts:4055-4074 |
+| **#455 root cause:** TP-147 gap-filling code is correct for the main case (blocked, pending, never-started tasks). Remaining gap was invalid status cast: `to.status as BatchTaskSummary["status"]` could produce "running" (not a valid BatchTaskSummary status) when batch pauses mid-wave. Fixed by adding explicit status validation mapping. Segment expansion doesn't add NEW task IDs, only new segments for existing tasks. | Fixed in Step 2 | engine.ts:4030-4040 |
+| **stageSkippedArtifactsToTargetBranch must use isolated worktree** — initial implementation committed artifacts directly to repoRoot without verifying the target branch, violating the merge isolation model. Fixed to use a temp worktree. | Fixed in Step 1 R002 | merge.ts:406-505 |
+| **Skipped-artifact allowlist must exclude .DONE** — staging .DONE for tasks whose code was not merged creates false completion markers on the orch branch. Split allowlists: merged lanes get full set (.DONE, STATUS.md, etc), skipped lanes get restricted set (STATUS.md, REVIEW_VERDICT.json, .reviews). | Fixed in Step 1 R004 | merge.ts:2094-2098 |
 
 ---
 
