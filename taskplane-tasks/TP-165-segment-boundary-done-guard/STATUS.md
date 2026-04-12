@@ -1,6 +1,6 @@
 # TP-165: Segment Boundary .DONE Guard and Expansion Consumption — Status
 
-**Current Step:** Step 0: Preflight and Root Cause Analysis
+**Current Step:** Step 1: Fix Premature .DONE Creation
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-12
 **Review Level:** 2
@@ -34,12 +34,10 @@ The `resolveTaskWorkerAgentId` function falls back to `lane.laneSessionId` (e.g.
 ---
 
 ### Step 1: Fix Premature .DONE Creation
-**Status:** ⬜ Not Started
+**Status:** 🟨 In Progress
 
-> ⚠️ Hydrate: Expand based on root cause analysis in Step 0
-
-- [ ] Guard .DONE creation — only when ALL segments complete
-- [ ] Verify premature-.DONE removal safety net
+- [ ] Add outbox expansion-request check in lane-runner before .DONE creation — suppress .DONE if pending requests exist
+- [ ] Fix engine .DONE removal safety net to use worktree-resolved path (via laneByTaskId)
 - [ ] Run targeted tests
 
 ---
