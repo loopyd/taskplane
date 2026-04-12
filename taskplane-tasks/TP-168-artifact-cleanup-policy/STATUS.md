@@ -1,10 +1,10 @@
 # TP-168: Artifact Cleanup Policy — Status
 
-**Current Step:** Step 2: Add Size Cap and Batch-Start Cleanup
+**Current Step:** Step 3: Testing & Verification
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-12
 **Review Level:** 2
-**Review Counter:** 5
+**Review Counter:** 6
 **Iteration:** 1
 **Size:** M
 
@@ -58,13 +58,13 @@
 ---
 
 ### Step 3: Testing & Verification
-**Status:** ⬜ Not Started
+**Status:** ✅ Complete
 
-- [ ] FULL test suite passing
-- [ ] Tests for expanded age sweep
-- [ ] Tests for size cap eviction
-- [ ] Tests for batch-start cleanup
-- [ ] All failures fixed
+- [x] FULL test suite passing
+- [x] Tests for expanded age sweep
+- [x] Tests for size cap eviction
+- [x] Tests for batch-start cleanup
+- [x] All failures fixed
 
 ---
 
@@ -114,3 +114,4 @@ GitHub issue: #296
 | 2026-04-12 00:51 | Review R003 | code Step 1: APPROVE |
 | 2026-04-12 00:52 | Review R004 | plan Step 2: REVISE |
 | 2026-04-12 00:53 | Review R005 | plan Step 2: APPROVE |
+| 2026-04-12 01:01 | Review R006 | code Step 2: APPROVE |
