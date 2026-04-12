@@ -1,7 +1,7 @@
 # TP-166: Wave Planner Excessive Waves and Global Lane Cap — Status
 
-**Current Step:** Step 3: Testing & Verification
-**Status:** 🟡 In Progress
+**Current Step:** Step 4: Documentation & Delivery
+**Status:** ✅ Complete
 **Last Updated:** 2026-04-12
 **Review Level:** 2
 **Review Counter:** 7
@@ -56,10 +56,10 @@
 ---
 
 ### Step 4: Documentation & Delivery
-**Status:** ⬜ Not Started
+**Status:** ✅ Done
 
-- [ ] Update maxLanes docs
-- [ ] Discoveries logged
+- [x] Update maxLanes docs (clarified global enforcement in workspace mode)
+- [x] Discoveries logged
 
 ---
 
