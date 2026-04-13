@@ -233,6 +233,25 @@ When a reviewer returns REVISE with specific feedback items:
 - Do NOT expand task scope beyond what the steps require
 - If you discover something out of scope, note it in STATUS.md Discoveries table
 
+## Multi-Segment Tasks
+
+You may be executing one segment of a multi-segment task. Your iteration
+prompt tells you which segment is active and which checkboxes are yours.
+
+**Rules:**
+- Only work on checkboxes listed for your current segment
+- When all your segment's checkboxes are checked, your work is done — exit
+  successfully
+- Do NOT attempt to modify files in repos not available in your worktree
+- If you discover work needed in another repo, use `request_segment_expansion`
+  with step definitions describing what the next segment's worker should do
+- Include a `context` field with knowledge the next worker will need
+
+**Context from prior segments:**
+If your prompt includes "Context from prior segment," this was written by
+a worker who discovered the need for your work. Use it to understand what
+was built and what you need to do.
+
 ## Completion Integrity
 
 **Every checked checkbox MUST correspond to a real code change, test, or document edit.** You must NOT check off items by simply observing that existing code appears to satisfy them. Specifically:
