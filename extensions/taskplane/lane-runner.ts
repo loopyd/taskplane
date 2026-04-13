@@ -401,6 +401,12 @@ export async function executeTaskV2(
 		const wrapUpFile = join(taskFolder, ".task-wrap-up");
 		if (existsSync(wrapUpFile)) try { unlinkSync(wrapUpFile); } catch { /* ignore */ }
 
+		// TP-174/TP-501: Compute segment scope mode BEFORE building prompt.
+		const isSegmentScoped = !!(stepSegmentMap && currentRepoId && repoStepNumbers
+			&& remainingSteps.length > 0
+			&& stepSegmentMap.find(s => s.stepNumber === remainingSteps[0].number)
+				?.segments.find(seg => seg.repoId === currentRepoId));
+
 		const promptLines = [
 			`Read your task instructions at: ${promptPath}`,
 			`Read your execution state at: ${statusPath}`,
@@ -414,7 +420,11 @@ export async function executeTaskV2(
 			`- Execution repo ID: ${unit.executionRepoId}`,
 			`- Execution worktree (worker cwd): ${unit.worktreePath}`,
 			`- Lane repo ID: ${config.repoId}`,
-			`- Active segment ID: ${segmentId ?? "(none / whole-task execution)"}`,
+			// Only show segment ID when segment-scoped. For FULL_TASK, omit to avoid
+			// workers incorrectly self-scoping based on segment metadata.
+			...(isSegmentScoped
+				? [`- Active segment ID: ${segmentId}`]
+				: []),
 			``,
 			`Packet home context:`,
 			`- Packet home repo ID: ${unit.packetHomeRepoId}`,
@@ -441,6 +451,12 @@ export async function executeTaskV2(
 				`- Edges: ${edgeSummary}`,
 			);
 		}
+
+		// TP-174/TP-501: Inject authoritative scope mode flag.
+		promptLines.push(
+			``,
+			`SegmentScopeMode: ${isSegmentScoped ? "SEGMENT_SCOPED" : "FULL_TASK"}`,
+		);
 
 		// TP-174: Segment-scoped prompt — show only this segment's checkboxes
 		if (stepSegmentMap && currentRepoId && repoStepNumbers && remainingSteps.length > 0) {

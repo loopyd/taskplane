@@ -383,6 +383,8 @@ function suggestRepoMatches(unknown: string, known: string[]): string[] {
 
 interface StepSegmentParseResult {
 	mapping: StepSegmentMapping[];
+	/** True if at least one step had an explicit `#### Segment:` marker. */
+	hasExplicitMarkers: boolean;
 	warnings: DiscoveryError[];
 	errors: DiscoveryError[];
 }
@@ -407,18 +409,19 @@ export function parseStepSegmentMapping(
 	const mapping: StepSegmentMapping[] = [];
 	const warnings: DiscoveryError[] = [];
 	const errors: DiscoveryError[] = [];
+	let hasExplicitMarkers = false;
 
 	// Find ## Steps section
 	const stepsSectionMatch = content.match(/^##\s+Steps\s*$/im);
 	if (!stepsSectionMatch || stepsSectionMatch.index === undefined) {
-		return { mapping, warnings, errors };
+		return { mapping, hasExplicitMarkers, warnings, errors };
 	}
 
 	const stepsStart = stepsSectionMatch.index;
 	// Get body from ## Steps to next ## top-level section or --- divider
 	const afterStepsHeader = content.indexOf("\n", stepsStart);
 	if (afterStepsHeader === -1) {
-		return { mapping, warnings, errors };
+		return { mapping, hasExplicitMarkers, warnings, errors };
 	}
 	const rest = content.slice(afterStepsHeader + 1);
 	// Find the next top-level section (## but not ###) or --- divider
@@ -438,7 +441,7 @@ export function parseStepSegmentMapping(
 	}
 
 	if (stepHeaders.length === 0) {
-		return { mapping, warnings, errors };
+		return { mapping, hasExplicitMarkers, warnings, errors };
 	}
 
 	for (let i = 0; i < stepHeaders.length; i++) {
@@ -466,7 +469,9 @@ export function parseStepSegmentMapping(
 			// No segment markers — all checkboxes belong to fallback repo
 			const checkboxes = extractCheckboxes(stepContent);
 			segments.push({ repoId: fallbackRepoId, checkboxes });
+			// Don't set hasExplicitMarkers — this is a fallback, not an explicit marker
 		} else {
+			hasExplicitMarkers = true;
 			// Check for checkboxes before the first segment header (pre-segment)
 			const preSegmentContent = stepContent.slice(0, segmentHeaders[0].index);
 			const preCheckboxes = extractCheckboxes(preSegmentContent);
@@ -539,7 +544,7 @@ export function parseStepSegmentMapping(
 		});
 	}
 
-	return { mapping, warnings, errors };
+	return { mapping, hasExplicitMarkers, warnings, errors };
 }
 
 /**
@@ -781,7 +786,10 @@ export function parsePromptForOrchestrator(
 		};
 	}
 
-	const stepSegmentMap = stepSegResult.mapping.length > 0 ? stepSegResult.mapping : undefined;
+	// Only populate stepSegmentMap when PROMPT.md has explicit #### Segment: markers.
+	// The parser produces fallback entries (repoId = primary repo) even without markers,
+	// but those should NOT trigger segment-scoped mode — they exist only for validation.
+	const stepSegmentMap = stepSegResult.hasExplicitMarkers ? stepSegResult.mapping : undefined;
 
 	return {
 		task: {

@@ -235,17 +235,24 @@ When a reviewer returns REVISE with specific feedback items:
 
 ## Multi-Segment Tasks
 
-You may be executing one segment of a multi-segment task. Your iteration
-prompt tells you which segment is active and which checkboxes are yours.
+Your iteration prompt contains a `SegmentScopeMode` line that determines
+whether multi-segment rules apply:
 
-**Rules:**
-- Only work on checkboxes listed for your current segment
-- When all your segment's checkboxes are checked, your work is done — exit
-  successfully
+**`SegmentScopeMode: FULL_TASK`** — You are a normal worker. Work through ALL
+steps from start to finish. Do NOT stop after one step. Ignore any segment ID
+metadata in your prompt — it is informational only, not a scope restriction.
+
+**`SegmentScopeMode: SEGMENT_SCOPED`** — You are executing one segment of a
+multi-segment polyrepo task. The following rules apply:
+- Only work on checkboxes listed under "Your checkboxes for this step:"
+- When all YOUR checkboxes are checked, your segment is done — exit
 - Do NOT attempt to modify files in repos not available in your worktree
 - If you discover work needed in another repo, use `request_segment_expansion`
   with step definitions describing what the next segment's worker should do
-- Include a `context` field with knowledge the next worker will need
+- If your assigned checkbox list is empty, do NOT exit as complete — log a
+  blocker in STATUS.md and escalate
+
+**If `SegmentScopeMode` is missing from your prompt**, treat it as `FULL_TASK`.
 
 **Context from prior segments:**
 If your prompt includes "Context from prior segment," this was written by

@@ -182,18 +182,9 @@ Repo: api-service
 `);
 		const result = parsePromptForOrchestrator(promptPath, taskDir, "test-area");
 		expect(result.error).toBe(null);
-		const map = result.task!.stepSegmentMap!;
-		expect(map.length).toBe(2);
-
-		// Step 0: single segment with promptRepoId
-		expect(map[0].segments.length).toBe(1);
-		expect(map[0].segments[0].repoId).toBe("api-service");
-		expect(map[0].segments[0].checkboxes).toEqual(["Check project structure"]);
-
-		// Step 1
-		expect(map[1].segments.length).toBe(1);
-		expect(map[1].segments[0].repoId).toBe("api-service");
-		expect(map[1].segments[0].checkboxes).toEqual(["Create the feature", "Write tests"]);
+		// No explicit segment markers → stepSegmentMap should be undefined
+		// (fallback entries are not promoted to segment-scoped mode)
+		expect(result.task!.stepSegmentMap).toBe(undefined);
 	});
 
 	it("30.2: no promptRepoId → uses placeholder (resolved later)", () => {
@@ -215,10 +206,8 @@ Repo: api-service
 `);
 		const result = parsePromptForOrchestrator(promptPath, taskDir, "test-area");
 		expect(result.error).toBe(null);
-		const map = result.task!.stepSegmentMap!;
-		expect(map.length).toBe(1);
-		// Should use the placeholder since no promptRepoId
-		expect(map[0].segments[0].repoId).toBe(SEGMENT_FALLBACK_REPO_PLACEHOLDER);
+		// No explicit segment markers → undefined
+		expect(result.task!.stepSegmentMap).toBe(undefined);
 	});
 });
 
@@ -558,13 +547,8 @@ describe("35.x: Repo mode placeholder resolution", () => {
 		const discovery = runDiscovery("all", taskAreas, dir);
 		const task = discovery.pending.get("TP-210");
 		expect(task).not.toBe(undefined);
-		const map = task!.stepSegmentMap!;
-		expect(map.length).toBe(2);
-		// Placeholder should be resolved to "default" in repo mode
-		expect(map[0].segments[0].repoId).toBe("default");
-		expect(map[1].segments[0].repoId).toBe("default");
-		// No placeholder sentinel should remain
-		expect(map[0].segments[0].repoId).not.toBe(SEGMENT_FALLBACK_REPO_PLACEHOLDER);
+		// No explicit segment markers → stepSegmentMap undefined
+		expect(task!.stepSegmentMap).toBe(undefined);
 	});
 });
 
@@ -600,10 +584,9 @@ Repo: api
 `);
 		const result = parsePromptForOrchestrator(promptPath, taskDir, "test-area");
 		expect(result.error).toBe(null);
-		const map = result.task!.stepSegmentMap!;
-		expect(map.length).toBe(1);
-		// Only the step's checkbox, NOT the completion criteria ones
-		expect(map[0].segments[0].checkboxes).toEqual(["Check project"]);
+		// No explicit segment markers → stepSegmentMap undefined
+		// (Completion Criteria leak test is still valid via the parser unit tests)
+		expect(result.task!.stepSegmentMap).toBe(undefined);
 	});
 });
 
