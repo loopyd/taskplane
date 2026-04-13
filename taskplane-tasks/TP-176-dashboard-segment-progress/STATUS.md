@@ -1,10 +1,10 @@
 # TP-176: Dashboard Segment-Scoped Progress — Status
 
-**Current Step:** Step 2: Segment-Scoped Progress Bar
+**Current Step:** Step 3: Testing & Verification
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-13
 **Review Level:** 1
-**Review Counter:** 2
+**Review Counter:** 3
 **Iteration:** 1
 **Size:** S
 
@@ -27,9 +27,9 @@
 ---
 
 ### Step 2: Segment-Scoped Progress Bar
-**Status:** 🟨 In Progress
-- [ ] Per-task progress bar uses V2 snapshot segment-scoped counts (already done by TP-174; verify and fix for succeeded tasks)
-- [ ] Force 100% for succeeded tasks regardless of statusData/sidecar state (#491)
+**Status:** ✅ Complete
+- [x] Per-task progress bar uses V2 snapshot segment-scoped counts (already done by TP-174; verify and fix for succeeded tasks)
+- [x] Force 100% for succeeded tasks regardless of statusData/sidecar state (#491)
 
 ---
 
@@ -82,3 +82,4 @@ Depends on TP-174 (sidecar telemetry reports segment-scoped data).
 Also fixes #491 (succeeded tasks show 0% progress).
 | 2026-04-13 17:36 | Review R001 | plan Step 1: REVISE |
 | 2026-04-13 17:38 | Review R002 | plan Step 1: REVISE |
+| 2026-04-13 17:41 | Review R003 | plan Step 2: APPROVE |

@@ -701,13 +701,21 @@ function renderLanesTasks(batch, sessions) {
       // Progress cell
       // TP-174: Prefer V2 snapshot progress (segment-scoped when available)
       // over full STATUS.md counts when the task is actively running on this lane.
+      // TP-176: Succeeded tasks always show 100% regardless of sidecar/statusData (#491).
       let progressHtml = "";
       const v2p = ls && ls._v2Progress;
       const useV2 = v2p && v2p.total > 0 && ls.taskId === task.taskId;
-      const displayChecked = useV2 ? v2p.checked : (sd ? sd.checked : 0);
-      const displayTotal = useV2 ? v2p.total : (sd ? sd.total : 0);
-      const displayProgress = displayTotal > 0 ? Math.round((displayChecked / displayTotal) * 100) : 0;
-      if (sd || useV2) {
+      if (task.status === "succeeded") {
+        // #491 fix: succeeded tasks always show 100%
+        progressHtml = `
+          <div class="task-progress">
+            <div class="task-progress-bar"><div class="task-progress-fill pct-hi" style="width:100%"></div></div>
+            <span class="task-progress-text">100%</span>
+          </div>`;
+      } else if (sd || useV2) {
+        const displayChecked = useV2 ? v2p.checked : (sd ? sd.checked : 0);
+        const displayTotal = useV2 ? v2p.total : (sd ? sd.total : 0);
+        const displayProgress = displayTotal > 0 ? Math.round((displayChecked / displayTotal) * 100) : 0;
         const fillClass = pctClass(displayProgress);
         progressHtml = `
           <div class="task-progress">
@@ -715,12 +723,6 @@ function renderLanesTasks(batch, sessions) {
               <div class="task-progress-fill ${fillClass}" style="width:${displayProgress}%"></div>
             </div>
             <span class="task-progress-text">${displayProgress}% ${displayChecked}/${displayTotal}</span>
-          </div>`;
-      } else if (task.status === "succeeded") {
-        progressHtml = `
-          <div class="task-progress">
-            <div class="task-progress-bar"><div class="task-progress-fill pct-hi" style="width:100%"></div></div>
-            <span class="task-progress-text">100%</span>
           </div>`;
       } else if (task.status === "pending") {
         progressHtml = `
