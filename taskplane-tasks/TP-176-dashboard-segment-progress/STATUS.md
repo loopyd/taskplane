@@ -1,7 +1,7 @@
 # TP-176: Dashboard Segment-Scoped Progress — Status
 
 **Current Step:** Step 4: Documentation & Delivery
-**Status:** 🟡 In Progress
+**Status:** ✅ Complete
 **Last Updated:** 2026-04-13
 **Review Level:** 1
 **Review Counter:** 3
@@ -43,8 +43,8 @@
 ---
 
 ### Step 4: Documentation & Delivery
-**Status:** ⬜ Not Started
-- [ ] Discoveries logged
+**Status:** ✅ Complete
+- [x] Discoveries logged
 
 ---
 
@@ -59,6 +59,9 @@
 
 | Discovery | Disposition | Location |
 |-----------|-------------|----------|
+| TP-174 already implemented segment-scoped progress in V2 snapshots (emitSnapshot), so the per-task progress bar was already segment-scoped for running tasks | Verified, no extra code needed | lane-runner.ts emitSnapshot |
+| #491 root cause: succeeded tasks with existing statusData fell into the sd/v2p progress branch instead of showing 100% | Fixed: succeeded check moved before sd/v2p check | dashboard/public/app.js |
+| filterStatusMdForSegment is pure client-side; no server changes needed | Decision documented | dashboard/public/app.js |
 
 ---
 
