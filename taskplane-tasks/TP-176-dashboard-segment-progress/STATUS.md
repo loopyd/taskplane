@@ -4,7 +4,7 @@
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-13
 **Review Level:** 1
-**Review Counter:** 0
+**Review Counter:** 1
 **Iteration:** 1
 **Size:** S
 
@@ -19,7 +19,8 @@
 
 ### Step 1: Segment-Scoped STATUS.md Viewer
 **Status:** 🟨 In Progress
-- [ ] Client-side: determine active repoId from task segment data and filter STATUS.md to segment blocks
+- [ ] Client-side: determine active repoId from task/lane segment data; within each step section, keep only the `#### Segment: <repoId>` block matching the active segment (remove non-matching blocks); keep all non-step content (metadata, notes)
+- [ ] Add fallback: if multi-segment but segment block cannot be resolved, show full STATUS.md
 - [ ] Render segment header context (e.g., "Segment 2/3: shared-libs") in viewer title
 - [ ] Preserve full STATUS.md for single-segment tasks (no markers)
 
@@ -79,3 +80,4 @@
 
 Depends on TP-174 (sidecar telemetry reports segment-scoped data).
 Also fixes #491 (succeeded tasks show 0% progress).
+| 2026-04-13 17:36 | Review R001 | plan Step 1: REVISE |
