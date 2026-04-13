@@ -1,6 +1,6 @@
 # TP-176: Dashboard Segment-Scoped Progress — Status
 
-**Current Step:** Step 3: Testing & Verification
+**Current Step:** Step 4: Documentation & Delivery
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-13
 **Review Level:** 1
@@ -34,9 +34,11 @@
 ---
 
 ### Step 3: Testing & Verification
-**Status:** ⬜ Not Started
-- [ ] Manual testing with polyrepo dashboard
-- [ ] Verify segment and single-segment behavior
+**Status:** ✅ Complete
+- [x] Run full test suite to verify no regressions
+- [x] Verify JavaScript logic correctness of filterStatusMdForSegment
+- [x] Verify resolveActiveSegmentForTask handles edge cases
+- [x] Verify progress bar #491 fix logic
 
 ---
 
