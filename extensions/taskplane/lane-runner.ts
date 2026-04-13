@@ -346,12 +346,18 @@ export async function executeTaskV2(
 			? rawRepoStepNumbers
 			: null;
 
+		// TP-174: Read STATUS.md content once for segment-scoped checks
+		const iterStatusContent = readFileSync(statusPath, "utf-8");
+
 		const remainingSteps = parsed.steps.filter(step => {
-			const ss = currentStatus.steps.find(s => s.number === step.number);
-			if (isStepComplete(ss)) return false;
 			// TP-174: When segment-scoped, only show steps that have work for this repoId
 			if (repoStepNumbers && !repoStepNumbers.has(step.number)) return false;
-			return true;
+			// TP-174: Use segment-scoped completion check in segment mode
+			if (repoStepNumbers && currentRepoId) {
+				return !isSegmentComplete(iterStatusContent, step.number, currentRepoId);
+			}
+			const ss = currentStatus.steps.find(s => s.number === step.number);
+			return !isStepComplete(ss);
 		});
 
 		if (remainingSteps.length === 0) break; // All done
