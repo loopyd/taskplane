@@ -27,9 +27,9 @@
 ---
 
 ### Step 2: Segment-Scoped Progress Bar
-**Status:** ⬜ Not Started
-- [ ] Progress bar uses segment-scoped counts
-- [ ] 100% override for succeeded tasks (#491)
+**Status:** 🟨 In Progress
+- [ ] Per-task progress bar uses V2 snapshot segment-scoped counts (already done by TP-174; verify and fix for succeeded tasks)
+- [ ] Force 100% for succeeded tasks regardless of statusData/sidecar state (#491)
 
 ---
 
