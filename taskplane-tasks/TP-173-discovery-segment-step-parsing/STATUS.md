@@ -1,7 +1,7 @@
 # TP-173: Discovery Segment-Step Parsing — Status
 
-**Current Step:** Step 3: Testing & Verification
-**Status:** 🟡 In Progress
+**Current Step:** Step 4: Documentation & Delivery
+**Status:** ✅ Complete
 **Last Updated:** 2026-04-13
 **Review Level:** 2
 **Review Counter:** 10
@@ -54,8 +54,8 @@
 ---
 
 ### Step 4: Documentation & Delivery
-**Status:** ⬜ Not Started
-- [ ] Discoveries logged
+**Status:** ✅ Complete
+- [x] Discoveries logged
 
 ---
 
@@ -73,6 +73,9 @@
 | parsePromptForOrchestrator() extracts ID, review, size, deps, file scope, exec target, segment DAG. Does NOT parse step sections/checkboxes. | Expected — new parsing needed | discovery.ts:356-576 |
 | ParsedTask already has explicitSegmentDag, packetRepoId, segmentIds, activeSegmentId fields. stepSegmentMap is new. | Add as optional field | types.ts:91-131 |
 | Spec A.1 defines SegmentCheckboxGroup {repoId, checkboxes[]} and StepSegmentMapping {stepNumber, stepName, segments[]} | Implement as specified | segment-aware-steps.md A.1 |
+| SEGMENT_FALLBACK_REPO_PLACEHOLDER needed for deferred repo resolution. Parse-time repo may not be known. | Implemented as `__primary__` sentinel, resolved in routing (workspace) or runDiscovery (repo mode) | discovery.ts |
+| Post-`## Steps` content (e.g., Completion Criteria) must be excluded from step parsing. Boundary detection using `## [^#]` regex. | Fixed during review cycle R009 | discovery.ts:418-424 |
+| New error codes: SEGMENT_STEP_DUPLICATE_REPO (fatal), SEGMENT_STEP_EMPTY (warning), SEGMENT_STEP_REPO_INVALID (warning) | Added to types.ts DiscoveryError union | types.ts:591-595 |
 
 ---
 
