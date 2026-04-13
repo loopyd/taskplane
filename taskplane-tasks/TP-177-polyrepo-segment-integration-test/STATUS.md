@@ -1,6 +1,6 @@
 # TP-177: Polyrepo Segment Integration Test — Status
 
-**Current Step:** Step 1: Add Segment Markers to Test Tasks
+**Current Step:** Step 2: Run Polyrepo Batch
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-13
 **Review Level:** 0
@@ -19,18 +19,18 @@
 ---
 
 ### Step 1: Add Segment Markers to Test Tasks
-**Status:** 🟨 In Progress
-- [ ] Update TP-004 PROMPT.md with segment markers
-- [ ] Update TP-005 PROMPT.md with segment markers
-- [ ] Update TP-006 PROMPT.md with segment markers
-- [ ] Update .reset-snapshots STATUS.md files
-- [ ] Verify single-segment tasks unchanged
-- [ ] Commit changes
+**Status:** ✅ Complete
+- [x] Update TP-004 PROMPT.md with segment markers
+- [x] Update TP-005 PROMPT.md with segment markers
+- [x] Update TP-006 PROMPT.md with segment markers
+- [x] Update .reset-snapshots STATUS.md files (and PROMPT.md files)
+- [x] Verify single-segment tasks unchanged (TP-001, TP-002, TP-003 have no segment markers)
+- [x] Commit changes (shared-libs develop: c1a7941)
 
 ---
 
 ### Step 2: Run Polyrepo Batch
-**Status:** ⬜ Not Started
+**Status:** 🟨 In Progress
 - [ ] Reset workspace
 - [ ] Run /orch all
 - [ ] Monitor: no supervisor steering needed
