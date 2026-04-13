@@ -337,7 +337,7 @@ export async function executeTaskV2(
 		if (pauseSignal.paused) {
 			logExecution(statusPath, "Paused", `User paused at iteration ${totalIterations}`);
 			return makeResult(taskId, segmentId, workerAgentId, "skipped", startTime,
-				"Paused by user", false, totalIterations, cumulativeCostUsd, cumulativeTokens, config, statusPath, reviewerStatePath);
+				"Paused by user", false, totalIterations, cumulativeCostUsd, cumulativeTokens, config, statusPath, reviewerStatePath, undefined, snapshotSegmentCtx);
 		}
 
 		// Determine remaining steps
@@ -921,7 +921,7 @@ export async function executeTaskV2(
 				if (noProgressCount >= config.noProgressLimit) {
 					logExecution(statusPath, "Task blocked", `No progress after ${noProgressCount} iterations`);
 					return makeResult(taskId, segmentId, workerAgentId, "failed", startTime,
-						`No progress after ${noProgressCount} iterations`, false, totalIterations, cumulativeCostUsd, cumulativeTokens, config, statusPath, reviewerStatePath, lastTelemetry);
+						`No progress after ${noProgressCount} iterations`, false, totalIterations, cumulativeCostUsd, cumulativeTokens, config, statusPath, reviewerStatePath, lastTelemetry, snapshotSegmentCtx);
 				}
 			}
 		} else {
@@ -1015,7 +1015,7 @@ export async function executeTaskV2(
 		logExecution(statusPath, "Task incomplete", `Max iterations reached. Incomplete: ${incomplete}`);
 		return makeResult(taskId, segmentId, workerAgentId, "failed", startTime,
 			`Max iterations (${config.maxIterations}) reached with incomplete steps: ${incomplete}`,
-			false, totalIterations, cumulativeCostUsd, cumulativeTokens, config, statusPath, reviewerStatePath, lastTelemetry);
+			false, totalIterations, cumulativeCostUsd, cumulativeTokens, config, statusPath, reviewerStatePath, lastTelemetry, snapshotSegmentCtx);
 	}
 
 	// TP-145: Determine if this is a non-final segment of a multi-segment task.
@@ -1058,7 +1058,7 @@ export async function executeTaskV2(
 			? "non-final"
 			: "pending expansion requests";
 		return makeResult(taskId, segmentId, workerAgentId, "succeeded", startTime,
-			`Segment completed (${suppressionReason} — .DONE suppressed)`, false, totalIterations, cumulativeCostUsd, cumulativeTokens, config, statusPath, reviewerStatePath, lastTelemetry);
+			`Segment completed (${suppressionReason} — .DONE suppressed)`, false, totalIterations, cumulativeCostUsd, cumulativeTokens, config, statusPath, reviewerStatePath, lastTelemetry, snapshotSegmentCtx);
 	}
 
 	// Create .DONE if not already present (final segment or single-segment/whole-task execution)
@@ -1069,7 +1069,7 @@ export async function executeTaskV2(
 	logExecution(statusPath, "Task complete", ".DONE created");
 
 	return makeResult(taskId, segmentId, workerAgentId, "succeeded", startTime,
-		".DONE file created by lane-runner", true, totalIterations, cumulativeCostUsd, cumulativeTokens, config, statusPath, reviewerStatePath, lastTelemetry);
+		".DONE file created by lane-runner", true, totalIterations, cumulativeCostUsd, cumulativeTokens, config, statusPath, reviewerStatePath, lastTelemetry, snapshotSegmentCtx);
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -1130,6 +1130,8 @@ function makeResult(
 	statusPath?: string,
 	reviewerStatePath?: string,
 	finalTelemetry?: Partial<AgentHostResult>,
+	/** TP-174: Segment context for segment-scoped snapshot progress */
+	segmentCtx?: { stepSegmentMap: StepSegmentMapping[]; repoId: string } | null,
 ): LaneRunnerTaskResult {
 	const telemetry = status === "skipped"
 		? undefined
@@ -1164,7 +1166,7 @@ function makeResult(
 	// TP-115: Emit terminal snapshot with real telemetry from agent-host result
 	if (config && statusPath && reviewerStatePath) {
 		const terminalStatus = mapLaneTaskStatusToTerminalSnapshotStatus(status);
-		emitSnapshot(config, taskId, segmentId, terminalStatus, finalTelemetry ?? {}, statusPath, reviewerStatePath, snapshotSegmentCtx);
+		emitSnapshot(config, taskId, segmentId, terminalStatus, finalTelemetry ?? {}, statusPath, reviewerStatePath, segmentCtx);
 	}
 
 	return result;
