@@ -70,21 +70,6 @@ const LANE_RUNNER_DIR = dirname(fileURLToPath(import.meta.url));
 // ── Segment Scoping Helpers (Phase A, TP-174) ────────────────────────
 
 /**
- * Extract the repoId component from a structured segment ID.
- *
- * Segment IDs follow the format `<taskId>::<repoId>` or `<taskId>::<repoId>::<N>`.
- * This helper extracts the repoId by splitting on `::` and taking the second element.
- *
- * @param segmentId - Structured segment ID string
- * @returns The repoId portion, or null if the format is unexpected
- * @since TP-174
- */
-export function getRepoIdFromSegmentId(segmentId: string): string | null {
-	const parts = segmentId.split("::");
-	return parts.length >= 2 ? parts[1] : null;
-}
-
-/**
  * Get the set of step numbers that have segments for a given repoId.
  *
  * Used to filter the "remaining steps" view so the worker only sees steps
@@ -432,12 +417,15 @@ export async function executeTaskV2(
 		}
 
 		// TP-174: Segment-scoped prompt — show only this segment's checkboxes
-		if (stepSegmentMap && currentRepoId && remainingSteps.length > 0) {
+		if (stepSegmentMap && currentRepoId && repoStepNumbers && remainingSteps.length > 0) {
 			const currentStepNum = remainingSteps[0].number;
 			const currentStepMapping = stepSegmentMap.find(s => s.stepNumber === currentStepNum);
+			const mySegment = currentStepMapping?.segments.find(seg => seg.repoId === currentRepoId);
 
-			if (currentStepMapping) {
-				const mySegment = currentStepMapping.segments.find(seg => seg.repoId === currentRepoId);
+			// Only inject segment-scoped prompt when the current step has an explicit
+			// segment for this repoId. If mySegment is missing (legacy task without
+			// markers, or step has no work for this repo), skip and preserve legacy behavior.
+			if (currentStepMapping && mySegment) {
 				const otherSegments = currentStepMapping.segments.filter(seg => seg.repoId !== currentRepoId);
 
 				// Count total segments for this repo across all steps
