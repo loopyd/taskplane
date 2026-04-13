@@ -4,7 +4,7 @@
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-13
 **Review Level:** 2
-**Review Counter:** 2
+**Review Counter:** 3
 **Iteration:** 1
 **Size:** M
 
@@ -31,12 +31,12 @@
 ### Step 2: Implement Segment Parsing
 **Status:** 🟨 In Progress
 
-> ⚠️ Hydrated: Parser adds segment parsing into parsePromptForOrchestrator after step extraction.
+> ⚠️ Hydrated (R003 revision): Parser adds segment parsing into parsePromptForOrchestrator after step extraction.
 
-- [ ] Add parseStepSegmentMapping helper function that extracts steps and their segment groups from PROMPT content
-- [ ] Integrate helper into parsePromptForOrchestrator to populate stepSegmentMap on ParsedTask
-- [ ] Handle edge cases: empty segments (warning), duplicate repoId in step (error), unknown repoId deferred to routing
-- [ ] Run targeted tests (discovery-routing tests)
+- [ ] Add parseStepSegmentMapping helper function that extracts steps and their segment groups from PROMPT content, including fallback grouping: checkboxes before any `#### Segment:` marker (or in steps with no markers) map to the task's primary repoId (packetRepo fallback)
+- [ ] Integrate helper into parsePromptForOrchestrator to populate stepSegmentMap on ParsedTask and return diagnostics alongside the mapping
+- [ ] Handle edge cases: empty segments (non-fatal warning), duplicate repoId in step (discovery error), unknown repoId (non-fatal warning with suggested matches from workspace repos)
+- [ ] Run targeted tests (discovery-routing tests + verify new parser path)
 
 ---
 
@@ -93,3 +93,4 @@ Phase A foundation task. All other Phase A tasks depend on this.
 Specification: docs/specifications/taskplane/segment-aware-steps.md
 | 2026-04-13 16:03 | Review R001 | plan Step 1: APPROVE |
 | 2026-04-13 16:04 | Review R002 | code Step 1: APPROVE |
+| 2026-04-13 16:07 | Review R003 | plan Step 2: REVISE |
