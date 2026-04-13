@@ -1109,8 +1109,20 @@ export interface OrchBatchRuntimeState {
 	waveResults: WaveExecutionResult[];
 	/** Current wave index (0-based into waves array, -1 if not started) */
 	currentWaveIndex: number;
-	/** Total number of waves planned */
+	/** Total number of waves planned (segment rounds — internal) */
 	totalWaves: number;
+	/**
+	 * Number of dependency-driven task-level waves (TP-166).
+	 * Used for operator-facing "Wave X of Y" display. When undefined,
+	 * falls back to `totalWaves` for backward compatibility.
+	 */
+	taskLevelWaveCount?: number;
+	/**
+	 * Maps each segment round index (0-based) to its parent task-level
+	 * wave index (0-based). Updated when continuation rounds are inserted.
+	 * Used with `resolveDisplayWaveNumber()` for correct display. (TP-166)
+	 */
+	roundToTaskWave?: number[];
 	/** Set of task IDs blocked for future waves (from skip-dependents policy) */
 	blockedTaskIds: Set<string>;
 	/** Epoch ms when batch started */
@@ -2922,6 +2934,16 @@ export interface PersistedBatchState {
 	currentWaveIndex: number;
 	/** Total number of waves in the plan */
 	totalWaves: number;
+	/**
+	 * Number of dependency-driven task-level waves (TP-166).
+	 * Undefined for batches created before TP-166; falls back to totalWaves.
+	 */
+	taskLevelWaveCount?: number;
+	/**
+	 * Maps segment round index (0-based) to parent task-level wave (0-based).
+	 * Undefined for batches created before TP-166.
+	 */
+	roundToTaskWave?: number[];
 	/** Wave plan: array of arrays of task IDs per wave */
 	wavePlan: string[][];
 	/** Per-lane configuration records */

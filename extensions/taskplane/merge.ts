@@ -396,6 +396,130 @@ export async function parseMergeResultAsync(resultPath: string): Promise<MergeRe
 }
 
 /**
+ * TP-171: Stage task artifacts from skipped-only lanes onto the target branch
+ * using an isolated temporary worktree.
+ *
+ * When no mergeable lanes exist (e.g., all tasks skipped), there is no merge worktree.
+ * This function creates a lightweight temporary worktree on `targetBranch`, copies
+ * STATUS.md, .DONE, REVIEW_VERDICT.json, and .reviews/** from skipped-lane worktrees
+ * into it, commits, advances `targetBranch`, then cleans up the temporary worktree.
+ * This ensures partial worker progress (STATUS.md updates) survives integration.
+ */
+function stageSkippedArtifactsToTargetBranch(
+	lanes: AllocatedLane[],
+	waveIndex: number,
+	repoRoot: string,
+	targetBranch: string,
+): void {
+	// TP-171: Do NOT include .DONE — skipped tasks' code was not merged,
+	// so staging .DONE would create false completion markers.
+	const ALLOWED_NAMES = ["STATUS.md", "REVIEW_VERDICT.json"];
+	const ALLOWED_DIRS = [".reviews"];
+	const resolvedRepoRoot = resolve(repoRoot);
+
+	// Create a temporary worktree on the target branch for isolated artifact staging.
+	// This avoids writing to whatever branch repoRoot has checked out.
+	const tmpWorktreePath = join(repoRoot, "..", `skip-artifacts-w${waveIndex}-${Date.now()}`);
+	const resolvedTmpPath = resolve(tmpWorktreePath);
+
+	try {
+		const addResult = spawnSync(
+			"git", ["worktree", "add", resolvedTmpPath, targetBranch],
+			{ cwd: repoRoot },
+		);
+		if (addResult.status !== 0) {
+			execLog("merge", `W${waveIndex}`, `failed to create temp worktree for skipped artifacts`, {
+				stderr: addResult.stderr?.toString().trim(),
+			});
+			return;
+		}
+
+		let staged = 0;
+
+		for (const lane of lanes) {
+			if (!lane.worktreePath || !existsSync(lane.worktreePath)) continue;
+			for (const allocTask of lane.tasks) {
+				if (!allocTask.task?.taskFolder?.trim()) continue;
+				// Resolve taskFolder against the lane worktree first (workspace mode:
+				// taskFolder may be relative to the packet repo, not the execution repo).
+				// Fall back to repoRoot if worktreePath is unavailable.
+				const resolveBase = lane.worktreePath ? resolve(lane.worktreePath) : resolvedRepoRoot;
+				const absFolder = resolve(resolveBase, allocTask.task.taskFolder);
+				const relFolder = relative(resolvedRepoRoot, absFolder).replace(/\\/g, "/");
+				if (relFolder.startsWith("..") || relFolder.startsWith("/")) continue;
+
+				for (const name of ALLOWED_NAMES) {
+					const relPath = `${relFolder}/${name}`;
+					const srcPath = join(lane.worktreePath, relPath);
+					if (!existsSync(srcPath)) continue;
+					try {
+						const destPath = join(resolvedTmpPath, relPath);
+						mkdirSync(dirname(destPath), { recursive: true });
+						copyFileSync(srcPath, destPath);
+						spawnSync("git", ["add", "--", relPath], { cwd: resolvedTmpPath });
+						staged++;
+					} catch { /* best effort */ }
+				}
+
+				for (const dirName of ALLOWED_DIRS) {
+					const laneDir = join(lane.worktreePath, relFolder, dirName);
+					if (!existsSync(laneDir)) continue;
+					try {
+						const entries = readdirSync(laneDir, { recursive: true, withFileTypes: true });
+						for (const entry of entries) {
+							if (!entry.isFile()) continue;
+							const entryPath = entry.parentPath
+								? join(entry.parentPath, entry.name)
+								: entry.name;
+							const fileRel = relative(laneDir, entryPath).replace(/\\/g, "/");
+							if (fileRel.startsWith("..")) continue;
+							const relPath = `${relFolder}/${dirName}/${fileRel}`;
+							const srcPath = join(laneDir, fileRel);
+							const destPath = join(resolvedTmpPath, relPath);
+							mkdirSync(dirname(destPath), { recursive: true });
+							copyFileSync(srcPath, destPath);
+							spawnSync("git", ["add", "--", relPath], { cwd: resolvedTmpPath });
+							staged++;
+						}
+					} catch { /* best effort */ }
+				}
+			}
+		}
+
+		if (staged > 0) {
+			const commitResult = spawnSync(
+				"git",
+				["commit", "-m", `checkpoint: wave ${waveIndex} skipped-task artifacts (STATUS.md, .reviews)`],
+				{ cwd: resolvedTmpPath },
+			);
+			if (commitResult.status === 0) {
+				execLog("merge", `W${waveIndex}`, `staged ${staged} artifact(s) from skipped-only lanes`, {
+					lanes: lanes.map(l => l.laneNumber).join(","),
+				});
+			} else {
+				execLog("merge", `W${waveIndex}`, `failed to commit skipped-task artifacts`, {
+					stderr: commitResult.stderr?.toString().trim(),
+				});
+			}
+		}
+	} catch (err: any) {
+		execLog("merge", `W${waveIndex}`, `unexpected error staging skipped artifacts`, {
+			error: err?.message,
+		});
+	} finally {
+		// Clean up the temporary worktree
+		try {
+			spawnSync("git", ["worktree", "remove", "--force", resolvedTmpPath], { cwd: repoRoot });
+		} catch { /* best effort cleanup */ }
+		try {
+			if (existsSync(resolvedTmpPath)) {
+				rmSync(resolvedTmpPath, { recursive: true, force: true });
+			}
+		} catch { /* best effort cleanup */ }
+	}
+}
+
+/**
  * Determine merge order for completed lanes.
  *
  * Default heuristic: fewest-files-first.
@@ -422,8 +546,8 @@ export function determineMergeOrder(
 
 	// fewest-files-first: count total file scope across all tasks in the lane
 	sorted.sort((a, b) => {
-		const aFiles = a.tasks.reduce((sum, t) => sum + (t.task.fileScope?.length || 0), 0);
-		const bFiles = b.tasks.reduce((sum, t) => sum + (t.task.fileScope?.length || 0), 0);
+		const aFiles = a.tasks.reduce((sum, t) => sum + (t.task?.fileScope?.length || 0), 0);
+		const bFiles = b.tasks.reduce((sum, t) => sum + (t.task?.fileScope?.length || 0), 0);
 
 		if (aFiles !== bFiles) return aFiles - bFiles;
 
@@ -460,8 +584,9 @@ export function buildMergeRequest(
 	resultFilePath: string,
 ): string {
 	const taskIds = lane.tasks.map(t => t.taskId).join(", ");
+	// TP-169: Guard against null task stubs from reconstructAllocatedLanes
 	const fileScopes = lane.tasks
-		.flatMap(t => t.task.fileScope || [])
+		.flatMap(t => t.task?.fileScope || [])
 		.filter((f, i, arr) => arr.indexOf(f) === i); // deduplicate
 
 	const mergeMessage = `merge: wave ${waveIndex} lane ${lane.laneNumber} — ${taskIds}`;
@@ -479,7 +604,7 @@ export function buildMergeRequest(
 		`${mergeMessage}`,
 		"",
 		`## Tasks Completed`,
-		...lane.tasks.map(t => `- ${t.taskId}: ${t.task.taskName}`),
+		...lane.tasks.map(t => `- ${t.taskId}: ${t.task?.taskName ?? "(unknown)"}`),
 		"",
 		`## File Scope`,
 		...(fileScopes.length > 0
@@ -1313,6 +1438,20 @@ export async function mergeWave(
 	});
 
 	if (mergeableLanes.length === 0) {
+		// TP-171: Even when no lanes are mergeable, skipped-task lanes may have
+		// partial progress (STATUS.md updates) that should be staged on the target
+		// branch so it survives integration. Stage artifacts directly without
+		// creating a full merge worktree.
+		const skippedOnlyLanes = completedLanes.filter(lane => {
+			if (!lane.worktreePath) return false;
+			const outcome = laneOutcomeByNumber.get(lane.laneNumber);
+			if (!outcome) return false;
+			return outcome.tasks.some(t => t.status === "skipped");
+		});
+		if (skippedOnlyLanes.length > 0) {
+			stageSkippedArtifactsToTargetBranch(skippedOnlyLanes, waveIndex, repoRoot, targetBranch);
+		}
+
 		execLog("merge", `W${waveIndex}`, "no mergeable lanes (all failed or empty)");
 		return {
 			waveIndex,
@@ -1327,9 +1466,25 @@ export async function mergeWave(
 	// Determine merge order
 	const orderedLanes = determineMergeOrder(mergeableLanes, config.merge.order);
 
+	// TP-171: Identify lanes with skipped tasks that are NOT in the mergeable set.
+	// These lanes won't have their branches merged, but their task artifacts
+	// (STATUS.md, .reviews) should still be staged so partial progress is preserved
+	// through integration. Only lanes with worktree paths can contribute artifacts.
+	const mergeableLaneNumbers = new Set(mergeableLanes.map(l => l.laneNumber));
+	const skippedArtifactLanes = completedLanes.filter(lane => {
+		if (mergeableLaneNumbers.has(lane.laneNumber)) return false;
+		if (!lane.worktreePath) return false;
+		const outcome = laneOutcomeByNumber.get(lane.laneNumber);
+		if (!outcome) return false;
+		return outcome.tasks.some(t => t.status === "skipped");
+	});
+
 	execLog("merge", `W${waveIndex}`, `merging ${orderedLanes.length} lane(s)`, {
 		order: config.merge.order,
 		lanes: orderedLanes.map(l => l.laneNumber).join(","),
+		skippedArtifactLanes: skippedArtifactLanes.length > 0
+			? skippedArtifactLanes.map(l => l.laneNumber).join(",")
+			: undefined,
 	});
 
 	// ── Create isolated merge worktree ──────────────────────────────
@@ -1940,9 +2095,21 @@ export async function mergeWave(
 			return files;
 		};
 
-		for (const lane of orderedLanes) {
+		// TP-171: Skipped-artifact lanes get a restricted allowlist — no .DONE
+		// because their code was not merged; staging .DONE would create false
+		// completion markers on the orch branch.
+		const SKIPPED_ARTIFACT_NAMES = ["STATUS.md", "REVIEW_VERDICT.json"];
+		const skippedArtifactLaneNumbers = new Set(skippedArtifactLanes.map(l => l.laneNumber));
+
+		// Include both merged lanes and skipped-artifact lanes in staging.
+		const artifactStagingLanes = [...orderedLanes, ...skippedArtifactLanes];
+		for (const lane of artifactStagingLanes) {
+			// Select allowlist based on lane type
+			const isSkippedOnly = skippedArtifactLaneNumbers.has(lane.laneNumber);
+			const nameAllowlist = isSkippedOnly ? SKIPPED_ARTIFACT_NAMES : ALLOWED_ARTIFACT_NAMES;
+
 			for (const allocTask of lane.tasks) {
-				if (!allocTask.task.taskFolder?.trim()) {
+				if (!allocTask.task?.taskFolder?.trim()) {
 					execLog("merge", `W${waveIndex}`, `skipping task with missing taskFolder (possibly dynamically expanded)`, {
 						taskId: allocTask.taskId,
 					});
@@ -1960,7 +2127,7 @@ export async function mergeWave(
 					continue;
 				}
 
-				for (const name of ALLOWED_ARTIFACT_NAMES) {
+				for (const name of nameAllowlist) {
 					const rp = `${relFolder}/${name}`;
 					allowedRelPaths.add(rp);
 					relPathToWorktree.set(rp, join(lane.worktreePath, rp));
@@ -2315,6 +2482,23 @@ export async function mergeWaveByRepo(
 	});
 
 	if (mergeableLanes.length === 0) {
+		// TP-171: Even when no lanes are mergeable, skipped-task lanes may have
+		// partial progress that should be staged on the target branch.
+		const skippedOnlyLanes = completedLanes.filter(lane => {
+			if (!lane.worktreePath) return false;
+			const outcome = laneOutcomeByNumber.get(lane.laneNumber);
+			if (!outcome) return false;
+			return outcome.tasks.some(t => t.status === "skipped");
+		});
+		if (skippedOnlyLanes.length > 0) {
+			// In workspace mode, group skipped lanes by repo and stage per-repo.
+			const skippedByRepo = groupLanesByRepo(skippedOnlyLanes);
+			for (const group of skippedByRepo) {
+				const groupRepoRoot = resolveRepoRoot(group.repoId, repoRoot, workspaceConfig);
+				stageSkippedArtifactsToTargetBranch(group.lanes, waveIndex, groupRepoRoot, baseBranch);
+			}
+		}
+
 		execLog("merge", `W${waveIndex}`, "no mergeable lanes (all failed or empty)");
 		return {
 			waveIndex,
@@ -2389,16 +2573,22 @@ export async function mergeWaveByRepo(
 			lanes: group.lanes.map(l => l.laneNumber).join(","),
 		});
 
-		// Build a filtered WaveExecutionResult containing only this group's lanes.
-		const groupLaneNumbers = new Set(group.lanes.map(l => l.laneNumber));
+		// TP-171: Build allGroupLanes from all completed lanes for this repo
+		// (not just mergeable) so mergeWave() can compute skippedArtifactLanes.
+		const groupRepoId = group.repoId;
+		const allGroupLanes = completedLanes.filter(l => (l.repoId ?? undefined) === groupRepoId);
+		const allGroupLaneNumbers = new Set(allGroupLanes.map(l => l.laneNumber));
+
+		// Build a filtered WaveExecutionResult containing all lanes for this repo
+		// (including skipped-only lanes that aren't in the mergeable group).
 		const filteredWaveResult: WaveExecutionResult = {
 			...waveResult,
-			laneResults: waveResult.laneResults.filter(lr => groupLaneNumbers.has(lr.laneNumber)),
-			allocatedLanes: waveResult.allocatedLanes.filter(l => groupLaneNumbers.has(l.laneNumber)),
+			laneResults: waveResult.laneResults.filter(lr => allGroupLaneNumbers.has(lr.laneNumber)),
+			allocatedLanes: waveResult.allocatedLanes.filter(l => allGroupLaneNumbers.has(l.laneNumber)),
 		};
 
 		const groupResult = await mergeWave(
-			group.lanes,
+			allGroupLanes,
 			filteredWaveResult,
 			waveIndex,
 			config,
@@ -2466,6 +2656,27 @@ export async function mergeWaveByRepo(
 				});
 			}
 			break;
+		}
+	}
+
+	// TP-171: Stage artifacts for repos that have only skipped lanes but were
+	// not included in the mergeable repoGroups.
+	const processedRepoIds = new Set(repoGroups.map(g => g.repoId));
+	const skippedOnlyRepoLanes = completedLanes.filter(lane => {
+		if (!lane.worktreePath) return false;
+		const laneRepoId = lane.repoId ?? undefined;
+		if (processedRepoIds.has(laneRepoId)) return false; // already handled by mergeWave
+		const outcome = laneOutcomeByNumber.get(lane.laneNumber);
+		if (!outcome) return false;
+		return outcome.tasks.some(t => t.status === "skipped");
+	});
+	// TP-171 R004: Gate artifact staging behind safe-stop — do not advance
+	// any branch refs when a rollback failure has been detected.
+	if (skippedOnlyRepoLanes.length > 0 && !anyRollbackFailed) {
+		const skippedRepoGroups = groupLanesByRepo(skippedOnlyRepoLanes);
+		for (const group of skippedRepoGroups) {
+			const groupRepoRoot = resolveRepoRoot(group.repoId, repoRoot, workspaceConfig);
+			stageSkippedArtifactsToTargetBranch(group.lanes, waveIndex, groupRepoRoot, baseBranch);
 		}
 	}
 

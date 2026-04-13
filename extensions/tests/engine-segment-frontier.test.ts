@@ -8,10 +8,11 @@ import {
 	collectProcessedSegmentExpansionRequestIds,
 	linearizeTaskSegmentPlan,
 	processSegmentExpansionRequestAtBoundary,
+	resolveDisplayWaveNumber,
 	scheduleContinuationSegmentRound,
 	upsertPendingExpandedSegmentRecords,
 } from "../taskplane/engine.ts";
-import { buildExecutionUnit } from "../taskplane/execution.ts";
+import { buildExecutionUnit, ensureTaskFilesCommitted } from "../taskplane/execution.ts";
 import type { AllocatedLane, AllocatedTask, ParsedTask, SegmentExpansionRequest, TaskSegmentPlan } from "../taskplane/types.ts";
 
 function makeTask(taskId: string, repoId?: string): ParsedTask {
@@ -52,6 +53,8 @@ describe("TP-133 segment frontier helpers", () => {
 
 		const frontier = buildSegmentFrontierWaves([["TP-001"]], pending);
 		expect(frontier.waves).toEqual([["TP-001"]]);
+		expect(frontier.taskLevelWaveCount).toBe(1);
+		expect(frontier.roundToTaskWave).toEqual([0]);
 
 		const task = pending.get("TP-001")!;
 		expect(task.segmentIds).toEqual(["TP-001::api"]);
@@ -99,6 +102,9 @@ describe("TP-133 segment frontier helpers", () => {
 		);
 
 		expect(frontier.waves).toEqual([["TP-010"], ["TP-010"], ["TP-010"]]);
+		// TP-166: Task-level wave count should be 1 (one original wave), not 3
+		expect(frontier.taskLevelWaveCount).toBe(1);
+		expect(frontier.roundToTaskWave).toEqual([0, 0, 0]);
 		const state = frontier.taskStateById.get("TP-010")!;
 		expect(state.orderedSegments.map((s) => s.segmentId)).toEqual([
 			"TP-010::api",
@@ -642,5 +648,141 @@ describe("segment expansion graph mutation", () => {
 			},
 		} as any);
 		expect([...processed].sort()).toEqual(["exp-keep"]);
+	});
+});
+
+// TP-166: resolveDisplayWaveNumber unit tests
+describe("TP-166 resolveDisplayWaveNumber", () => {
+	it("maps segment round to task-level wave with full metadata", () => {
+		// 3 task-level waves, 5 segment rounds: [0,0,1,1,2]
+		const roundToTaskWave = [0, 0, 1, 1, 2];
+		const taskLevelWaveCount = 3;
+
+		expect(resolveDisplayWaveNumber(0, roundToTaskWave, taskLevelWaveCount)).toEqual({
+			displayWave: 1,
+			displayTotal: 3,
+		});
+		expect(resolveDisplayWaveNumber(1, roundToTaskWave, taskLevelWaveCount)).toEqual({
+			displayWave: 1,
+			displayTotal: 3,
+		});
+		expect(resolveDisplayWaveNumber(2, roundToTaskWave, taskLevelWaveCount)).toEqual({
+			displayWave: 2,
+			displayTotal: 3,
+		});
+		expect(resolveDisplayWaveNumber(4, roundToTaskWave, taskLevelWaveCount)).toEqual({
+			displayWave: 3,
+			displayTotal: 3,
+		});
+	});
+
+	it("falls back to roundIdx + 1 when mapping is undefined (legacy state)", () => {
+		expect(resolveDisplayWaveNumber(0, undefined, undefined, 5)).toEqual({
+			displayWave: 1,
+			displayTotal: 5,
+		});
+		expect(resolveDisplayWaveNumber(2, undefined, undefined, 5)).toEqual({
+			displayWave: 3,
+			displayTotal: 5,
+		});
+	});
+
+	it("falls back to roundIdx + 1 when no fallbackTotal either", () => {
+		expect(resolveDisplayWaveNumber(0, undefined, undefined)).toEqual({
+			displayWave: 1,
+			displayTotal: 1,
+		});
+		expect(resolveDisplayWaveNumber(3, undefined, undefined)).toEqual({
+			displayWave: 4,
+			displayTotal: 4,
+		});
+	});
+
+	it("prefers taskLevelWaveCount over fallbackTotal", () => {
+		expect(resolveDisplayWaveNumber(0, [0], 3, 10)).toEqual({
+			displayWave: 1,
+			displayTotal: 3,
+		});
+	});
+});
+
+// ── TP-169 Regression Tests: buildExecutionUnit guard ────────────────
+
+describe("TP-169 buildExecutionUnit taskFolder guard", () => {
+	it("throws EXEC_MISSING_TASK_FOLDER when taskFolder is empty", () => {
+		const lane: AllocatedLane = {
+			laneNumber: 1,
+			laneId: "lane-1",
+			laneSessionId: "orch-lane-1",
+			worktreePath: "/tmp/wt-1",
+			branch: "task/lane-1",
+			tasks: [],
+			strategy: "round-robin",
+			estimatedLoad: 0,
+			estimatedMinutes: 0,
+		};
+		const task: AllocatedTask = {
+			taskId: "TP-080",
+			order: 0,
+			task: { taskFolder: "" } as unknown as ParsedTask,
+			estimatedMinutes: 0,
+		};
+
+		let threw = false;
+		let errCode = "";
+		try {
+			buildExecutionUnit(lane, task, "/repos/main");
+		} catch (err: any) {
+			threw = true;
+			errCode = err.code ?? "";
+		}
+		expect(threw).toBe(true);
+		expect(errCode).toBe("EXEC_MISSING_TASK_FOLDER");
+	});
+
+	it("throws EXEC_MISSING_TASK_FOLDER when task.task is null", () => {
+		const lane: AllocatedLane = {
+			laneNumber: 1,
+			laneId: "lane-1",
+			laneSessionId: "orch-lane-1",
+			worktreePath: "/tmp/wt-1",
+			branch: "task/lane-1",
+			tasks: [],
+			strategy: "round-robin",
+			estimatedLoad: 0,
+			estimatedMinutes: 0,
+		};
+		const task: AllocatedTask = {
+			taskId: "TP-081",
+			order: 0,
+			task: null as unknown as ParsedTask,
+			estimatedMinutes: 0,
+		};
+
+		let threw = false;
+		try {
+			buildExecutionUnit(lane, task, "/repos/main");
+		} catch {
+			threw = true;
+		}
+		expect(threw).toBe(true);
+	});
+});
+
+describe("TP-169 workspace orch branch: ensureTaskFilesCommitted is exported", () => {
+	it("ensureTaskFilesCommitted accepts orchBranch parameter", () => {
+		// Structural test: ensureTaskFilesCommitted signature includes orchBranch
+		const execSrc = readFileSync(
+			new URL("../taskplane/execution.ts", import.meta.url),
+			"utf-8",
+		);
+		const fnIdx = execSrc.indexOf("function ensureTaskFilesCommitted");
+		const sig = execSrc.slice(fnIdx, fnIdx + 300);
+		expect(sig).toContain("orchBranch");
+		// TP-169: Must use GIT_INDEX_FILE for orch branch isolation
+		const fnBody = execSrc.slice(fnIdx, fnIdx + 5000);
+		expect(fnBody).toContain("GIT_INDEX_FILE");
+		expect(fnBody).toContain("commit-tree");
+		expect(fnBody).toContain("update-ref");
 	});
 });

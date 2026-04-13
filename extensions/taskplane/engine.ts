@@ -1084,11 +1084,64 @@ export function linearizeTaskSegmentPlan(plan: TaskSegmentPlan): TaskSegmentNode
 }
 
 /**
+ * Result of `buildSegmentFrontierWaves()`. Contains both the expanded
+ * segment rounds and task-level wave metadata for correct display.
+ *
+ * @since TP-166
+ */
+export interface SegmentFrontierResult {
+	/** Expanded segment rounds (execution-level) */
+	waves: string[][];
+	/** Per-task segment frontier state */
+	taskStateById: Map<string, SegmentFrontierTaskState>;
+	/**
+	 * Number of original dependency-driven task-level waves.
+	 * Use this for operator-facing "Wave X of Y" display.
+	 */
+	taskLevelWaveCount: number;
+	/**
+	 * Maps each segment round index (0-based) to its parent task-level
+	 * wave index (0-based). When continuation rounds are dynamically
+	 * inserted via `scheduleContinuationSegmentRound`, the caller must
+	 * also insert the corresponding task-level wave index into this array.
+	 */
+	roundToTaskWave: number[];
+}
+
+/**
+ * Resolve the 1-indexed task-level wave number for display from a
+ * segment-round index. Falls back to `roundIdx + 1` when the mapping
+ * is missing or out of bounds.
+ *
+ * @param roundIdx           - Current segment round index (0-based)
+ * @param roundToTaskWave    - Mapping from round index to task-level wave (0-based)
+ * @param taskLevelWaveCount - Number of original task-level waves
+ * @param fallbackTotal      - Optional fallback total (e.g., batchState.totalWaves) for
+ *                             legacy state files that lack TP-166 metadata
+ * @since TP-166
+ */
+export function resolveDisplayWaveNumber(
+	roundIdx: number,
+	roundToTaskWave: number[] | undefined,
+	taskLevelWaveCount: number | undefined,
+	fallbackTotal?: number,
+): { displayWave: number; displayTotal: number } {
+	const taskWaveIdx = roundToTaskWave?.[roundIdx];
+	const displayWave = (taskWaveIdx != null) ? taskWaveIdx + 1 : roundIdx + 1;
+	const displayTotal = taskLevelWaveCount ?? fallbackTotal ?? (roundIdx + 1);
+	return { displayWave, displayTotal };
+}
+
+/**
  * Expand task waves into segment-frontier rounds.
  *
  * Each original task-wave becomes N rounds where N is the max segment count
  * among tasks in that wave. A task with fewer segments simply drops out once
  * its segment list is exhausted.
+ *
+ * Returns both the expanded rounds and a mapping from segment round index
+ * to task-level wave index, enabling correct "Wave X of Y" display
+ * without inflating wave count with segment rounds (TP-166).
  */
 export function buildSegmentFrontierWaves(
 	baseTaskWaves: string[][],
@@ -1096,7 +1149,7 @@ export function buildSegmentFrontierWaves(
 	segmentPlans?: TaskSegmentPlanMap,
 	packetRepoId?: string,
 	workspaceRoot?: string,
-): { waves: string[][]; taskStateById: Map<string, SegmentFrontierTaskState> } {
+): SegmentFrontierResult {
 	const taskStateById = new Map<string, SegmentFrontierTaskState>();
 
 	for (const [taskId, task] of pending.entries()) {
@@ -1126,7 +1179,11 @@ export function buildSegmentFrontierWaves(
 	}
 
 	const expanded: string[][] = [];
-	for (const waveTasks of baseTaskWaves) {
+	// TP-166: Track which task-level wave each segment round belongs to.
+	// roundToTaskWave[i] = 0-based task-level wave index for segment round i.
+	const roundToTaskWave: number[] = [];
+	for (let taskWaveIdx = 0; taskWaveIdx < baseTaskWaves.length; taskWaveIdx++) {
+		const waveTasks = baseTaskWaves[taskWaveIdx];
 		let maxSegmentsInWave = 0;
 		for (const taskId of waveTasks) {
 			const state = taskStateById.get(taskId);
@@ -1145,6 +1202,7 @@ export function buildSegmentFrontierWaves(
 			}
 			if (segmentRound.length > 0) {
 				expanded.push(segmentRound);
+				roundToTaskWave.push(taskWaveIdx);
 			}
 		}
 	}
@@ -1152,6 +1210,8 @@ export function buildSegmentFrontierWaves(
 	return {
 		waves: expanded,
 		taskStateById,
+		taskLevelWaveCount: baseTaskWaves.length,
+		roundToTaskWave,
 	};
 }
 
@@ -2170,7 +2230,14 @@ export async function executeOrchBatch(
 	const rawWaves = frontier.waves;
 	segmentStateByTask = frontier.taskStateById;
 
+	// TP-166: Track task-level wave metadata for correct display.
+	// roundToTaskWave maps each segment round index to its parent task-level wave.
+	let roundToTaskWave = frontier.roundToTaskWave;
+	const taskLevelWaveCount = frontier.taskLevelWaveCount;
+
 	batchState.totalWaves = rawWaves.length;
+	batchState.taskLevelWaveCount = taskLevelWaveCount;
+	batchState.roundToTaskWave = [...roundToTaskWave];
 	batchState.totalTasks = discovery.pending.size;
 
 	// Store wave plan and discovery for state persistence
@@ -2225,8 +2292,9 @@ export async function executeOrchBatch(
 	}
 	batchState.orchBranch = orchBranch;
 
+	// TP-166: Report task-level wave count, not segment round count
 	onNotify(
-		ORCH_MESSAGES.orchStarting(batchState.batchId, rawWaves.length, batchState.totalTasks),
+		ORCH_MESSAGES.orchStarting(batchState.batchId, taskLevelWaveCount, batchState.totalTasks),
 		"info",
 	);
 
@@ -2256,7 +2324,10 @@ export async function executeOrchBatch(
 		if (batchState.pauseSignal.paused) {
 			batchState.phase = "paused";
 			execLog("batch", batchState.batchId, `batch paused before wave ${waveIdx + 1}`);
-			onNotify(`⏸️  Batch paused before wave ${waveIdx + 1}. Resume not yet implemented (TS-009).`, "warning");
+			{
+				const { displayWave } = resolveDisplayWaveNumber(waveIdx, roundToTaskWave, taskLevelWaveCount);
+				onNotify(`⏸️  Batch paused before wave ${displayWave}. Resume not yet implemented (TS-009).`, "warning");
+			}
 			// ── TS-009: Persist state on pause ──
 			persistRuntimeState("pause-before-wave", batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discoveryRef, stateRoot);
 			// TP-040: Emit batch_paused event (via terminal helper for dedup)
@@ -2341,9 +2412,10 @@ export async function executeOrchBatch(
 			latestAllocatedLanes = lanes;
 			batchState.currentLanes = lanes;
 
-			// Emit wave_start with actual lane count (post-affinity grouping)
+			// TP-166: Use task-level wave number for operator display
+			const { displayWave, displayTotal } = resolveDisplayWaveNumber(waveIdx, roundToTaskWave, taskLevelWaveCount);
 			onNotify(
-				ORCH_MESSAGES.orchWaveStart(waveIdx + 1, runtimeSegmentRounds.length, waveTasks.length, lanes.length),
+				ORCH_MESSAGES.orchWaveStart(displayWave, displayTotal, waveTasks.length, lanes.length),
 				"info",
 			);
 			// TP-148: Build per-task segment context for the wave_start event
@@ -2779,6 +2851,11 @@ export async function executeOrchBatch(
 		}
 		if (continuationTaskIds.size > 0) {
 			const continuationWave = scheduleContinuationSegmentRound(runtimeSegmentRounds, waveIdx, continuationTaskIds);
+			// TP-166: Maintain roundToTaskWave mapping for the inserted continuation round.
+			// The continuation belongs to the same task-level wave as the current round.
+			const parentTaskWave = roundToTaskWave[waveIdx] ?? 0;
+			roundToTaskWave.splice(waveIdx + 1, 0, parentTaskWave);
+			batchState.roundToTaskWave = [...roundToTaskWave];
 			execLog("batch", batchState.batchId, "scheduled continuation segment round for expanded task frontier", {
 				waveIndex: waveIdx,
 				taskIds: continuationWave.join(","),
@@ -2946,7 +3023,7 @@ export async function executeOrchBatch(
 					frontierSummary +
 					`  Lane: ${laneForTask?.laneId ?? "unknown"} (lane ${laneForTask?.laneNumber ?? "?"})\n` +
 					`  Partial progress preserved: ${hasPartialProgress ? "yes" : "no"}\n` +
-					`  Batch: wave ${waveIdx + 1}/${batchState.totalWaves}, ` +
+					`  Batch: wave ${resolveDisplayWaveNumber(waveIdx, roundToTaskWave, taskLevelWaveCount).displayWave}/${taskLevelWaveCount}, ` +
 					`${batchState.succeededTasks} succeeded, ${batchState.failedTasks} failed\n\n` +
 					`Available actions:\n` +
 					`  - orch_status() to inspect current state\n` +
@@ -2971,16 +3048,19 @@ export async function executeOrchBatch(
 		persistRuntimeState("wave-execution-complete", batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discoveryRef, stateRoot);
 
 		const elapsedSec = Math.round((waveResult.endedAt - waveResult.startedAt) / 1000);
-		onNotify(
-			ORCH_MESSAGES.orchWaveComplete(
-				waveIdx + 1,
-				waveResult.succeededTaskIds.length,
-				waveResult.failedTaskIds.length,
-				waveResult.skippedTaskIds.length,
-				elapsedSec,
-			),
-			waveResult.failedTaskIds.length > 0 ? "warning" : "info",
-		);
+		{
+			const { displayWave: completeDisplayWave } = resolveDisplayWaveNumber(waveIdx, roundToTaskWave, taskLevelWaveCount);
+			onNotify(
+				ORCH_MESSAGES.orchWaveComplete(
+					completeDisplayWave,
+					waveResult.succeededTaskIds.length,
+					waveResult.failedTaskIds.length,
+					waveResult.skippedTaskIds.length,
+					elapsedSec,
+				),
+				waveResult.failedTaskIds.length > 0 ? "warning" : "info",
+			);
+		}
 
 		// NOTE: No explicit wave_complete event in the spec event set. The supervisor
 		// infers wave completion from the sequence of task_complete/task_failed events
@@ -3083,7 +3163,7 @@ export async function executeOrchBatch(
 				batchState.phase = "merging";
 				// ── TS-009: Persist state on executing→merging transition ──
 				persistRuntimeState("merge-start", batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discoveryRef, stateRoot);
-				onNotify(ORCH_MESSAGES.orchMergeStart(waveIdx + 1, mergeableLaneCount), "info");
+				onNotify(ORCH_MESSAGES.orchMergeStart(resolveDisplayWaveNumber(waveIdx, roundToTaskWave, taskLevelWaveCount).displayWave, mergeableLaneCount), "info");
 				// TP-040: Emit merge_start event
 				emitEvent(stateRoot, {
 					...buildEngineEventBase("merge_start", batchState.batchId, waveIdx, batchState.phase),
@@ -3178,18 +3258,19 @@ export async function executeOrchBatch(
 				const mergeTotalSec = Math.round(mergeResult.totalDurationMs / 1000);
 
 				if (mergeResult.status === "succeeded") {
-					onNotify(ORCH_MESSAGES.orchMergeComplete(waveIdx + 1, mergedCount, mergeTotalSec), "info");
+					const { displayWave: mergeDisplayWave } = resolveDisplayWaveNumber(waveIdx, roundToTaskWave, taskLevelWaveCount);
+					onNotify(ORCH_MESSAGES.orchMergeComplete(mergeDisplayWave, mergedCount, mergeTotalSec), "info");
 
 					// TP-040: Emit merge_success event
 					emitEvent(stateRoot, {
 						...buildEngineEventBase("merge_success", batchState.batchId, waveIdx, batchState.phase),
 						laneCount: mergedCount,
 						durationMs: mergeResult.totalDurationMs,
-						totalWaves: runtimeSegmentRounds.length,
+						totalWaves: taskLevelWaveCount,
 					}, onEngineEvent);
 				} else {
 					onNotify(
-						ORCH_MESSAGES.orchMergeFailed(waveIdx + 1, mergeResult.failedLane ?? 0, mergeResult.failureReason || "unknown"),
+						ORCH_MESSAGES.orchMergeFailed(resolveDisplayWaveNumber(waveIdx, roundToTaskWave, taskLevelWaveCount).displayWave, mergeResult.failedLane ?? 0, mergeResult.failureReason || "unknown"),
 						"error",
 					);
 
@@ -3230,7 +3311,7 @@ export async function executeOrchBatch(
 				allMergeResults.push(mergeResult);
 				batchState.mergeResults.push(mergeResult);
 				onNotify(
-					ORCH_MESSAGES.orchMergeFailed(waveIdx + 1, mergeResult.failedLane, mergeResult.failureReason || "unknown"),
+					ORCH_MESSAGES.orchMergeFailed(resolveDisplayWaveNumber(waveIdx, roundToTaskWave, taskLevelWaveCount).displayWave, mergeResult.failedLane, mergeResult.failureReason || "unknown"),
 					"error",
 				);
 
@@ -3242,11 +3323,11 @@ export async function executeOrchBatch(
 				}, onEngineEvent);
 			} else {
 				// No mergeable lanes and no mixed outcomes (e.g., only skipped tasks)
-				onNotify(ORCH_MESSAGES.orchMergeSkipped(waveIdx + 1), "info");
+				onNotify(ORCH_MESSAGES.orchMergeSkipped(resolveDisplayWaveNumber(waveIdx, roundToTaskWave, taskLevelWaveCount).displayWave), "info");
 			}
 		} else {
 			// No succeeded tasks — skip merge entirely
-			onNotify(ORCH_MESSAGES.orchMergeSkipped(waveIdx + 1), "info");
+			onNotify(ORCH_MESSAGES.orchMergeSkipped(resolveDisplayWaveNumber(waveIdx, roundToTaskWave, taskLevelWaveCount).displayWave), "info");
 		}
 
 		// ── TP-033: Safe-stop on rollback failure ─────────────────
@@ -3690,7 +3771,7 @@ export async function executeOrchBatch(
 
 			if (totalResetWorktrees > 0) {
 				onNotify(
-					ORCH_MESSAGES.orchWorktreeReset(waveIdx + 1, totalResetWorktrees),
+					ORCH_MESSAGES.orchWorktreeReset(resolveDisplayWaveNumber(waveIdx, roundToTaskWave, taskLevelWaveCount).displayWave, totalResetWorktrees),
 					"info",
 				);
 			}
@@ -3946,10 +4027,18 @@ export async function executeOrchBatch(
 				legacyLaneTokensByKey,
 			);
 
+			// TP-171: Map outcome status to valid BatchTaskSummary status.
+			// Non-terminal statuses ("running", "pending") can appear if batch
+			// was paused/aborted mid-wave. Map them to appropriate history values.
+			const validStatuses: Set<string> = new Set(["succeeded", "failed", "skipped", "blocked", "stalled", "pending"]);
+			const historyStatus: BatchTaskSummary["status"] = validStatuses.has(to.status)
+				? (to.status as BatchTaskSummary["status"])
+				: "pending"; // "running" or unknown → "pending" in history
+
 			return {
 				taskId: to.taskId,
 				taskName: to.taskId,
-				status: to.status as BatchTaskSummary["status"],
+				status: historyStatus,
 				wave,
 				lane,
 				durationMs,
@@ -4039,7 +4128,7 @@ export async function executeOrchBatch(
 			startedAt: batchState.startedAt,
 			endedAt: Date.now(),
 			durationMs: Date.now() - batchState.startedAt,
-			totalWaves: wavePlan.length,
+			totalWaves: taskLevelWaveCount,
 			totalTasks: actualTotalTasks,
 			succeededTasks: batchState.succeededTasks,
 			failedTasks: batchState.failedTasks,
@@ -4352,7 +4441,7 @@ export async function executeOrchBatch(
 				summary:
 					`✅ Batch ${batchState.batchId} completed\n` +
 					`  ${batchState.succeededTasks}/${batchState.totalTasks} tasks succeeded\n` +
-					`  ${batchState.totalWaves} wave(s), duration: ${durationStr}\n` +
+					`  ${batchState.taskLevelWaveCount ?? batchState.totalWaves} wave(s), duration: ${durationStr}\n` +
 					`  Merged to orch branch: ${batchState.orchBranch}\n\n` +
 					`Ready for integration. Run orch_integrate() or review first.`,
 				context: {

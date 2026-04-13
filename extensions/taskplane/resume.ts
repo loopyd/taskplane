@@ -7,7 +7,7 @@ import { join } from "path";
 
 import { assembleDiagnosticInput, emitDiagnosticReports } from "./diagnostic-reports.ts";
 import { runDiscovery } from "./discovery.ts";
-import { executeOrchBatch } from "./engine.ts";
+import { executeOrchBatch, resolveDisplayWaveNumber } from "./engine.ts";
 import { buildReviewerEnv, computeTransitiveDependents, execLog, executeLaneV2, executeWave, resolveCanonicalTaskPaths } from "./execution.ts";
 import type { MonitorUpdateCallback, RuntimeBackend } from "./execution.ts";
 import { selectRuntimeBackend } from "./engine.ts";
@@ -158,9 +158,14 @@ export function reconstructAllocatedLanes(
 			if (persistedTask?.resolvedRepoId !== undefined) {
 				taskStub.resolvedRepoId = persistedTask.resolvedRepoId;
 			}
-			if (persistedTask?.taskFolder) {
-				taskStub.taskFolder = persistedTask.taskFolder;
-			}
+			// TP-169: Always set taskFolder on stub, even if empty string.
+			// Previously, the falsy check `if (persistedTask?.taskFolder)` skipped
+			// empty-string values, leaving taskFolder as `undefined` on the stub.
+			// This caused crashes in buildExecutionUnit and merge code when
+			// accessing `task.task.taskFolder` on dynamically-expanded segments
+			// whose persisted records had taskFolder="" (the default from
+			// serializeBatchState before enrichment).
+			taskStub.taskFolder = persistedTask?.taskFolder ?? "";
 			if ((persistedTask as any)?.packetRepoId !== undefined) {
 				(taskStub as any).packetRepoId = (persistedTask as any).packetRepoId;
 			}
@@ -1324,6 +1329,10 @@ export async function resumeOrchBatch(
 	// Preserve pauseSignal if already set during "launching" phase (TP-040)
 	if (!batchState.pauseSignal?.paused) batchState.pauseSignal = { paused: false };
 	batchState.totalWaves = persistedState.totalWaves;
+	// TP-166: Restore task-level wave metadata for correct display.
+	// Normalize: fall back to totalWaves for pre-TP-166 state files.
+	batchState.taskLevelWaveCount = persistedState.taskLevelWaveCount ?? persistedState.totalWaves;
+	batchState.roundToTaskWave = persistedState.roundToTaskWave ? [...persistedState.roundToTaskWave] : undefined;
 	batchState.totalTasks = persistedState.totalTasks;
 	batchState.succeededTasks = resumePoint.completedTaskIds.length;
 	batchState.failedTasks = resumePoint.failedTaskIds.length;
@@ -1370,6 +1379,42 @@ export async function resumeOrchBatch(
 	// Carry forward unknown fields for roundtrip preservation
 	if (persistedState._extraFields) {
 		batchState._extraFields = persistedState._extraFields;
+	}
+
+	// ── 6b. TP-169: Verify orch branch exists in all workspace repos ────
+	// During the original batch start, the orch branch was created in every
+	// workspace repo. On resume, we verify it still exists. If it's missing
+	// in any repo (e.g., deleted by user, corrupted), re-create it from the
+	// repo's current branch so that worktree creation doesn't silently fall
+	// back to the base branch, bypassing orch branch isolation.
+	if (workspaceConfig && batchState.orchBranch) {
+		for (const [repoId, repoConf] of workspaceConfig.repos) {
+			const rRoot = repoConf.path;
+			const check = runGit(["rev-parse", "--verify", `refs/heads/${batchState.orchBranch}`], rRoot);
+			if (!check.ok) {
+				// Orch branch missing in this repo — re-create from current HEAD
+				const repoBranch = getCurrentBranch(rRoot) || "HEAD";
+				const createRes = runGit(["branch", batchState.orchBranch, repoBranch], rRoot);
+				if (createRes.ok) {
+					execLog("resume", batchState.batchId, `re-created missing orch branch in ${repoId}`, {
+						orchBranch: batchState.orchBranch,
+						base: repoBranch,
+					});
+					onNotify(
+						`⚠️ Orch branch "${batchState.orchBranch}" was missing in repo "${repoId}" — re-created from ${repoBranch}`,
+						"warning",
+					);
+				} else {
+					const errMsg = `Failed to re-create orch branch "${batchState.orchBranch}" in repo "${repoId}": ${createRes.stderr}. ` +
+						`Cannot resume without orch branch isolation.`;
+					execLog("resume", batchState.batchId, errMsg, {
+						orchBranch: batchState.orchBranch,
+						error: createRes.stderr,
+					});
+					throw new Error(errMsg);
+				}
+			}
+		}
 	}
 
 	// ── 7. Re-run discovery for ParsedTask metadata ──────────────
@@ -1767,12 +1812,17 @@ export async function resumeOrchBatch(
 		persistedState.tasks.map((task) => [task.taskId, task.status] as const),
 	);
 
+	// TP-166: Use task-level wave metadata for correct display.
+	const roundToTaskWave = batchState.roundToTaskWave;
+	const taskLevelWaveCount = batchState.taskLevelWaveCount;
+
 	for (let waveIdx = resumePoint.resumeWaveIndex; waveIdx < wavePlan.length; waveIdx++) {
 		// Check pause signal
 		if (batchState.pauseSignal.paused) {
 			batchState.phase = "paused";
 			persistRuntimeState("pause-before-wave", batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discovery, stateRoot);
-			onNotify(`⏸️  Batch paused before wave ${waveIdx + 1}.`, "warning");
+			const { displayWave: pauseWave } = resolveDisplayWaveNumber(waveIdx, roundToTaskWave, taskLevelWaveCount);
+			onNotify(`⏸️  Batch paused before wave ${pauseWave}.`, "warning");
 			break;
 		}
 
@@ -1807,7 +1857,7 @@ export async function resumeOrchBatch(
 			// All tasks are terminal but the merge may have failed/been interrupted.
 			if (resumePoint.mergeRetryWaveIndexes.includes(waveIdx)) {
 				execLog("resume", batchState.batchId, `wave ${waveIdx + 1}: all tasks done but merge needs retry`);
-				onNotify(`🔀 Wave ${waveIdx + 1}: retrying merge (tasks already complete, merge was missing/failed)`, "info");
+				onNotify(`🔀 Wave ${resolveDisplayWaveNumber(waveIdx, roundToTaskWave, taskLevelWaveCount).displayWave}: retrying merge (tasks already complete, merge was missing/failed)`, "info");
 
 				// Reconstruct lanes for this wave from persisted state
 				const waveTaskIds = new Set(wavePlan[waveIdx]);
@@ -1922,7 +1972,7 @@ export async function resumeOrchBatch(
 				batchState.mergeResults.push(mergeRetryResult);
 
 				if (mergeRetryResult.status === "succeeded") {
-					onNotify(`✅ Wave ${waveIdx + 1} merge retry succeeded`, "info");
+					onNotify(`✅ Wave ${resolveDisplayWaveNumber(waveIdx, roundToTaskWave, taskLevelWaveCount).displayWave} merge retry succeeded`, "info");
 					// Clean up merged branches
 					for (const lr of mergeRetryResult.laneResults) {
 						if (!lr.error && (lr.result?.status === "SUCCESS" || lr.result?.status === "CONFLICT_RESOLVED")) {
@@ -1932,7 +1982,7 @@ export async function resumeOrchBatch(
 					}
 				} else {
 					onNotify(
-						`⚠️ Wave ${waveIdx + 1} merge retry ${mergeRetryResult.status}: ${mergeRetryResult.failureReason || "unknown"}`,
+						`⚠️ Wave ${resolveDisplayWaveNumber(waveIdx, roundToTaskWave, taskLevelWaveCount).displayWave} merge retry ${mergeRetryResult.status}: ${mergeRetryResult.failureReason || "unknown"}`,
 						"warning",
 					);
 					// Apply merge failure policy (same as normal wave merge failure)
@@ -1954,10 +2004,13 @@ export async function resumeOrchBatch(
 			continue;
 		}
 
-		onNotify(
-			ORCH_MESSAGES.orchWaveStart(waveIdx + 1, wavePlan.length, waveTasks.length, Math.min(waveTasks.length, orchConfig.orchestrator.max_lanes)),
-			"info",
-		);
+		{
+			const { displayWave, displayTotal } = resolveDisplayWaveNumber(waveIdx, roundToTaskWave, taskLevelWaveCount);
+			onNotify(
+				ORCH_MESSAGES.orchWaveStart(displayWave, displayTotal, waveTasks.length, Math.min(waveTasks.length, orchConfig.orchestrator.max_lanes)),
+				"info",
+			);
+		}
 
 		const handleResumeMonitorUpdate: MonitorUpdateCallback = (monitorState) => {
 			const changed = syncTaskOutcomesFromMonitor(monitorState, allTaskOutcomes);
@@ -2064,7 +2117,7 @@ export async function resumeOrchBatch(
 					frontierSummary +
 					`  Lane: ${laneForTask?.laneId ?? "unknown"} (lane ${laneForTask?.laneNumber ?? "?"})\n` +
 					`  Partial progress preserved: ${hasPartialProgress ? "yes" : "no"}\n` +
-					`  Batch: wave ${waveIdx + 1}/${batchState.totalWaves}, ` +
+					`  Batch: wave ${resolveDisplayWaveNumber(waveIdx, roundToTaskWave, taskLevelWaveCount).displayWave}/${taskLevelWaveCount ?? batchState.totalWaves}, ` +
 					`${batchState.succeededTasks} succeeded, ${batchState.failedTasks} failed\n\n` +
 					`Available actions:\n` +
 					`  - orch_status() to inspect current state\n` +
@@ -2088,16 +2141,19 @@ export async function resumeOrchBatch(
 		persistRuntimeState("wave-execution-complete", batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discovery, stateRoot);
 
 		const elapsedSec = Math.round((waveResult.endedAt - waveResult.startedAt) / 1000);
-		onNotify(
-			ORCH_MESSAGES.orchWaveComplete(
-				waveIdx + 1,
-				waveResult.succeededTaskIds.length,
-				waveResult.failedTaskIds.length,
-				waveResult.skippedTaskIds.length,
-				elapsedSec,
-			),
-			waveResult.failedTaskIds.length > 0 ? "warning" : "info",
-		);
+		{
+			const { displayWave: completeDisplayWave } = resolveDisplayWaveNumber(waveIdx, roundToTaskWave, taskLevelWaveCount);
+			onNotify(
+				ORCH_MESSAGES.orchWaveComplete(
+					completeDisplayWave,
+					waveResult.succeededTaskIds.length,
+					waveResult.failedTaskIds.length,
+					waveResult.skippedTaskIds.length,
+					elapsedSec,
+				),
+				waveResult.failedTaskIds.length > 0 ? "warning" : "info",
+			);
+		}
 
 		// Check failure policy
 		if (waveResult.stoppedEarly) {
@@ -2144,7 +2200,7 @@ export async function resumeOrchBatch(
 			if (mergeableLaneCount > 0) {
 				batchState.phase = "merging";
 				persistRuntimeState("merge-start", batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discovery, stateRoot);
-				onNotify(ORCH_MESSAGES.orchMergeStart(waveIdx + 1, mergeableLaneCount), "info");
+				onNotify(ORCH_MESSAGES.orchMergeStart(resolveDisplayWaveNumber(waveIdx, roundToTaskWave, taskLevelWaveCount).displayWave, mergeableLaneCount), "info");
 
 				mergeResult = await mergeWaveByRepo(
 					waveResult.allocatedLanes,
@@ -2197,10 +2253,10 @@ export async function resumeOrchBatch(
 				const mergeTotalSec = Math.round(mergeResult.totalDurationMs / 1000);
 
 				if (mergeResult.status === "succeeded") {
-					onNotify(ORCH_MESSAGES.orchMergeComplete(waveIdx + 1, mergedCount, mergeTotalSec), "info");
+					onNotify(ORCH_MESSAGES.orchMergeComplete(resolveDisplayWaveNumber(waveIdx, roundToTaskWave, taskLevelWaveCount).displayWave, mergedCount, mergeTotalSec), "info");
 				} else {
 					onNotify(
-						ORCH_MESSAGES.orchMergeFailed(waveIdx + 1, mergeResult.failedLane ?? 0, mergeResult.failureReason || "unknown"),
+						ORCH_MESSAGES.orchMergeFailed(resolveDisplayWaveNumber(waveIdx, roundToTaskWave, taskLevelWaveCount).displayWave, mergeResult.failedLane ?? 0, mergeResult.failureReason || "unknown"),
 						"error",
 					);
 
@@ -2231,14 +2287,14 @@ export async function resumeOrchBatch(
 				// Downstream retry/update paths assume the current wave has an entry.
 				batchState.mergeResults.push(mergeResult);
 				onNotify(
-					ORCH_MESSAGES.orchMergeFailed(waveIdx + 1, mergeResult.failedLane, mergeResult.failureReason || "unknown"),
+					ORCH_MESSAGES.orchMergeFailed(resolveDisplayWaveNumber(waveIdx, roundToTaskWave, taskLevelWaveCount).displayWave, mergeResult.failedLane, mergeResult.failureReason || "unknown"),
 					"error",
 				);
 			} else {
-				onNotify(ORCH_MESSAGES.orchMergeSkipped(waveIdx + 1), "info");
+				onNotify(ORCH_MESSAGES.orchMergeSkipped(resolveDisplayWaveNumber(waveIdx, roundToTaskWave, taskLevelWaveCount).displayWave), "info");
 			}
 		} else {
-			onNotify(ORCH_MESSAGES.orchMergeSkipped(waveIdx + 1), "info");
+			onNotify(ORCH_MESSAGES.orchMergeSkipped(resolveDisplayWaveNumber(waveIdx, roundToTaskWave, taskLevelWaveCount).displayWave), "info");
 		}
 
 		// ── TP-033: Safe-stop on rollback failure ─────────────────
@@ -2755,7 +2811,7 @@ export async function resumeOrchBatch(
 				summary:
 					`✅ Batch ${batchState.batchId} completed\n` +
 					`  ${batchState.succeededTasks}/${batchState.totalTasks} tasks succeeded\n` +
-					`  ${batchState.totalWaves} wave(s), duration: ${durationStr}\n` +
+					`  ${batchState.taskLevelWaveCount ?? batchState.totalWaves} wave(s), duration: ${durationStr}\n` +
 					`  Merged to orch branch: ${batchState.orchBranch}\n\n` +
 					`Ready for integration. Run orch_integrate() or review first.`,
 				context: {

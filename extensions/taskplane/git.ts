@@ -54,3 +54,37 @@ export function runGit(
 	}
 }
 
+/**
+ * Run a git command with custom environment variables.
+ *
+ * Used by TP-169 to create commits on the orch branch without
+ * modifying HEAD, via GIT_INDEX_FILE for alternate index manipulation.
+ *
+ * @param args  - Git command arguments
+ * @param cwd   - Working directory
+ * @param env   - Additional environment variables to set
+ */
+export function runGitWithEnv(
+	args: string[],
+	cwd: string,
+	env: Record<string, string>,
+): { ok: boolean; stdout: string; stderr: string } {
+	try {
+		const stdout = execFileSync("git", args, {
+			encoding: "utf-8",
+			timeout: 30_000,
+			cwd,
+			stdio: ["pipe", "pipe", "pipe"],
+			env: { ...process.env, ...env },
+		}).trim();
+		return { ok: true, stdout, stderr: "" };
+	} catch (err: unknown) {
+		const e = err as { stdout?: string; stderr?: string; message?: string };
+		return {
+			ok: false,
+			stdout: (e.stdout ?? "").toString().trim(),
+			stderr: (e.stderr ?? e.message ?? "unknown error").toString().trim(),
+		};
+	}
+}
+
