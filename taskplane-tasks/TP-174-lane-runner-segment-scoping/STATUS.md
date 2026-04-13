@@ -104,6 +104,9 @@
 | 2026-04-12 | Task staged | PROMPT.md and STATUS.md created |
 | 2026-04-13 16:40 | Task started | Runtime V2 lane-runner execution |
 | 2026-04-13 16:40 | Step 0 started | Preflight |
+| 2026-04-13 17:30 | Agent reply | TP-174 complete. All 6 steps done, 3363/3363 tests passing. /  / Summary of changes: / - **lane-runner.ts** (+173 lines): Added segment-scoped helpers (getStepsForRepoId, getSegmentCheckboxes, isSegme |
+| 2026-04-13 17:30 | Worker iter 1 | done in 2994s, tools: 182 |
+| 2026-04-13 17:30 | Task complete | .DONE created |
 
 ---
 
