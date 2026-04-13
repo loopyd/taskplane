@@ -1,21 +1,21 @@
 # TP-173: Discovery Segment-Step Parsing — Status
 
-**Current Step:** Not Started
-**Status:** 🔵 Ready for Execution
-**Last Updated:** 2026-04-12
+**Current Step:** Step 0: Preflight
+**Status:** 🟡 In Progress
+**Last Updated:** 2026-04-13
 **Review Level:** 2
 **Review Counter:** 0
-**Iteration:** 0
+**Iteration:** 1
 **Size:** M
 
 ---
 
 ### Step 0: Preflight
-**Status:** ⬜ Not Started
-- [ ] Read discovery.ts PROMPT.md parser
-- [ ] Read types.ts ParsedTask interface
-- [ ] Read spec sections A.1 and A.10
-- [ ] Document findings
+**Status:** ✅ Complete
+- [x] Read discovery.ts PROMPT.md parser
+- [x] Read types.ts ParsedTask interface
+- [x] Read spec sections A.1 and A.10
+- [x] Document findings
 
 ---
 
@@ -66,6 +66,9 @@
 
 | Discovery | Disposition | Location |
 |-----------|-------------|----------|
+| parsePromptForOrchestrator() extracts ID, review, size, deps, file scope, exec target, segment DAG. Does NOT parse step sections/checkboxes. | Expected — new parsing needed | discovery.ts:356-576 |
+| ParsedTask already has explicitSegmentDag, packetRepoId, segmentIds, activeSegmentId fields. stepSegmentMap is new. | Add as optional field | types.ts:91-131 |
+| Spec A.1 defines SegmentCheckboxGroup {repoId, checkboxes[]} and StepSegmentMapping {stepNumber, stepName, segments[]} | Implement as specified | segment-aware-steps.md A.1 |
 
 ---
 
@@ -74,6 +77,8 @@
 | Timestamp | Action | Outcome |
 |-----------|--------|---------|
 | 2026-04-12 | Task staged | PROMPT.md and STATUS.md created |
+| 2026-04-13 16:01 | Task started | Runtime V2 lane-runner execution |
+| 2026-04-13 16:01 | Step 0 started | Preflight |
 
 ---
 
