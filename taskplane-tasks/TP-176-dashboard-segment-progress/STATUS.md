@@ -1,6 +1,6 @@
 # TP-176: Dashboard Segment-Scoped Progress — Status
 
-**Current Step:** Step 1: Segment-Scoped STATUS.md Viewer
+**Current Step:** Step 2: Segment-Scoped Progress Bar
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-13
 **Review Level:** 1
@@ -18,11 +18,11 @@
 ---
 
 ### Step 1: Segment-Scoped STATUS.md Viewer
-**Status:** 🟨 In Progress
-- [ ] Client-side: resolve active segmentId → repoId + current step from task/lane data; filter STATUS.md to show only the current segment's `#### Segment: <repoId>` checkbox blocks (across steps that belong to this segment's repoId); remove non-matching segment blocks from other repos
-- [ ] Add fallback: if multi-segment but segment block cannot be resolved, show full STATUS.md
-- [ ] Render segment header context (e.g., "Segment 2/3: shared-libs") in viewer title
-- [ ] Preserve full STATUS.md for single-segment tasks (no markers)
+**Status:** ✅ Complete
+- [x] Client-side: resolve active segmentId → repoId + current step from task/lane data; filter STATUS.md to show only the current segment's `#### Segment: <repoId>` checkbox blocks (across steps that belong to this segment's repoId); remove non-matching segment blocks from other repos
+- [x] Add fallback: if multi-segment but segment block cannot be resolved, show full STATUS.md
+- [x] Render segment header context (e.g., "Segment 2/3: shared-libs") in viewer title
+- [x] Preserve full STATUS.md for single-segment tasks (no markers)
 
 ---
 
