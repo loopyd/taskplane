@@ -1,19 +1,19 @@
 # TP-176: Dashboard Segment-Scoped Progress — Status
 
-**Current Step:** Not Started
-**Status:** 🔵 Ready for Execution
-**Last Updated:** 2026-04-12
+**Current Step:** Step 0: Preflight
+**Status:** 🟡 In Progress
+**Last Updated:** 2026-04-13
 **Review Level:** 1
 **Review Counter:** 0
-**Iteration:** 0
+**Iteration:** 1
 **Size:** S
 
 ---
 
 ### Step 0: Preflight
-**Status:** ⬜ Not Started
-- [ ] Read dashboard app.js and server.cjs
-- [ ] Understand sidecar telemetry data flow
+**Status:** ✅ Complete
+- [x] Read dashboard app.js and server.cjs
+- [x] Understand sidecar telemetry data flow
 
 ---
 
@@ -63,6 +63,8 @@
 | Timestamp | Action | Outcome |
 |-----------|--------|---------|
 | 2026-04-12 | Task staged | PROMPT.md and STATUS.md created |
+| 2026-04-13 17:31 | Task started | Runtime V2 lane-runner execution |
+| 2026-04-13 17:31 | Step 0 started | Preflight |
 
 ---
 
