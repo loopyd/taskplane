@@ -1,20 +1,20 @@
 # TP-175: Worker Prompt and Skill Segment Markers — Status
 
-**Current Step:** Not Started
-**Status:** 🔵 Ready for Execution
-**Last Updated:** 2026-04-12
+**Current Step:** Step 0: Preflight
+**Status:** 🟡 In Progress
+**Last Updated:** 2026-04-13
 **Review Level:** 1
 **Review Counter:** 0
-**Iteration:** 0
+**Iteration:** 1
 **Size:** M
 
 ---
 
 ### Step 0: Preflight
-**Status:** ⬜ Not Started
-- [ ] Read task-worker.md
-- [ ] Read create-taskplane-task SKILL.md
-- [ ] Read prompt-template.md
+**Status:** ✅ Complete
+- [x] Read task-worker.md
+- [x] Read create-taskplane-task SKILL.md
+- [x] Read prompt-template.md
 
 ---
 
@@ -67,6 +67,8 @@
 | Timestamp | Action | Outcome |
 |-----------|--------|---------|
 | 2026-04-12 | Task staged | PROMPT.md and STATUS.md created |
+| 2026-04-13 16:01 | Task started | Runtime V2 lane-runner execution |
+| 2026-04-13 16:01 | Step 0 started | Preflight |
 
 ---
 
