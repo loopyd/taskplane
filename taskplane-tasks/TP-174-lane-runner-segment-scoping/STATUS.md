@@ -1,10 +1,10 @@
 # TP-174: Lane-Runner Segment Scoping — Status
 
-**Current Step:** Step 1: Segment-Scoped Iteration Prompt
+**Current Step:** Step 2: Segment-Scoped Progress and Stall Detection
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-13
 **Review Level:** 2
-**Review Counter:** 3
+**Review Counter:** 4
 **Iteration:** 1
 **Size:** L
 
@@ -33,13 +33,12 @@
 ---
 
 ### Step 2: Segment-Scoped Progress and Stall Detection
-**Status:** ⬜ Not Started
+**Status:** 🟨 In Progress
 
-> ⚠️ Hydrate: Expand based on progress tracking structure found in Step 0
-
-- [ ] Add getSegmentCheckboxes helper
-- [ ] Segment-scoped progress delta
-- [ ] Segment-scoped stall detection
+- [ ] Replace full-task progress delta with segment-scoped delta when segment markers are present (use getSegmentCheckboxes from Step 1 already added)
+- [ ] Stall detection uses segment-scoped prevChecked/afterChecked counts
+- [ ] Corrective re-spawn prompt references segment-specific unchecked items
+- [ ] Legacy fallback: no change to progress/stall when no markers
 - [ ] Run targeted tests
 
 ---
@@ -149,3 +148,4 @@ Specification: docs/specifications/taskplane/segment-aware-steps.md
 | 2026-04-13 16:42 | Review R001 | plan Step 1: APPROVE |
 | 2026-04-13 16:50 | Review R002 | code Step 1: REVISE |
 | 2026-04-13 16:53 | Review R003 | code Step 1: REVISE |
+| 2026-04-13 16:58 | Review R004 | code Step 1: APPROVE |
