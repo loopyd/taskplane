@@ -589,7 +589,10 @@ export interface DiscoveryError {
 		| "TASK_REPO_UNKNOWN"
 		| "TASK_ROUTING_STRICT"
 		| "SEGMENT_DAG_INVALID"
-		| "SEGMENT_REPO_UNKNOWN";
+		| "SEGMENT_REPO_UNKNOWN"
+		| "SEGMENT_STEP_DUPLICATE_REPO"
+		| "SEGMENT_STEP_EMPTY"
+		| "SEGMENT_STEP_REPO_INVALID";
 	message: string;
 	taskPath?: string;
 	taskId?: string;
@@ -613,6 +616,7 @@ export const FATAL_DISCOVERY_CODES: ReadonlyArray<DiscoveryError["code"]> = [
 	"TASK_ROUTING_STRICT",
 	"SEGMENT_DAG_INVALID",
 	"SEGMENT_REPO_UNKNOWN",
+	"SEGMENT_STEP_DUPLICATE_REPO",
 ] as const;
 
 /** Result of the full discovery pipeline */

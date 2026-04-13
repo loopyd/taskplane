@@ -6,7 +6,7 @@ import { readFileSync, writeFileSync, existsSync, readdirSync, statSync } from "
 import { join, dirname, basename, resolve } from "path";
 
 import { FATAL_DISCOVERY_CODES } from "./types.ts";
-import type { DiscoveryError, DiscoveryResult, ParsedTask, PromptSegmentDagMetadata, TaskArea, WorkspaceConfig } from "./types.ts";
+import type { DiscoveryError, DiscoveryResult, ParsedTask, PromptSegmentDagMetadata, SegmentCheckboxGroup, StepSegmentMapping, TaskArea, WorkspaceConfig } from "./types.ts";
 
 // ── PROMPT.md Parsing ────────────────────────────────────────────────
 
@@ -351,6 +351,178 @@ function parseSegmentDagMetadata(
 	};
 }
 
+// ── Step-Segment Mapping (Phase A) ───────────────────────────────────
+
+interface StepSegmentParseResult {
+	mapping: StepSegmentMapping[];
+	warnings: DiscoveryError[];
+	errors: DiscoveryError[];
+}
+
+/**
+ * Parse `#### Segment: <repoId>` markers within `### Step N:` sections of a PROMPT.md.
+ *
+ * Builds a StepSegmentMapping[] that maps each step to its repo-scoped checkbox groups.
+ *
+ * Rules:
+ * - Checkboxes before any segment header (or in steps with no segment headers)
+ *   belong to the task's primary repoId (fallbackRepoId / packet repo).
+ * - A repoId may appear at most once within a step (duplicate → error).
+ * - Empty segments (header but no checkboxes) produce a warning.
+ * - Unknown repoIds are flagged as warnings (validation deferred to routing).
+ */
+export function parseStepSegmentMapping(
+	content: string,
+	taskId: string,
+	fallbackRepoId: string,
+): StepSegmentParseResult {
+	const mapping: StepSegmentMapping[] = [];
+	const warnings: DiscoveryError[] = [];
+	const errors: DiscoveryError[] = [];
+
+	// Find ## Steps section
+	const stepsSectionMatch = content.match(/^##\s+Steps\s*$/im);
+	if (!stepsSectionMatch || stepsSectionMatch.index === undefined) {
+		return { mapping, warnings, errors };
+	}
+
+	const stepsStart = stepsSectionMatch.index;
+	// Get body from ## Steps to next ## (non-step section) or end
+	const afterStepsHeader = content.indexOf("\n", stepsStart);
+	if (afterStepsHeader === -1) {
+		return { mapping, warnings, errors };
+	}
+	const stepsBody = content.slice(afterStepsHeader + 1);
+
+	// Split into step sections by ### Step N: headers
+	const stepHeaderRegex = /^###\s+Step\s+(\d+):\s*(.+)$/gm;
+	const stepHeaders: { index: number; stepNumber: number; stepName: string }[] = [];
+	let match: RegExpExecArray | null;
+	while ((match = stepHeaderRegex.exec(stepsBody)) !== null) {
+		stepHeaders.push({
+			index: match.index,
+			stepNumber: parseInt(match[1], 10),
+			stepName: match[2].trim(),
+		});
+	}
+
+	if (stepHeaders.length === 0) {
+		return { mapping, warnings, errors };
+	}
+
+	for (let i = 0; i < stepHeaders.length; i++) {
+		const header = stepHeaders[i];
+		const nextHeaderIndex = i + 1 < stepHeaders.length ? stepHeaders[i + 1].index : stepsBody.length;
+		const stepContent = stepsBody.slice(header.index, nextHeaderIndex);
+
+		// Parse segment groups within this step
+		const segmentHeaderRegex = /^####\s+Segment:\s*(.+)$/gm;
+		const segmentHeaders: { index: number; repoId: string; rawRepoId: string }[] = [];
+		let segMatch: RegExpExecArray | null;
+		while ((segMatch = segmentHeaderRegex.exec(stepContent)) !== null) {
+			const rawRepoId = segMatch[1].trim();
+			const repoId = normalizeSegmentRepoToken(rawRepoId);
+			segmentHeaders.push({
+				index: segMatch.index,
+				repoId,
+				rawRepoId,
+			});
+		}
+
+		const segments: SegmentCheckboxGroup[] = [];
+
+		if (segmentHeaders.length === 0) {
+			// No segment markers — all checkboxes belong to fallback repo
+			const checkboxes = extractCheckboxes(stepContent);
+			segments.push({ repoId: fallbackRepoId, checkboxes });
+		} else {
+			// Check for checkboxes before the first segment header (pre-segment)
+			const preSegmentContent = stepContent.slice(0, segmentHeaders[0].index);
+			const preCheckboxes = extractCheckboxes(preSegmentContent);
+			if (preCheckboxes.length > 0) {
+				segments.push({ repoId: fallbackRepoId, checkboxes: preCheckboxes });
+			}
+
+			// Track seen repoIds for duplicate detection
+			const seenRepoIds = new Set<string>();
+			let hasDuplicateError = false;
+
+			for (let j = 0; j < segmentHeaders.length; j++) {
+				const seg = segmentHeaders[j];
+
+				// Validate repo ID format
+				if (!SEGMENT_REPO_ID_PATTERN.test(seg.repoId)) {
+					warnings.push({
+						code: "SEGMENT_STEP_REPO_INVALID",
+						message:
+							`Task ${taskId} Step ${header.stepNumber} has invalid segment repo ID "${seg.rawRepoId}". ` +
+							`Repo IDs must match /^[a-z0-9][a-z0-9-]*$/.`,
+						taskId,
+					});
+					continue;
+				}
+
+				// Check for duplicates
+				if (seenRepoIds.has(seg.repoId)) {
+					errors.push({
+						code: "SEGMENT_STEP_DUPLICATE_REPO",
+						message:
+							`Task ${taskId} Step ${header.stepNumber} has duplicate segment repo ID "${seg.repoId}". ` +
+							`A repoId may appear at most once within a step.`,
+						taskId,
+					});
+					hasDuplicateError = true;
+					continue;
+				}
+				seenRepoIds.add(seg.repoId);
+
+				const nextSegIndex = j + 1 < segmentHeaders.length ? segmentHeaders[j + 1].index : stepContent.length;
+				const segContent = stepContent.slice(seg.index, nextSegIndex);
+				const checkboxes = extractCheckboxes(segContent);
+
+				if (checkboxes.length === 0) {
+					warnings.push({
+						code: "SEGMENT_STEP_EMPTY",
+						message:
+							`Task ${taskId} Step ${header.stepNumber} has empty segment "${seg.repoId}" with no checkboxes.`,
+						taskId,
+					});
+				}
+
+				segments.push({ repoId: seg.repoId, checkboxes });
+			}
+
+			if (hasDuplicateError) {
+				// Still add what we collected, but errors are flagged
+			}
+		}
+
+		mapping.push({
+			stepNumber: header.stepNumber,
+			stepName: header.stepName,
+			segments,
+		});
+	}
+
+	return { mapping, warnings, errors };
+}
+
+/**
+ * Extract checkbox text lines from a content block.
+ * Matches `- [ ] text` and `- [x] text` patterns.
+ */
+function extractCheckboxes(content: string): string[] {
+	const checkboxes: string[] = [];
+	const lines = content.split(/\r?\n/);
+	for (const line of lines) {
+		const match = line.match(/^\s*-\s+\[[ x]\]\s+(.+)$/);
+		if (match) {
+			checkboxes.push(match[1].trim());
+		}
+	}
+	return checkboxes;
+}
+
 /**
  * Parse a PROMPT.md file and extract orchestrator-relevant metadata.
  *
@@ -376,7 +548,7 @@ export function parsePromptForOrchestrator(
 	promptPath: string,
 	taskFolder: string,
 	areaName: string,
-): { task: ParsedTask | null; error: DiscoveryError | null } {
+): { task: ParsedTask | null; error: DiscoveryError | null; warnings?: DiscoveryError[] } {
 	const folderName = basename(taskFolder);
 	let content: string;
 
@@ -560,6 +732,22 @@ export function parsePromptForOrchestrator(
 	}
 	const explicitSegmentDag = segmentDagResult.metadata;
 
+	// ── Parse step-segment mapping (Phase A, TP-173) ────────
+	// Use promptRepoId as fallback; if not set, use "default" as a
+	// placeholder — routing will resolve the real repo later.
+	const segFallbackRepo = promptRepoId || "default";
+	const stepSegResult = parseStepSegmentMapping(content, taskId, segFallbackRepo);
+
+	// Duplicate repoId in a step is a hard error — fail the task.
+	if (stepSegResult.errors.length > 0) {
+		return {
+			task: null,
+			error: stepSegResult.errors[0],
+		};
+	}
+
+	const stepSegmentMap = stepSegResult.mapping.length > 0 ? stepSegResult.mapping : undefined;
+
 	return {
 		task: {
 			taskId,
@@ -574,8 +762,10 @@ export function parsePromptForOrchestrator(
 			status: "pending",
 			...(promptRepoId ? { promptRepoId } : {}),
 			...(explicitSegmentDag ? { explicitSegmentDag } : {}),
+			...(stepSegmentMap ? { stepSegmentMap } : {}),
 		},
 		error: null,
+		warnings: stepSegResult.warnings,
 	};
 }
 
@@ -642,6 +832,9 @@ export function scanAreaForTasks(
 		const result = parsePromptForOrchestrator(promptPath, entryPath, areaName);
 		if (result.error) {
 			errors.push(result.error);
+		}
+		if (result.warnings) {
+			errors.push(...result.warnings);
 		}
 		if (result.task) {
 			tasks.push(result.task);
@@ -966,6 +1159,9 @@ export function buildTaskRegistry(
 		const result = parsePromptForOrchestrator(promptPath, taskFolder, areaName);
 		if (result.error) {
 			errors.push(result.error);
+		}
+		if (result.warnings) {
+			errors.push(...result.warnings);
 		}
 		if (result.task) {
 			trackId(result.task.taskId, result.task.promptPath);

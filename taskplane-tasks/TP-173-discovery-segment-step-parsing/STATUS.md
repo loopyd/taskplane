@@ -4,7 +4,7 @@
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-13
 **Review Level:** 2
-**Review Counter:** 3
+**Review Counter:** 4
 **Iteration:** 1
 **Size:** M
 
@@ -29,14 +29,14 @@
 ---
 
 ### Step 2: Implement Segment Parsing
-**Status:** 🟨 In Progress
+**Status:** ✅ Complete
 
 > ⚠️ Hydrated (R003 revision): Parser adds segment parsing into parsePromptForOrchestrator after step extraction.
 
-- [ ] Add parseStepSegmentMapping helper function that extracts steps and their segment groups from PROMPT content, including fallback grouping: checkboxes before any `#### Segment:` marker (or in steps with no markers) map to the task's primary repoId (packetRepo fallback)
-- [ ] Integrate helper into parsePromptForOrchestrator to populate stepSegmentMap on ParsedTask and return diagnostics alongside the mapping
-- [ ] Handle edge cases: empty segments (non-fatal warning), duplicate repoId in step (discovery error), unknown repoId (non-fatal warning with suggested matches from workspace repos)
-- [ ] Run targeted tests (discovery-routing tests + verify new parser path)
+- [x] Add parseStepSegmentMapping helper function that extracts steps and their segment groups from PROMPT content, including fallback grouping: checkboxes before any `#### Segment:` marker (or in steps with no markers) map to the task's primary repoId (packetRepo fallback)
+- [x] Integrate helper into parsePromptForOrchestrator to populate stepSegmentMap on ParsedTask and return diagnostics alongside the mapping
+- [x] Handle edge cases: empty segments (non-fatal warning), duplicate repoId in step (discovery error), unknown repoId (non-fatal warning with suggested matches from workspace repos)
+- [x] Run targeted tests (discovery-routing tests + verify new parser path)
 
 ---
 
@@ -94,3 +94,4 @@ Specification: docs/specifications/taskplane/segment-aware-steps.md
 | 2026-04-13 16:03 | Review R001 | plan Step 1: APPROVE |
 | 2026-04-13 16:04 | Review R002 | code Step 1: APPROVE |
 | 2026-04-13 16:07 | Review R003 | plan Step 2: REVISE |
+| 2026-04-13 16:08 | Review R004 | plan Step 2: APPROVE |
