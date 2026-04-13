@@ -1,10 +1,10 @@
 # TP-174: Lane-Runner Segment Scoping — Status
 
-**Current Step:** Step 3: Segment Exit Condition
+**Current Step:** Step 4: Sidecar Telemetry Update
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-13
 **Review Level:** 2
-**Review Counter:** 9
+**Review Counter:** 10
 **Iteration:** 1
 **Size:** L
 
@@ -53,9 +53,9 @@
 ---
 
 ### Step 4: Sidecar Telemetry Update
-**Status:** ⬜ Not Started
-- [ ] Segment-scoped progress in sidecar
-- [ ] Legacy fallback
+**Status:** 🟨 In Progress
+- [ ] Update emitSnapshot() in lane-runner.ts to report segment-scoped progress (checked/total) when segment markers are present
+- [ ] Legacy fallback: full-task progress for tasks without markers
 - [ ] Run targeted tests
 
 ---
@@ -154,3 +154,4 @@ Specification: docs/specifications/taskplane/segment-aware-steps.md
 | 2026-04-13 17:05 | Review R007 | code Step 2: APPROVE |
 | 2026-04-13 17:06 | Review R008 | plan Step 3: APPROVE |
 | 2026-04-13 17:09 | Review R009 | code Step 3: REVISE |
+| 2026-04-13 17:11 | Review R010 | code Step 3: APPROVE |
