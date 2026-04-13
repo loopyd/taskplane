@@ -911,37 +911,89 @@ export async function executeTaskV2(
 		}
 
 		// Mark completed steps
-		for (const step of parsed.steps) {
-			const ss = afterStatus.steps.find(s => s.number === step.number);
-			if (isStepComplete(ss)) {
-				updateStepStatus(statusPath, step.number, "complete");
+		// TP-174: When segment-scoped, mark step complete when the segment's
+		// checkboxes are all checked (not the full step which may have other segments).
+		if (repoStepNumbers && currentRepoId) {
+			for (const stepNum of repoStepNumbers) {
+				if (isSegmentComplete(afterStatusContent, stepNum, currentRepoId)) {
+					// Only mark step complete in STATUS.md if ALL segments in that step
+					// are complete (not just ours). But for loop exit, we only care about ours.
+					const ss = afterStatus.steps.find(s => s.number === stepNum);
+					if (isStepComplete(ss)) {
+						updateStepStatus(statusPath, stepNum, "complete");
+					}
+				}
+			}
+		} else {
+			for (const step of parsed.steps) {
+				const ss = afterStatus.steps.find(s => s.number === step.number);
+				if (isStepComplete(ss)) {
+					updateStepStatus(statusPath, step.number, "complete");
+				}
 			}
 		}
 
 		// Check if all steps are now complete
-		const allComplete = parsed.steps.every(step => {
-			const ss = afterStatus.steps.find(s => s.number === step.number);
-			return isStepComplete(ss);
-		});
+		// TP-174: When segment-scoped, exit when all steps for this repoId
+		// have their segment checkboxes complete.
+		let allComplete: boolean;
+		if (repoStepNumbers && currentRepoId) {
+			allComplete = [...repoStepNumbers].every(stepNum =>
+				isSegmentComplete(afterStatusContent, stepNum, currentRepoId),
+			);
+		} else {
+			allComplete = parsed.steps.every(step => {
+				const ss = afterStatus.steps.find(s => s.number === step.number);
+				return isStepComplete(ss);
+			});
+		}
 		if (allComplete) break;
 	}
 
 	// ── 3. Post-loop completion check ───────────────────────────────
-	const finalStatus = parseStatusMd(readFileSync(statusPath, "utf-8"));
+	const finalStatusContent = readFileSync(statusPath, "utf-8");
+	const finalStatus = parseStatusMd(finalStatusContent);
 	const parsed = parsePromptMd(readFileSync(promptPath, "utf-8"), promptPath);
-	const allStepsComplete = parsed.steps.every(step => {
-		const ss = finalStatus.steps.find(s => s.number === step.number);
-		return isStepComplete(ss);
-	});
+
+	// TP-174: Segment-scoped post-loop check. Re-derive repo scoping since
+	// the iteration loop variables are out of scope here.
+	const postLoopRepoId = segmentId ? config.repoId : null;
+	const postLoopStepSegMap = unit.task.stepSegmentMap;
+	const postLoopRepoSteps = (postLoopStepSegMap && postLoopRepoId)
+		? getStepsForRepoId(postLoopStepSegMap, postLoopRepoId)
+		: null;
+	const effectivePostLoopRepoSteps = (postLoopRepoSteps && postLoopRepoSteps.size > 0)
+		? postLoopRepoSteps
+		: null;
+
+	let allStepsComplete: boolean;
+	if (effectivePostLoopRepoSteps && postLoopRepoId) {
+		allStepsComplete = [...effectivePostLoopRepoSteps].every(stepNum =>
+			isSegmentComplete(finalStatusContent, stepNum, postLoopRepoId),
+		);
+	} else {
+		allStepsComplete = parsed.steps.every(step => {
+			const ss = finalStatus.steps.find(s => s.number === step.number);
+			return isStepComplete(ss);
+		});
+	}
 
 	if (!allStepsComplete) {
-		const incomplete = parsed.steps
-			.filter(step => {
-				const ss = finalStatus.steps.find(s => s.number === step.number);
-				return !isStepComplete(ss);
-			})
-			.map(s => `Step ${s.number}`)
-			.join(", ");
+		let incomplete: string;
+		if (effectivePostLoopRepoSteps && postLoopRepoId) {
+			incomplete = [...effectivePostLoopRepoSteps]
+				.filter(stepNum => !isSegmentComplete(finalStatusContent, stepNum, postLoopRepoId))
+				.map(n => `Step ${n}`)
+				.join(", ");
+		} else {
+			incomplete = parsed.steps
+				.filter(step => {
+					const ss = finalStatus.steps.find(s => s.number === step.number);
+					return !isStepComplete(ss);
+				})
+				.map(s => `Step ${s.number}`)
+				.join(", ");
+		}
 		logExecution(statusPath, "Task incomplete", `Max iterations reached. Incomplete: ${incomplete}`);
 		return makeResult(taskId, segmentId, workerAgentId, "failed", startTime,
 			`Max iterations (${config.maxIterations}) reached with incomplete steps: ${incomplete}`,
