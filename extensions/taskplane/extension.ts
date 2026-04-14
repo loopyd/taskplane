@@ -1385,7 +1385,7 @@ export function buildIntegrationExecutor(repoRoot: string, opId?: string, stateR
 				}
 			},
 			deleteBatchState: () => {
-				try { deleteBatchState(repoRoot); } catch { /* best effort */ }
+				try { deleteBatchState(stateRoot ?? repoRoot); } catch { /* best effort */ }
 			},
 		};
 
@@ -1433,7 +1433,7 @@ export function buildIntegrationExecutor(repoRoot: string, opId?: string, stateR
  *
  * @since TP-043
  */
-export function buildCiDeps(repoRoot: string): CiDeps {
+export function buildCiDeps(repoRoot: string, stateRoot?: string): CiDeps {
 	return {
 		runCommand: (cmd: string, cmdArgs: string[]) => {
 			try {
@@ -1455,7 +1455,7 @@ export function buildCiDeps(repoRoot: string): CiDeps {
 		},
 		runGit: (gitArgs: string[]) => runGit(gitArgs, repoRoot),
 		deleteBatchState: () => {
-			try { deleteBatchState(repoRoot); } catch { /* best effort */ }
+			try { deleteBatchState(stateRoot ?? repoRoot); } catch { /* best effort */ }
 		},
 	};
 }
@@ -2154,7 +2154,7 @@ export default function (pi: ExtensionAPI) {
 						mode,
 						repoRoot,
 						buildIntegrationExecutor(repoRoot, opId, execCtx!.workspaceRoot),
-						buildCiDeps(repoRoot),
+						buildCiDeps(repoRoot, execCtx!.workspaceRoot),
 						sDeps,
 					);
 					return;
@@ -2491,7 +2491,7 @@ export default function (pi: ExtensionAPI) {
 						mode,
 						execCtx!.repoRoot,
 						buildIntegrationExecutor(execCtx!.repoRoot, opId, execCtx!.workspaceRoot),
-						buildCiDeps(execCtx!.repoRoot),
+						buildCiDeps(execCtx!.repoRoot, execCtx!.workspaceRoot),
 						sDeps,
 					);
 					return;
@@ -3330,7 +3330,7 @@ export default function (pi: ExtensionAPI) {
 			try { updateBatchHistoryIntegration(stateRoot, batchId, Date.now()); } catch { /* best effort */ }
 		}
 
-		try { deleteBatchState(repoRoot); } catch { /* best effort */ }
+		try { deleteBatchState(stateRoot); } catch { /* best effort */ }
 
 		// ── TP-065: Post-integrate artifact cleanup (Layer 1) ────
 		// Delete batch-specific telemetry and merge result files.
