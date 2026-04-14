@@ -20,9 +20,9 @@
 ### Step 1: Create Test Files
 **Status:** ⬜ Not Started
 
-- [ ] Create `hello.txt` in this task folder with content "Runtime V2 works!"
-- [ ] Create `fibonacci.txt` with the first 20 Fibonacci numbers, one per line
-- [ ] Create `summary.txt` with a 3-paragraph summary of what Runtime V2 is
+- [x] Create `hello.txt` in this task folder with content "Runtime V2 works!"
+- [x] Create `fibonacci.txt` with the first 20 Fibonacci numbers, one per line
+- [x] Create `summary.txt` with a 3-paragraph summary of what Runtime V2 is
 
 ---
 
