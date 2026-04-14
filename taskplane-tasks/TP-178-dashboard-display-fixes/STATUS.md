@@ -1,10 +1,10 @@
 # TP-178: Dashboard Display Fixes — Status
 
-**Current Step:** Step 3: Succeeded tasks show 0% (#491)
+**Current Step:** Step 4: Wave indicators flash green during merge (#493)
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-14
 **Review Level:** 1
-**Review Counter:** 3
+**Review Counter:** 4
 **Iteration:** 1
 **Size:** L
 
@@ -40,9 +40,9 @@
 ---
 
 ### Step 4: Wave indicators flash green during merge (#493)
-**Status:** ⬜ Not Started
-- [ ] Only completed waves green during merge
-- [ ] Current merging wave shows merging indicator
+**Status:** ✅ Complete
+- [x] Only completed waves green during merge
+- [x] Current merging wave shows merging indicator
 
 ---
 
@@ -126,3 +126,4 @@ All fixes in dashboard/public/app.js — no runtime code changes.
 | 2026-04-14 01:59 | Review R001 | plan Step 1: APPROVE |
 | 2026-04-14 02:01 | Review R002 | plan Step 2: APPROVE |
 | 2026-04-14 02:02 | Review R003 | plan Step 3: APPROVE |
+| 2026-04-14 02:03 | Review R004 | plan Step 4: APPROVE |

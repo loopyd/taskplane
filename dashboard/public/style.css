@@ -415,6 +415,20 @@ body {
   color: var(--green);
 }
 
+/* TP-178: Merging wave indicator — pulsing accent to distinguish from executing (#493) */
+.wave-chip.merging {
+  animation: merge-pulse 1.5s ease-in-out infinite;
+}
+
+.wave-seg-merging {
+  animation: merge-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes merge-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
 /* ─── Content ──────────────────────────────────────────────────────────── */
 
 .content {

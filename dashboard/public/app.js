@@ -516,14 +516,18 @@ function renderSummary(batch) {
     const fillPct = ws.total > 0 ? (ws.checked / ws.total) * 100 : 0;
     const checkboxDone = ws.checked === ws.total && ws.total > 0;
     const pastWave = ws.waveIdx < currentWaveIdx;
-    const batchDone = batch.phase === "completed" || batch.phase === "merging";
+    const batchDone = batch.phase === "completed";
+    // TP-178: During merging, only past waves are done; current wave is merging, future waves are pending (#493)
+    const isMerging = batch.phase === "merging";
     const isDone = checkboxDone || pastWave || batchDone || ws.allSucceeded;
-    const isCurrent = ws.waveIdx === currentWaveIdx && (batch.phase === "executing" || batch.phase === "merging");
-    const isFuture = ws.waveIdx > currentWaveIdx && batch.phase === "executing";
+    const isMergingWave = isMerging && ws.waveIdx === currentWaveIdx;
+    const isCurrent = ws.waveIdx === currentWaveIdx && (batch.phase === "executing" || isMerging);
+    const isFuture = ws.waveIdx > currentWaveIdx && (batch.phase === "executing" || isMerging);
 
     const fillClass = isDone ? "pct-hi" : fillPct > 50 ? "pct-mid" : fillPct > 0 ? "pct-low" : "pct-0";
     const fillWidth = isDone ? 100 : fillPct;
-    const segClass = isCurrent ? "wave-seg-current" : isFuture ? "wave-seg-future" : "";
+    // TP-178: Add merging visual state for the wave currently being merged (#493)
+    const segClass = isMergingWave ? "wave-seg-current wave-seg-merging" : isCurrent ? "wave-seg-current" : isFuture ? "wave-seg-future" : "";
 
     // TP-148: Use segment-aware labels in tooltip when available
     const segLabels = waveSegmentLabels[ws.waveIdx] || new Map();
@@ -605,9 +609,11 @@ function renderSummary(batch) {
     const waveIdx = batch.currentWaveIndex || 0;
     let wavesHtml = '<span style="color:var(--text-muted); font-weight:600; margin-right:4px;">Waves</span>';
     batch.wavePlan.forEach((taskIds, i) => {
-      const isDone = i < waveIdx || batch.phase === "completed" || batch.phase === "merging";
-      const isCurrent = i === waveIdx && batch.phase === "executing";
-      const cls = isDone ? "done" : isCurrent ? "current" : "";
+      // TP-178: During merging, only past waves are done; current wave shows merging state (#493)
+      const isDone = i < waveIdx || batch.phase === "completed";
+      const isCurrent = i === waveIdx && (batch.phase === "executing" || batch.phase === "merging");
+      const isMergingChip = i === waveIdx && batch.phase === "merging";
+      const cls = isDone ? "done" : isMergingChip ? "current merging" : isCurrent ? "current" : "";
       wavesHtml += `<span class="wave-chip ${cls}">W${i + 1} [${taskIds.join(", ")}]</span>`;
     });
     $summaryWaves.innerHTML = wavesHtml;
