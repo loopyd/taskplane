@@ -1876,6 +1876,35 @@ export function saveBatchHistory(repoRoot: string, summary: BatchHistorySummary)
 	}
 }
 
+/**
+ * Update an existing batch history entry with the integration timestamp.
+ *
+ * Sets `integratedAt` on the matching entry (by batchId). If no entry
+ * is found, this is a no-op — the batch may predate the history feature.
+ *
+ * @since TP-179
+ */
+export function updateBatchHistoryIntegration(repoRoot: string, batchId: string, integratedAt: number): void {
+	const filePath = batchHistoryPath(repoRoot);
+	try {
+		const history = loadBatchHistory(repoRoot);
+		const entry = history.find(e => e.batchId === batchId);
+		if (!entry) {
+			execLog("batch", "history", `no history entry found for batchId=${batchId}, skipping integratedAt update`);
+			return;
+		}
+		entry.integratedAt = integratedAt;
+		const dir = dirname(filePath);
+		if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+		const tmpPath = filePath + ".tmp";
+		writeFileSync(tmpPath, JSON.stringify(history, null, 2));
+		renameSync(tmpPath, filePath);
+		execLog("batch", "history", `updated integratedAt for batchId=${batchId}`);
+	} catch (err) {
+		execLog("batch", "history", `failed to update integratedAt: ${err}`);
+	}
+}
+
 
 // ── Tier 0 Supervisor Event Logging (TP-039 Step 2) ─────────────────
 
