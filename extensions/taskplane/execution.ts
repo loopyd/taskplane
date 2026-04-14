@@ -2542,6 +2542,7 @@ export async function executeLaneV2(
 	// rules: checkpoint discipline, STATUS.md resume algorithm, review_step instructions.
 	// The local file (.pi/agents/task-worker.md) adds project-specific guidance.
 	let workerSystemPrompt = "You are a task execution agent. Read STATUS.md first, find unchecked items, work on them, checkpoint after each.";
+	let workerSegmentPrompt = "";
 	try {
 		const basePrompt = loadBaseAgentPrompt("task-worker");
 		const localPrompt = loadLocalAgentPrompt(stateRoot, "task-worker");
@@ -2552,6 +2553,9 @@ export async function executeLaneV2(
 		} else if (localPrompt) {
 			workerSystemPrompt = localPrompt;
 		}
+		// Load segment-scoped prompt overlay (appended when isSegmentScoped)
+		const segPrompt = loadBaseAgentPrompt("task-worker-segment");
+		if (segPrompt) workerSegmentPrompt = segPrompt;
 	} catch { /* use default */ }
 
 	execLog(laneId, "LANE", `starting Runtime V2 execution of ${lane.tasks.length} task(s)`, {
@@ -2598,6 +2602,7 @@ export async function executeLaneV2(
 			workerTools: "read,write,edit,bash,grep,find,ls",
 			workerThinking: "",
 			workerSystemPrompt,
+			workerSegmentPrompt,
 			reviewerModel: extraEnvVars?.TASKPLANE_REVIEWER_MODEL || "",
 			reviewerThinking: extraEnvVars?.TASKPLANE_REVIEWER_THINKING || "",
 			reviewerTools: extraEnvVars?.TASKPLANE_REVIEWER_TOOLS || "",

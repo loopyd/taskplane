@@ -198,8 +198,10 @@ export interface LaneRunnerConfig {
 	workerTools: string;
 	/** Worker thinking mode */
 	workerThinking: string;
-	/** Worker system prompt */
+	/** Worker system prompt (full-task mode) */
 	workerSystemPrompt: string;
+	/** Worker system prompt for segment-scoped mode (appended to base) */
+	workerSegmentPrompt: string;
 	/**
 	 * Reviewer model (empty string = inherit session default).
 	 * Set from TASKPLANE_REVIEWER_MODEL env var, sourced from runnerConfig.reviewer.model.
@@ -439,7 +441,8 @@ export async function executeTaskV2(
 			`⚠️ CHECKPOINT RULE: After completing EACH checkbox item, immediately edit STATUS.md to check it off (- [ ] → - [x]) BEFORE starting the next item. Do NOT batch checkbox updates at the end of a step.`,
 		];
 
-		const segmentDag = unit.task.explicitSegmentDag;
+		// Only show segment DAG in segment-scoped mode
+		const segmentDag = isSegmentScoped ? unit.task.explicitSegmentDag : null;
 		if (segmentDag && segmentDag.repoIds.length > 0) {
 			const edgeSummary = segmentDag.edges.length > 0
 				? segmentDag.edges.map(edge => `${edge.fromRepoId}->${edge.toRepoId}`).join(", ")
@@ -452,11 +455,8 @@ export async function executeTaskV2(
 			);
 		}
 
-		// TP-174/TP-501: Inject authoritative scope mode flag.
-		promptLines.push(
-			``,
-			`SegmentScopeMode: ${isSegmentScoped ? "SEGMENT_SCOPED" : "FULL_TASK"}`,
-		);
+		// Segment scope mode is determined by which system prompt was loaded.
+		// No SegmentScopeMode line needed — the prompt IS the mode.
 
 		// TP-174: Segment-scoped prompt — show only this segment's checkboxes
 		if (stepSegmentMap && currentRepoId && repoStepNumbers && remainingSteps.length > 0) {
@@ -564,7 +564,9 @@ export async function executeTaskV2(
 			repoId: config.repoId,
 			cwd: unit.worktreePath,
 			prompt: promptLines.join("\n"),
-			systemPrompt: config.workerSystemPrompt || undefined,
+			systemPrompt: (isSegmentScoped && config.workerSegmentPrompt
+				? config.workerSystemPrompt + "\n\n---\n\n" + config.workerSegmentPrompt
+				: config.workerSystemPrompt) || undefined,
 			model: config.workerModel || undefined,
 			tools: config.workerTools || "read,write,edit,bash,grep,find,ls",
 			thinking: config.workerThinking || undefined,
@@ -586,7 +588,10 @@ export async function executeTaskV2(
 				TASKPLANE_REVIEWER_STATE_PATH: reviewerStatePath,
 				TASKPLANE_PROJECT_NAME: config.projectName || "project",
 				TASKPLANE_TASK_ID: taskId,
-				TASKPLANE_ACTIVE_SEGMENT_ID: segmentId ?? "",
+				// Hard-set segment env vars based on mode. In FULL_TASK mode,
+				// explicitly clear them to prevent env inheritance leaking segment cues.
+				TASKPLANE_ACTIVE_SEGMENT_ID: isSegmentScoped ? (segmentId ?? "") : "",
+				TASKPLANE_SEGMENT_ID: isSegmentScoped ? (segmentId ?? "") : "",
 				TASKPLANE_SUPERVISOR_AUTONOMY: config.supervisorAutonomy || "autonomous",
 				ORCH_BATCH_ID: config.batchId,
 				...(config.reviewerModel ? { TASKPLANE_REVIEWER_MODEL: config.reviewerModel } : {}),

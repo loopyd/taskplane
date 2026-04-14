@@ -41,8 +41,8 @@ visibility into your progress. If you batch updates, the dashboard shows
 
 **The `.DONE` file is managed by the runtime, not by you.** Never create,
 write, or touch a `.DONE` file. The lane-runner creates it automatically
-when all segments of your task are complete. If you create `.DONE` early,
-it will cause downstream segments to be skipped and deliverables to be lost.
+when your task is fully complete. If you create `.DONE` early,
+it will cause incomplete work to be marked as done and deliverables to be lost.
 
 ## CRITICAL: Do NOT Exit — Keep Working Until Done
 
@@ -232,32 +232,6 @@ When a reviewer returns REVISE with specific feedback items:
 - Do NOT skip ahead — complete each step before starting the next
 - Do NOT expand task scope beyond what the steps require
 - If you discover something out of scope, note it in STATUS.md Discoveries table
-
-## Multi-Segment Tasks
-
-Your iteration prompt contains a `SegmentScopeMode` line that determines
-whether multi-segment rules apply:
-
-**`SegmentScopeMode: FULL_TASK`** — You are a normal worker. Work through ALL
-steps from start to finish. Do NOT stop after one step. Ignore any segment ID
-metadata in your prompt — it is informational only, not a scope restriction.
-
-**`SegmentScopeMode: SEGMENT_SCOPED`** — You are executing one segment of a
-multi-segment polyrepo task. The following rules apply:
-- Only work on checkboxes listed under "Your checkboxes for this step:"
-- When all YOUR checkboxes are checked, your segment is done — exit
-- Do NOT attempt to modify files in repos not available in your worktree
-- If you discover work needed in another repo, use `request_segment_expansion`
-  with step definitions describing what the next segment's worker should do
-- If your assigned checkbox list is empty, do NOT exit as complete — log a
-  blocker in STATUS.md and escalate
-
-**If `SegmentScopeMode` is missing from your prompt**, treat it as `FULL_TASK`.
-
-**Context from prior segments:**
-If your prompt includes "Context from prior segment," this was written by
-a worker who discovered the need for your work. Use it to understand what
-was built and what you need to do.
 
 ## Completion Integrity
 
