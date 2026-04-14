@@ -241,6 +241,7 @@ let viewingHistoryId = null; // batchId if viewing history, null if live
 
 let viewerMode = null;   // "conversation" | "status-md" | null
 let viewerTarget = null; // session name (conversation) or taskId (status-md)
+let lastBatchId = null;  // TP-178: track batchId for stale viewer detection (#487)
 
 // ─── Repo Helpers ───────────────────────────────────────────────────────────
 
@@ -1567,6 +1568,9 @@ function render(data) {
   $lastUpdate.textContent = new Date().toLocaleTimeString();
 
   if (!batch) {
+    // TP-178: Clear viewer when batch disappears (#487)
+    if (lastBatchId && viewerMode) closeViewer();
+    lastBatchId = null;
     renderHeader(null);
     renderSummary(null);
     renderSupervisor(data);
@@ -1575,6 +1579,12 @@ function render(data) {
     renderNoBatch();
     return;
   }
+
+  // TP-178: Detect batchId change — clear stale viewer state (#487)
+  if (batch.batchId && lastBatchId && batch.batchId !== lastBatchId && viewerMode) {
+    closeViewer();
+  }
+  lastBatchId = batch.batchId || null;
 
   // Live batch is running — hide history panel, reset viewing state
   if (viewingHistoryId) {
