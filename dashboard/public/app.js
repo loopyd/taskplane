@@ -517,9 +517,11 @@ function renderSummary(batch) {
     const checkboxDone = ws.checked === ws.total && ws.total > 0;
     const pastWave = ws.waveIdx < currentWaveIdx;
     const batchDone = batch.phase === "completed";
-    // TP-178: During merging, only past waves are done; current wave is merging, future waves are pending (#493)
+    // TP-178: During merging, only past waves are truly done. The current wave's
+    // checkboxDone/allSucceeded can be true (tasks finished) but the wave itself
+    // isn't done until the merge completes. (#493)
     const isMerging = batch.phase === "merging";
-    const isDone = checkboxDone || pastWave || batchDone || ws.allSucceeded;
+    const isDone = batchDone || pastWave || (!isMerging && (checkboxDone || ws.allSucceeded));
     const isMergingWave = isMerging && ws.waveIdx === currentWaveIdx;
     const isCurrent = ws.waveIdx === currentWaveIdx && (batch.phase === "executing" || isMerging);
     const isFuture = ws.waveIdx > currentWaveIdx && (batch.phase === "executing" || isMerging);
@@ -711,7 +713,10 @@ function renderLanesTasks(batch, sessions) {
       // TP-176: Succeeded tasks always show 100% regardless of sidecar/statusData (#491).
       let progressHtml = "";
       const v2p = ls && ls._v2Progress;
-      const useV2 = v2p && v2p.total > 0 && ls.taskId === task.taskId;
+      const taskMatch = v2p && ls.taskId === task.taskId;
+      // Split V2 usage: progress needs totals > 0, but step/iter can be used whenever present
+      const useV2Progress = taskMatch && v2p.total > 0;
+      const useV2Step = taskMatch && !!v2p.currentStep;
       if (task.status === "succeeded") {
         // #491 fix: succeeded tasks always show 100%
         progressHtml = `
@@ -719,9 +724,9 @@ function renderLanesTasks(batch, sessions) {
             <div class="task-progress-bar"><div class="task-progress-fill pct-hi" style="width:100%"></div></div>
             <span class="task-progress-text">100%</span>
           </div>`;
-      } else if (sd || useV2) {
-        const displayChecked = useV2 ? v2p.checked : (sd ? sd.checked : 0);
-        const displayTotal = useV2 ? v2p.total : (sd ? sd.total : 0);
+      } else if (useV2Progress || (sd && sd.total > 0)) {
+        const displayChecked = useV2Progress ? v2p.checked : sd.checked;
+        const displayTotal = useV2Progress ? v2p.total : sd.total;
         const displayProgress = displayTotal > 0 ? Math.round((displayChecked / displayTotal) * 100) : 0;
         const fillClass = pctClass(displayProgress);
         progressHtml = `
@@ -731,19 +736,19 @@ function renderLanesTasks(batch, sessions) {
             </div>
             <span class="task-progress-text">${displayProgress}% ${displayChecked}/${displayTotal}</span>
           </div>`;
+      } else if (task.status === "running") {
+        // #494 fix: running tasks without meaningful totals show executing indicator
+        // This covers non-final segments, early execution before sidecar captures, and stale 0/0 data
+        progressHtml = `
+          <div class="task-progress">
+            <div class="task-progress-bar"><div class="task-progress-fill pct-low task-progress-executing" style="width:100%"></div></div>
+            <span class="task-progress-text">executing…</span>
+          </div>`;
       } else if (task.status === "pending") {
         progressHtml = `
           <div class="task-progress">
             <div class="task-progress-bar"><div class="task-progress-fill pct-0" style="width:0%"></div></div>
             <span class="task-progress-text">0%</span>
-          </div>`;
-      } else if (task.status === "running") {
-        // TP-178: Show executing indicator for running tasks without sidecar data (#494)
-        // This covers non-final segment execution where the sidecar hasn't started yet.
-        progressHtml = `
-          <div class="task-progress">
-            <div class="task-progress-bar"><div class="task-progress-fill pct-low task-progress-executing" style="width:100%"></div></div>
-            <span class="task-progress-text">executing…</span>
           </div>`;
       } else {
         progressHtml = '<span style="color:var(--text-faint)">—</span>';
@@ -756,10 +761,11 @@ function renderLanesTasks(batch, sessions) {
       if (task.status === "succeeded") {
         // TP-178: Succeeded tasks always show "Complete" regardless of sidecar data (#491)
         stepHtml = '<span style="color:var(--green)">Complete</span>';
-      } else if (sd || (useV2 && v2p)) {
-        const stepName = (useV2 && v2p && v2p.currentStep) ? v2p.currentStep : (sd ? sd.currentStep : "Unknown");
-        const iter = (useV2 && v2p && v2p.iteration != null) ? v2p.iteration : (sd ? sd.iteration : 0);
-        const revs = (useV2 && v2p && v2p.reviews != null) ? v2p.reviews : (sd ? sd.reviews : 0);
+      } else if (sd || useV2Step) {
+        // #488 fix: prefer V2 step name whenever present (even if totals are 0)
+        const stepName = useV2Step ? v2p.currentStep : (sd ? sd.currentStep : "Unknown");
+        const iter = (useV2Step && v2p.iteration != null) ? v2p.iteration : (sd ? sd.iteration : 0);
+        const revs = (useV2Step && v2p.reviews != null) ? v2p.reviews : (sd ? sd.reviews : 0);
         stepHtml = escapeHtml(stepName);
         if (iter > 0) stepHtml += `<span class="task-iter">i${iter}</span>`;
         if (revs > 0) stepHtml += `<span class="task-iter">r${revs}</span>`;
