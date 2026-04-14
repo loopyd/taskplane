@@ -3295,6 +3295,8 @@ export interface BatchHistorySummary {
 	tokens: TokenCounts;
 	tasks: BatchTaskSummary[];
 	waves: BatchWaveSummary[];
+	/** Timestamp (ms since epoch) when the batch was integrated. Set by orch-integrate. */
+	integratedAt?: number;
 }
 
 /** Max number of batch history entries to retain. */

@@ -659,11 +659,11 @@ export function parsePromptForOrchestrator(
 
 		// Check for "None" variants
 		if (!/\*?\*?None\*?\*?/i.test(depBody) && depBody.length > 0) {
-			// Pattern 1: "**Requires:** COMP-005 ..." or "**Requires:** time-off/TO-014 ..."
-			const requiresMatches = depBody.matchAll(
-				/\*?\*?Requires:?\*?\*?\s*((?:[a-z0-9-]+\/)?[A-Z]+-\d+)/gi,
+			// Pattern 1: "**Requires:** COMP-005 ..." or "**Task:** TO-014 ..."
+			const labeledMatches = depBody.matchAll(
+				/\*?\*?(?:Requires|Task):?\*?\*?\s*((?:[a-z0-9-]+\/)?[A-Z]+-\d+)/gi,
 			);
-			for (const m of requiresMatches) {
+			for (const m of labeledMatches) {
 				const dep = normalizeDependencyReference(m[1]);
 				if (!dependencies.includes(dep)) dependencies.push(dep);
 			}

@@ -241,6 +241,7 @@ let viewingHistoryId = null; // batchId if viewing history, null if live
 
 let viewerMode = null;   // "conversation" | "status-md" | null
 let viewerTarget = null; // session name (conversation) or taskId (status-md)
+let lastBatchId = null;  // TP-178: track batchId for stale viewer detection (#487)
 
 // ─── Repo Helpers ───────────────────────────────────────────────────────────
 
@@ -515,14 +516,18 @@ function renderSummary(batch) {
     const fillPct = ws.total > 0 ? (ws.checked / ws.total) * 100 : 0;
     const checkboxDone = ws.checked === ws.total && ws.total > 0;
     const pastWave = ws.waveIdx < currentWaveIdx;
-    const batchDone = batch.phase === "completed" || batch.phase === "merging";
+    const batchDone = batch.phase === "completed";
+    // TP-178: During merging, only past waves are done; current wave is merging, future waves are pending (#493)
+    const isMerging = batch.phase === "merging";
     const isDone = checkboxDone || pastWave || batchDone || ws.allSucceeded;
-    const isCurrent = ws.waveIdx === currentWaveIdx && (batch.phase === "executing" || batch.phase === "merging");
-    const isFuture = ws.waveIdx > currentWaveIdx && batch.phase === "executing";
+    const isMergingWave = isMerging && ws.waveIdx === currentWaveIdx;
+    const isCurrent = ws.waveIdx === currentWaveIdx && (batch.phase === "executing" || isMerging);
+    const isFuture = ws.waveIdx > currentWaveIdx && (batch.phase === "executing" || isMerging);
 
     const fillClass = isDone ? "pct-hi" : fillPct > 50 ? "pct-mid" : fillPct > 0 ? "pct-low" : "pct-0";
     const fillWidth = isDone ? 100 : fillPct;
-    const segClass = isCurrent ? "wave-seg-current" : isFuture ? "wave-seg-future" : "";
+    // TP-178: Add merging visual state for the wave currently being merged (#493)
+    const segClass = isMergingWave ? "wave-seg-current wave-seg-merging" : isCurrent ? "wave-seg-current" : isFuture ? "wave-seg-future" : "";
 
     // TP-148: Use segment-aware labels in tooltip when available
     const segLabels = waveSegmentLabels[ws.waveIdx] || new Map();
@@ -604,9 +609,11 @@ function renderSummary(batch) {
     const waveIdx = batch.currentWaveIndex || 0;
     let wavesHtml = '<span style="color:var(--text-muted); font-weight:600; margin-right:4px;">Waves</span>';
     batch.wavePlan.forEach((taskIds, i) => {
-      const isDone = i < waveIdx || batch.phase === "completed" || batch.phase === "merging";
-      const isCurrent = i === waveIdx && batch.phase === "executing";
-      const cls = isDone ? "done" : isCurrent ? "current" : "";
+      // TP-178: During merging, only past waves are done; current wave shows merging state (#493)
+      const isDone = i < waveIdx || batch.phase === "completed";
+      const isCurrent = i === waveIdx && (batch.phase === "executing" || batch.phase === "merging");
+      const isMergingChip = i === waveIdx && batch.phase === "merging";
+      const cls = isDone ? "done" : isMergingChip ? "current merging" : isCurrent ? "current" : "";
       wavesHtml += `<span class="wave-chip ${cls}">W${i + 1} [${taskIds.join(", ")}]</span>`;
     });
     $summaryWaves.innerHTML = wavesHtml;
@@ -730,18 +737,32 @@ function renderLanesTasks(batch, sessions) {
             <div class="task-progress-bar"><div class="task-progress-fill pct-0" style="width:0%"></div></div>
             <span class="task-progress-text">0%</span>
           </div>`;
+      } else if (task.status === "running") {
+        // TP-178: Show executing indicator for running tasks without sidecar data (#494)
+        // This covers non-final segment execution where the sidecar hasn't started yet.
+        progressHtml = `
+          <div class="task-progress">
+            <div class="task-progress-bar"><div class="task-progress-fill pct-low task-progress-executing" style="width:100%"></div></div>
+            <span class="task-progress-text">executing…</span>
+          </div>`;
       } else {
         progressHtml = '<span style="color:var(--text-faint)">—</span>';
       }
 
       // Step cell
+      // TP-178: Prefer V2 snapshot currentStep (refreshed every sidecar poll) over
+      // server-parsed statusData which can lag behind (#488).
       let stepHtml = "";
-      if (sd) {
-        stepHtml = escapeHtml(sd.currentStep);
-        if (sd.iteration > 0) stepHtml += `<span class="task-iter">i${sd.iteration}</span>`;
-        if (sd.reviews > 0) stepHtml += `<span class="task-iter">r${sd.reviews}</span>`;
-      } else if (task.status === "succeeded") {
+      if (task.status === "succeeded") {
+        // TP-178: Succeeded tasks always show "Complete" regardless of sidecar data (#491)
         stepHtml = '<span style="color:var(--green)">Complete</span>';
+      } else if (sd || (useV2 && v2p)) {
+        const stepName = (useV2 && v2p && v2p.currentStep) ? v2p.currentStep : (sd ? sd.currentStep : "Unknown");
+        const iter = (useV2 && v2p && v2p.iteration != null) ? v2p.iteration : (sd ? sd.iteration : 0);
+        const revs = (useV2 && v2p && v2p.reviews != null) ? v2p.reviews : (sd ? sd.reviews : 0);
+        stepHtml = escapeHtml(stepName);
+        if (iter > 0) stepHtml += `<span class="task-iter">i${iter}</span>`;
+        if (revs > 0) stepHtml += `<span class="task-iter">r${revs}</span>`;
       } else if (task.status === "pending") {
         stepHtml = '<span style="color:var(--text-faint)">Waiting</span>';
       } else {
@@ -987,15 +1008,27 @@ function renderMergeAgents(batch, sessions) {
     const effectiveAlive = !!effectiveSession;
     if (effectiveSession) shownSessions.add(effectiveSession);
 
-    // Find merge telemetry: try sessions by lane number first
+    // TP-178: Find merge telemetry precisely using waveIndex (#498).
+    // First try matching by waveIndex from the telemetry entries (injected from merge snapshots).
+    // Then fall back to session-based matching (lane numbers), but never use a
+    // catch-all fallback that grabs any merge session's telemetry.
     let mergeTel = null;
-    for (const ln of waveLaneNums) {
-      const candidate = getMergeSessionName(ln);
-      if (telemetry[candidate]) { mergeTel = telemetry[candidate]; break; }
+    // Priority 1: Match by waveIndex in telemetry entries
+    for (const [telKey, tel] of Object.entries(telemetry)) {
+      if (tel._source === "merge-snapshot" && tel.waveIndex === mr.waveIndex) {
+        mergeTel = tel;
+        break;
+      }
     }
-    // Fallback: effective session telemetry or any merge session
+    // Priority 2: Match by lane number session
+    if (!mergeTel) {
+      for (const ln of waveLaneNums) {
+        const candidate = getMergeSessionName(ln);
+        if (telemetry[candidate]) { mergeTel = telemetry[candidate]; break; }
+      }
+    }
+    // Priority 3: Effective session telemetry only (no catch-all fallback)
     if (!mergeTel && effectiveSession) mergeTel = telemetry[effectiveSession] || null;
-    if (!mergeTel) mergeTel = mergeSessions.reduce((found, ms) => found || telemetry[ms] || null, null);
 
     html += `<tr>`;
     html += `<td class="merge-wave-cell">Wave ${mr.waveIndex + 1}</td>`;
@@ -1443,6 +1476,8 @@ function buildRecoveryTimeline(supervisor) {
     target: a.target || a.lane || a.taskId || "",
     outcome: a.outcome || a.result || "",
     reason: a.reason || "",
+    context: a.context || "",
+    detail: a.detail || "",
     source: "action"
   }));
 
@@ -1456,6 +1491,8 @@ function buildRecoveryTimeline(supervisor) {
       target: e.target || e.lane || e.taskId || "",
       outcome: e.outcome || e.result || "",
       reason: e.reason || e.message || "",
+      context: e.context || "",
+      detail: e.detail || "",
       source: "event"
     }));
 
@@ -1488,6 +1525,7 @@ function renderSupervisorActions(supervisor) {
     const target = entry.target;
     const outcome = entry.outcome;
     const reason = entry.reason;
+    const description = entry.context || entry.detail || "";
 
     const outcomeCls = outcome === "success" || outcome === "recovered"
       ? "action-success"
@@ -1507,6 +1545,11 @@ function renderSupervisorActions(supervisor) {
     if (target) html += `<span class="supervisor-action-target">${escapeHtml(target)}</span>`;
     if (outcome) html += `<span class="supervisor-action-outcome ${outcomeCls}">${escapeHtml(outcome)}</span>`;
     html += `    </div>`;
+    if (description) {
+      const fullDesc = escapeHtml(description);
+      const truncated = description.length > 100 ? escapeHtml(description.slice(0, 100)) + "\u2026" : fullDesc;
+      html += `<div class="supervisor-action-description" title="${fullDesc}">${truncated}</div>`;
+    }
     if (reason) {
       html += `<div class="supervisor-action-reason">${escapeHtml(reason)}</div>`;
     }
@@ -1567,6 +1610,9 @@ function render(data) {
   $lastUpdate.textContent = new Date().toLocaleTimeString();
 
   if (!batch) {
+    // TP-178: Clear viewer when batch disappears (#487)
+    if (lastBatchId && viewerMode) closeViewer();
+    lastBatchId = null;
     renderHeader(null);
     renderSummary(null);
     renderSupervisor(data);
@@ -1575,6 +1621,12 @@ function render(data) {
     renderNoBatch();
     return;
   }
+
+  // TP-178: Detect batchId change — clear stale viewer state (#487)
+  if (batch.batchId && lastBatchId && batch.batchId !== lastBatchId && viewerMode) {
+    closeViewer();
+  }
+  lastBatchId = batch.batchId || null;
 
   // Live batch is running — hide history panel, reset viewing state
   if (viewingHistoryId) {

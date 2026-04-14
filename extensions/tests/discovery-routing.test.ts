@@ -560,6 +560,33 @@ Repo: api
 		expect(result.task!.promptRepoId).toBe("api");
 	});
 
+	it("7.1b: **Task:** label format parsed correctly (#486)", () => {
+		const dir = makeTestDir("task-label-deps");
+		const content = `# Task: TP-100 - Test Task
+
+**Size:** M
+
+## Dependencies
+
+- **Task:** TP-165 (segment boundary fixes must be in place)
+- **Task:** other-area/OA-002 (cross-area dep)
+
+## Steps
+
+### Step 0: Do something
+
+- [ ] Something
+
+---
+`;
+		const promptPath = writePrompt(dir, content);
+		const result = parsePromptForOrchestrator(promptPath, dir, "test-area");
+
+		expect(result.error).toBeNull();
+		expect(result.task!.dependencies).toContain("TP-165");
+		expect(result.task!.dependencies).toContain("other-area/OA-002");
+	});
+
 	it("7.2: file scope parsing unaffected by repo metadata", () => {
 		const dir = makeTestDir("scope-with-repo");
 		const content = `# Task: TP-100 - Test Task

@@ -15,7 +15,7 @@ import { ORCH_MESSAGES, computeIntegrateCleanupResult } from "./messages.ts";
 import type { IntegrateCleanupRepoFindings } from "./messages.ts";
 import { computeWaveAssignments } from "./waves.ts";
 import { createOrchWidget, formatDependencyGraph, formatWavePlan } from "./formatting.ts";
-import { deleteBatchState, loadBatchState, saveBatchState, detectOrphanSessions } from "./persistence.ts";
+import { deleteBatchState, loadBatchState, saveBatchState, detectOrphanSessions, updateBatchHistoryIntegration } from "./persistence.ts";
 import { deleteStaleBranches, listWorktrees, resolveWorktreeBasePath, formatPreflightResults, runPreflight } from "./worktree.ts";
 import { computeTransitiveDependents, resolveCanonicalTaskPaths } from "./execution.ts";
 import { executeOrchBatch } from "./engine.ts";
@@ -1411,6 +1411,11 @@ export function buildIntegrationExecutor(repoRoot: string, opId?: string, stateR
 			try {
 				cleanupPostIntegrate(stateRoot ?? repoRoot, context.batchId);
 			} catch { /* best effort — don't fail integration for cleanup errors */ }
+
+			// TP-179: Write integratedAt to batch history before state is gone
+			try {
+				updateBatchHistoryIntegration(stateRoot ?? repoRoot, context.batchId, Date.now());
+			} catch { /* best effort */ }
 		}
 
 		return result;
@@ -3318,6 +3323,11 @@ export default function (pi: ExtensionAPI) {
 		const cleanupResult = computeIntegrateCleanupResult(repoFindings);
 		if (cleanupResult.notifyLevel === "warning") {
 			hasWarning = true;
+		}
+
+		// TP-179: Write integratedAt to batch history before deleting state
+		if (batchId) {
+			try { updateBatchHistoryIntegration(stateRoot, batchId, Date.now()); } catch { /* best effort */ }
 		}
 
 		try { deleteBatchState(repoRoot); } catch { /* best effort */ }
