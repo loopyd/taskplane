@@ -736,13 +736,19 @@ function renderLanesTasks(batch, sessions) {
       }
 
       // Step cell
+      // TP-178: Prefer V2 snapshot currentStep (refreshed every sidecar poll) over
+      // server-parsed statusData which can lag behind (#488).
       let stepHtml = "";
-      if (sd) {
-        stepHtml = escapeHtml(sd.currentStep);
-        if (sd.iteration > 0) stepHtml += `<span class="task-iter">i${sd.iteration}</span>`;
-        if (sd.reviews > 0) stepHtml += `<span class="task-iter">r${sd.reviews}</span>`;
-      } else if (task.status === "succeeded") {
+      if (task.status === "succeeded") {
+        // TP-178: Succeeded tasks always show "Complete" regardless of sidecar data (#491)
         stepHtml = '<span style="color:var(--green)">Complete</span>';
+      } else if (sd || (useV2 && v2p)) {
+        const stepName = (useV2 && v2p && v2p.currentStep) ? v2p.currentStep : (sd ? sd.currentStep : "Unknown");
+        const iter = (useV2 && v2p && v2p.iteration != null) ? v2p.iteration : (sd ? sd.iteration : 0);
+        const revs = (useV2 && v2p && v2p.reviews != null) ? v2p.reviews : (sd ? sd.reviews : 0);
+        stepHtml = escapeHtml(stepName);
+        if (iter > 0) stepHtml += `<span class="task-iter">i${iter}</span>`;
+        if (revs > 0) stepHtml += `<span class="task-iter">r${revs}</span>`;
       } else if (task.status === "pending") {
         stepHtml = '<span style="color:var(--text-faint)">Waiting</span>';
       } else {

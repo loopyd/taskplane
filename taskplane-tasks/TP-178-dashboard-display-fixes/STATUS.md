@@ -1,10 +1,10 @@
 # TP-178: Dashboard Display Fixes — Status
 
-**Current Step:** Step 1: Stale STATUS.md viewer across batches (#487)
+**Current Step:** Step 2: Lane step label never updates (#488)
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-14
 **Review Level:** 1
-**Review Counter:** 1
+**Review Counter:** 2
 **Iteration:** 1
 **Size:** L
 
@@ -26,9 +26,9 @@
 ---
 
 ### Step 2: Lane step label never updates (#488)
-**Status:** ⬜ Not Started
-- [ ] Re-read step name on every poll
-- [ ] Fallback to STATUS.md Current Step field
+**Status:** ✅ Complete
+- [x] Re-read step name on every poll
+- [x] Fallback to STATUS.md Current Step field
 
 ---
 
@@ -124,3 +124,4 @@ All fixes in dashboard/public/app.js — no runtime code changes.
 
 **Bug #494 (Step 6):** Progress cell already prefers V2 progress (`v2p`) when `v2p.total > 0`. During non-final segments, sidecar reports segment-scoped counts. If sidecar hasn't started or reports 0/0, running tasks show `—`. Need to show an "executing" indicator instead of `—` for running tasks.
 | 2026-04-14 01:59 | Review R001 | plan Step 1: APPROVE |
+| 2026-04-14 02:01 | Review R002 | plan Step 2: APPROVE |
