@@ -312,30 +312,42 @@ CAN see shared-libs changes because the wave merge happened between segments.
 This is suboptimal (no parallelism) but correct and safe. Parallelism is
 Phase C.
 
-## A.6 Worker Prompt Changes
+## A.6 Worker Prompt: Hard Mode Separation
 
-Add to `templates/agents/task-worker.md`:
+**Design principle:** Do not use conditional prose in a single prompt to
+control worker scope. The model interprets contextual signals (segment IDs,
+repo names, segment tools) as scope restrictions regardless of instructions.
+Instead, use two completely separate system prompts with zero cross-contamination.
 
-```markdown
-## Multi-Segment Tasks
+**Two prompt files:**
 
-You may be executing one segment of a multi-segment task. Your iteration
-prompt tells you which segment is active and which checkboxes are yours.
+- `templates/agents/task-worker.md` — Standard full-task prompt. Zero mention
+  of segments, repos, or scoping. Used for all single-segment tasks and
+  multi-segment tasks without explicit `#### Segment:` markers.
 
-**Rules:**
-- Only work on checkboxes listed for your current segment
-- When all your segment's checkboxes are checked, your work is done — exit
-  successfully
-- Do NOT attempt to modify files in repos not available in your worktree
-- If you discover work needed in another repo, use `request_segment_expansion`
-  with step definitions describing what the next segment's worker should do
-- Include a `context` field with knowledge the next worker will need
+- `templates/agents/task-worker-segment.md` — Segment-scoped prompt. Contains
+  segment rules, scoped checkpoint instructions, repo restrictions, and
+  `request_segment_expansion` guidance. Used only when `isSegmentScoped` is true.
 
-**Context from prior segments:**
-If your prompt includes "Context from prior segment," this was written by
-a worker who discovered the need for your work. Use it to understand what
-was built and what you need to do.
-```
+**Lane-runner selects the prompt** based on `isSegmentScoped` (computed from
+`hasExplicitMarkers` in discovery). The selection happens in code, not in
+prompt text.
+
+**Signal stripping in FULL_TASK mode:**
+
+When `isSegmentScoped` is false, the lane-runner must strip ALL segment
+signals from the worker's environment:
+
+- No `TASKPLANE_ACTIVE_SEGMENT_ID` env var
+- No `request_segment_expansion` tool registration
+- No `Active segment ID` in the iteration prompt
+- No `SegmentScopeMode` line (unnecessary — the prompt itself is the mode)
+- No segment DAG context
+
+The worker in FULL_TASK mode should have no awareness that segments exist.
+
+**Single-segment tasks are always FULL_TASK** even if they have an internal
+segment ID. The segment ID is engine metadata, not worker-facing context.
 
 ## A.7 Create-Taskplane-Task Skill Updates
 

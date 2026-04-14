@@ -1,10 +1,10 @@
-Exported functions in extensions/taskplane/lane-runner.ts: 5
+Exported functions in extensions/taskplane/lane-runner.ts: 8
 
-1. executeTaskV2 (line 173) — async function, main task execution entry point
-2. hasPendingExpansionRequestFiles (line 802) — checks for pending segment expansion request files
-3. mapLaneTaskStatusToTerminalSnapshotStatus (line 817) — maps lane task status to terminal snapshot status
-4. mapLaneSnapshotStatusToWorkerStatus (line 825) — maps lane snapshot status to worker status
-5. readReviewerTelemetrySnapshot (line 892) — reads reviewer telemetry snapshot data
-
-Note: The file also exports 2 interfaces (LaneRunnerConfig at line 76, LaneRunnerTaskResult at line 138),
-but these are type exports, not function exports.
+1. getStepsForRepoId (line 83)
+2. getSegmentCheckboxes (line 108)
+3. isSegmentComplete (line 162)
+4. executeTaskV2 (line 279)
+5. hasPendingExpansionRequestFiles (line 1107)
+6. mapLaneTaskStatusToTerminalSnapshotStatus (line 1122)
+7. mapLaneSnapshotStatusToWorkerStatus (line 1130)
+8. readReviewerTelemetrySnapshot (line 1199)

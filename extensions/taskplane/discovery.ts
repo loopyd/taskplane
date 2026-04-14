@@ -6,7 +6,7 @@ import { readFileSync, writeFileSync, existsSync, readdirSync, statSync } from "
 import { join, dirname, basename, resolve } from "path";
 
 import { FATAL_DISCOVERY_CODES } from "./types.ts";
-import type { DiscoveryError, DiscoveryResult, ParsedTask, PromptSegmentDagMetadata, TaskArea, WorkspaceConfig } from "./types.ts";
+import type { DiscoveryError, DiscoveryResult, ParsedTask, PromptSegmentDagMetadata, SegmentCheckboxGroup, StepSegmentMapping, TaskArea, WorkspaceConfig } from "./types.ts";
 
 // ── PROMPT.md Parsing ────────────────────────────────────────────────
 
@@ -351,6 +351,218 @@ function parseSegmentDagMetadata(
 	};
 }
 
+// ── Step-Segment Mapping (Phase A) ───────────────────────────────────
+
+/**
+ * Sentinel repo ID used when the task's primary repo is not yet known at parse time.
+ * Replaced by the resolved repo during routing (resolveTaskRouting).
+ */
+export const SEGMENT_FALLBACK_REPO_PLACEHOLDER = "__primary__";
+
+/**
+ * Simple suggestion helper: find known repo IDs that share a prefix or
+ * have small edit distance from the unknown repo ID.
+ */
+function suggestRepoMatches(unknown: string, known: string[]): string[] {
+	const suggestions: string[] = [];
+	for (const k of known) {
+		// Prefix match (either direction)
+		if (k.startsWith(unknown) || unknown.startsWith(k)) {
+			suggestions.push(k);
+			continue;
+		}
+		// Simple overlap: share at least 3 chars of a common substring
+		const shorter = unknown.length < k.length ? unknown : k;
+		const longer = unknown.length < k.length ? k : unknown;
+		if (shorter.length >= 3 && longer.includes(shorter.slice(0, 3))) {
+			suggestions.push(k);
+		}
+	}
+	return suggestions;
+}
+
+interface StepSegmentParseResult {
+	mapping: StepSegmentMapping[];
+	/** True if at least one step had an explicit `#### Segment:` marker. */
+	hasExplicitMarkers: boolean;
+	warnings: DiscoveryError[];
+	errors: DiscoveryError[];
+}
+
+/**
+ * Parse `#### Segment: <repoId>` markers within `### Step N:` sections of a PROMPT.md.
+ *
+ * Builds a StepSegmentMapping[] that maps each step to its repo-scoped checkbox groups.
+ *
+ * Rules:
+ * - Checkboxes before any segment header (or in steps with no segment headers)
+ *   belong to the task's primary repoId (fallbackRepoId / packet repo).
+ * - A repoId may appear at most once within a step (duplicate → error).
+ * - Empty segments (header but no checkboxes) produce a warning.
+ * - Unknown repoIds are flagged as warnings (validation deferred to routing).
+ */
+export function parseStepSegmentMapping(
+	content: string,
+	taskId: string,
+	fallbackRepoId: string,
+): StepSegmentParseResult {
+	const mapping: StepSegmentMapping[] = [];
+	const warnings: DiscoveryError[] = [];
+	const errors: DiscoveryError[] = [];
+	let hasExplicitMarkers = false;
+
+	// Find ## Steps section
+	const stepsSectionMatch = content.match(/^##\s+Steps\s*$/im);
+	if (!stepsSectionMatch || stepsSectionMatch.index === undefined) {
+		return { mapping, hasExplicitMarkers, warnings, errors };
+	}
+
+	const stepsStart = stepsSectionMatch.index;
+	// Get body from ## Steps to next ## top-level section or --- divider
+	const afterStepsHeader = content.indexOf("\n", stepsStart);
+	if (afterStepsHeader === -1) {
+		return { mapping, hasExplicitMarkers, warnings, errors };
+	}
+	const rest = content.slice(afterStepsHeader + 1);
+	// Find the next top-level section (## but not ###) or --- divider
+	const nextSectionMatch = rest.search(/^##\s+[^#]|^---/m);
+	const stepsBody = nextSectionMatch !== -1 ? rest.slice(0, nextSectionMatch) : rest;
+
+	// Split into step sections by ### Step N: headers
+	const stepHeaderRegex = /^###\s+Step\s+(\d+):\s*(.+)$/gm;
+	const stepHeaders: { index: number; stepNumber: number; stepName: string }[] = [];
+	let match: RegExpExecArray | null;
+	while ((match = stepHeaderRegex.exec(stepsBody)) !== null) {
+		stepHeaders.push({
+			index: match.index,
+			stepNumber: parseInt(match[1], 10),
+			stepName: match[2].trim(),
+		});
+	}
+
+	if (stepHeaders.length === 0) {
+		return { mapping, hasExplicitMarkers, warnings, errors };
+	}
+
+	for (let i = 0; i < stepHeaders.length; i++) {
+		const header = stepHeaders[i];
+		const nextHeaderIndex = i + 1 < stepHeaders.length ? stepHeaders[i + 1].index : stepsBody.length;
+		const stepContent = stepsBody.slice(header.index, nextHeaderIndex);
+
+		// Parse segment groups within this step
+		const segmentHeaderRegex = /^####\s+Segment:\s*(.+)$/gm;
+		const segmentHeaders: { index: number; repoId: string; rawRepoId: string }[] = [];
+		let segMatch: RegExpExecArray | null;
+		while ((segMatch = segmentHeaderRegex.exec(stepContent)) !== null) {
+			const rawRepoId = segMatch[1].trim();
+			const repoId = normalizeSegmentRepoToken(rawRepoId);
+			segmentHeaders.push({
+				index: segMatch.index,
+				repoId,
+				rawRepoId,
+			});
+		}
+
+		const segments: SegmentCheckboxGroup[] = [];
+
+		if (segmentHeaders.length === 0) {
+			// No segment markers — all checkboxes belong to fallback repo
+			const checkboxes = extractCheckboxes(stepContent);
+			segments.push({ repoId: fallbackRepoId, checkboxes });
+			// Don't set hasExplicitMarkers — this is a fallback, not an explicit marker
+		} else {
+			hasExplicitMarkers = true;
+			// Check for checkboxes before the first segment header (pre-segment)
+			const preSegmentContent = stepContent.slice(0, segmentHeaders[0].index);
+			const preCheckboxes = extractCheckboxes(preSegmentContent);
+			if (preCheckboxes.length > 0) {
+				segments.push({ repoId: fallbackRepoId, checkboxes: preCheckboxes });
+			}
+
+			// Track seen repoIds for duplicate detection
+			// Include fallback repo if pre-segment checkboxes exist and it's a concrete ID
+			const seenRepoIds = new Set<string>();
+			if (preCheckboxes.length > 0 && fallbackRepoId !== SEGMENT_FALLBACK_REPO_PLACEHOLDER) {
+				seenRepoIds.add(fallbackRepoId);
+			}
+			let hasDuplicateError = false;
+
+			for (let j = 0; j < segmentHeaders.length; j++) {
+				const seg = segmentHeaders[j];
+
+				// Validate repo ID format (warning only — keep checkboxes for safety)
+				if (!SEGMENT_REPO_ID_PATTERN.test(seg.repoId)) {
+					warnings.push({
+						code: "SEGMENT_STEP_REPO_INVALID",
+						message:
+							`Task ${taskId} Step ${header.stepNumber} has invalid segment repo ID "${seg.rawRepoId}". ` +
+							`Repo IDs must match /^[a-z0-9][a-z0-9-]*$/.`,
+						taskId,
+					});
+					// Still extract checkboxes — don't drop work
+				}
+
+				// Check for duplicates
+				if (seenRepoIds.has(seg.repoId)) {
+					errors.push({
+						code: "SEGMENT_STEP_DUPLICATE_REPO",
+						message:
+							`Task ${taskId} Step ${header.stepNumber} has duplicate segment repo ID "${seg.repoId}". ` +
+							`A repoId may appear at most once within a step.`,
+						taskId,
+					});
+					hasDuplicateError = true;
+					continue;
+				}
+				seenRepoIds.add(seg.repoId);
+
+				const nextSegIndex = j + 1 < segmentHeaders.length ? segmentHeaders[j + 1].index : stepContent.length;
+				const segContent = stepContent.slice(seg.index, nextSegIndex);
+				const checkboxes = extractCheckboxes(segContent);
+
+				if (checkboxes.length === 0) {
+					warnings.push({
+						code: "SEGMENT_STEP_EMPTY",
+						message:
+							`Task ${taskId} Step ${header.stepNumber} has empty segment "${seg.repoId}" with no checkboxes.`,
+						taskId,
+					});
+				}
+
+				segments.push({ repoId: seg.repoId, checkboxes });
+			}
+
+			if (hasDuplicateError) {
+				// Still add what we collected, but errors are flagged
+			}
+		}
+
+		mapping.push({
+			stepNumber: header.stepNumber,
+			stepName: header.stepName,
+			segments,
+		});
+	}
+
+	return { mapping, hasExplicitMarkers, warnings, errors };
+}
+
+/**
+ * Extract checkbox text lines from a content block.
+ * Matches `- [ ] text` and `- [x] text` patterns.
+ */
+function extractCheckboxes(content: string): string[] {
+	const checkboxes: string[] = [];
+	const lines = content.split(/\r?\n/);
+	for (const line of lines) {
+		const match = line.match(/^\s*-\s+\[[ x]\]\s+(.+)$/);
+		if (match) {
+			checkboxes.push(match[1].trim());
+		}
+	}
+	return checkboxes;
+}
+
 /**
  * Parse a PROMPT.md file and extract orchestrator-relevant metadata.
  *
@@ -376,7 +588,7 @@ export function parsePromptForOrchestrator(
 	promptPath: string,
 	taskFolder: string,
 	areaName: string,
-): { task: ParsedTask | null; error: DiscoveryError | null } {
+): { task: ParsedTask | null; error: DiscoveryError | null; warnings?: DiscoveryError[] } {
 	const folderName = basename(taskFolder);
 	let content: string;
 
@@ -560,6 +772,25 @@ export function parsePromptForOrchestrator(
 	}
 	const explicitSegmentDag = segmentDagResult.metadata;
 
+	// ── Parse step-segment mapping (Phase A, TP-173) ────────
+	// Use promptRepoId as fallback; if not set, use a placeholder
+	// sentinel that resolveTaskRouting replaces with the actual resolved repo.
+	const segFallbackRepo = promptRepoId || SEGMENT_FALLBACK_REPO_PLACEHOLDER;
+	const stepSegResult = parseStepSegmentMapping(content, taskId, segFallbackRepo);
+
+	// Duplicate repoId in a step is a hard error — fail the task.
+	if (stepSegResult.errors.length > 0) {
+		return {
+			task: null,
+			error: stepSegResult.errors[0],
+		};
+	}
+
+	// Only populate stepSegmentMap when PROMPT.md has explicit #### Segment: markers.
+	// The parser produces fallback entries (repoId = primary repo) even without markers,
+	// but those should NOT trigger segment-scoped mode — they exist only for validation.
+	const stepSegmentMap = stepSegResult.hasExplicitMarkers ? stepSegResult.mapping : undefined;
+
 	return {
 		task: {
 			taskId,
@@ -574,8 +805,10 @@ export function parsePromptForOrchestrator(
 			status: "pending",
 			...(promptRepoId ? { promptRepoId } : {}),
 			...(explicitSegmentDag ? { explicitSegmentDag } : {}),
+			...(stepSegmentMap ? { stepSegmentMap } : {}),
 		},
 		error: null,
+		warnings: stepSegResult.warnings,
 	};
 }
 
@@ -642,6 +875,9 @@ export function scanAreaForTasks(
 		const result = parsePromptForOrchestrator(promptPath, entryPath, areaName);
 		if (result.error) {
 			errors.push(result.error);
+		}
+		if (result.warnings) {
+			errors.push(...result.warnings);
 		}
 		if (result.task) {
 			tasks.push(result.task);
@@ -966,6 +1202,9 @@ export function buildTaskRegistry(
 		const result = parsePromptForOrchestrator(promptPath, taskFolder, areaName);
 		if (result.error) {
 			errors.push(result.error);
+		}
+		if (result.warnings) {
+			errors.push(...result.warnings);
 		}
 		if (result.task) {
 			trackId(result.task.taskId, result.task.promptPath);
@@ -1323,6 +1562,38 @@ export function resolveTaskRouting(
 
 		// Attach resolved repo to the task
 		task.resolvedRepoId = resolvedId;
+
+		// ── Step-segment mapping: resolve placeholders and validate repo IDs (TP-173) ──
+		if (task.stepSegmentMap) {
+			const knownRepoList = [...validRepoIds.keys()].join(", ");
+			for (const step of task.stepSegmentMap) {
+				for (const seg of step.segments) {
+					// Replace placeholder with resolved primary repo
+					if (seg.repoId === SEGMENT_FALLBACK_REPO_PLACEHOLDER) {
+						seg.repoId = resolvedId;
+						continue;
+					}
+					// Validate explicit segment repoIds against workspace repos
+					if (!validRepoIds.has(seg.repoId)) {
+						const knownRepos = [...validRepoIds.keys()];
+						const suggestions = suggestRepoMatches(seg.repoId, knownRepos);
+						const suggestionHint = suggestions.length > 0
+							? ` Did you mean: ${suggestions.join(", ")}?`
+							: "";
+						errors.push({
+							code: "SEGMENT_STEP_REPO_INVALID",
+							message:
+								`Task ${task.taskId} Step ${step.stepNumber} has segment repo "${seg.repoId}" ` +
+								`which is not in the workspace config. Known repos: ${knownRepoList}.${suggestionHint}`,
+							taskId: task.taskId,
+							taskPath: task.promptPath,
+						});
+					}
+				}
+				// Duplicate detection for post-placeholder resolution is handled
+				// by the shared pass in runDiscovery() (Step 7).
+			}
+		}
 	}
 
 	return errors;
@@ -1428,6 +1699,45 @@ export function runDiscovery(
 	if (workspaceConfig && workspaceConfig.mode === "workspace") {
 		const routingErrors = resolveTaskRouting(discovery, taskAreas, workspaceConfig);
 		discovery.errors.push(...routingErrors);
+	} else {
+		// Repo mode: resolve any placeholder fallback repo IDs to "default"
+		// (single-repo mode has no workspace routing, so the placeholder
+		// must be normalized here for backward compatibility).
+		for (const task of discovery.pending.values()) {
+			if (!task.stepSegmentMap) continue;
+			for (const step of task.stepSegmentMap) {
+				for (const seg of step.segments) {
+					if (seg.repoId === SEGMENT_FALLBACK_REPO_PLACEHOLDER) {
+						seg.repoId = "default";
+					}
+				}
+			}
+		}
+	}
+
+	// Step 7: Post-normalization duplicate segment detection (TP-173)
+	// After all placeholder resolution (workspace or repo mode), check each
+	// step for duplicate repoIds that may have emerged from placeholder → real ID.
+	for (const task of discovery.pending.values()) {
+		if (!task.stepSegmentMap) continue;
+		for (const step of task.stepSegmentMap) {
+			const stepRepoIds = step.segments.map(s => s.repoId);
+			const seen = new Set<string>();
+			for (const rid of stepRepoIds) {
+				if (seen.has(rid)) {
+					discovery.errors.push({
+						code: "SEGMENT_STEP_DUPLICATE_REPO",
+						message:
+							`Task ${task.taskId} Step ${step.stepNumber} has duplicate segment repo ID "${rid}" ` +
+							`(after resolving primary repo fallback). A repoId may appear at most once within a step.`,
+						taskId: task.taskId,
+						taskPath: task.promptPath,
+					});
+					break;
+				}
+				seen.add(rid);
+			}
+		}
 	}
 
 	return discovery;

@@ -256,7 +256,9 @@ describe("6.x: Segment-aware lane execution contracts", () => {
 		expect(laneRunnerSrc).toContain("const statusPath = unit.packet.statusPath;");
 		expect(laneRunnerSrc).toContain("const promptPath = unit.packet.promptPath;");
 		expect(laneRunnerSrc).toContain("const donePath = unit.packet.donePath;");
-		expect(laneRunnerSrc).toContain("(none / whole-task execution)");
+		// TP-501: Active segment ID is only shown in SEGMENT_SCOPED mode.
+		// In FULL_TASK mode it's omitted to prevent workers from self-scoping.
+		expect(laneRunnerSrc).toContain("Active segment ID:");
 	});
 
 	it("6.2: worker cwd is execution-unit worktree", () => {

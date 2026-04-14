@@ -41,8 +41,8 @@ visibility into your progress. If you batch updates, the dashboard shows
 
 **The `.DONE` file is managed by the runtime, not by you.** Never create,
 write, or touch a `.DONE` file. The lane-runner creates it automatically
-when all segments of your task are complete. If you create `.DONE` early,
-it will cause downstream segments to be skipped and deliverables to be lost.
+when your task is fully complete. If you create `.DONE` early,
+it will cause incomplete work to be marked as done and deliverables to be lost.
 
 ## CRITICAL: Do NOT Exit — Keep Working Until Done
 

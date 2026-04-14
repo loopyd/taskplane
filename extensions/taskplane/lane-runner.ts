@@ -62,9 +62,113 @@ import {
 	type LaneTaskOutcome,
 	type LaneTaskStatus,
 	type SupervisorAlertCallback,
+	type StepSegmentMapping,
 } from "./types.ts";
 
 const LANE_RUNNER_DIR = dirname(fileURLToPath(import.meta.url));
+
+// ── Segment Scoping Helpers (Phase A, TP-174) ────────────────────────
+
+/**
+ * Get the set of step numbers that have segments for a given repoId.
+ *
+ * Used to filter the "remaining steps" view so the worker only sees steps
+ * that contain work for its repo.
+ *
+ * @param stepSegmentMap - Parsed step-segment mapping from PROMPT.md
+ * @param repoId - Repo ID to filter by
+ * @returns Set of step numbers that have at least one segment for this repoId
+ * @since TP-174
+ */
+export function getStepsForRepoId(
+	stepSegmentMap: StepSegmentMapping[],
+	repoId: string,
+): Set<number> {
+	const stepNumbers = new Set<number>();
+	for (const step of stepSegmentMap) {
+		if (step.segments.some(seg => seg.repoId === repoId)) {
+			stepNumbers.add(step.stepNumber);
+		}
+	}
+	return stepNumbers;
+}
+
+/**
+ * Extract a segment's checkbox block from STATUS.md content for a given step and repoId.
+ *
+ * Looks for `#### Segment: <repoId>` headers within `### Step N:` sections,
+ * then returns the checkbox lines belonging to that segment block.
+ *
+ * @param statusContent - Raw STATUS.md content
+ * @param stepNumber - Step number to look in
+ * @param repoId - Repo ID of the segment
+ * @returns Object with checked/unchecked counts, or null if no segment block found
+ * @since TP-174
+ */
+export function getSegmentCheckboxes(
+	statusContent: string,
+	stepNumber: number,
+	repoId: string,
+): { checked: number; unchecked: number; total: number; uncheckedTexts: string[] } | null {
+	const text = statusContent.replace(/\r\n/g, "\n");
+
+	// Find the step section
+	const stepHeaderPattern = new RegExp(`^###\\s+Step\\s+${stepNumber}:`, "m");
+	const stepMatch = text.match(stepHeaderPattern);
+	if (!stepMatch || stepMatch.index === undefined) return null;
+
+	// Find the end of this step section (next ### or end of file)
+	const afterStep = text.slice(stepMatch.index + stepMatch[0].length);
+	const nextStepMatch = afterStep.search(/^###\s+Step\s+\d+:/m);
+	const stepContent = nextStepMatch !== -1 ? afterStep.slice(0, nextStepMatch) : afterStep;
+
+	// Find the segment header within this step
+	const segHeaderPattern = new RegExp(`^####\\s+Segment:\\s*${repoId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*$`, "m");
+	const segMatch = stepContent.match(segHeaderPattern);
+	if (!segMatch || segMatch.index === undefined) return null;
+
+	// Extract content from segment header to next #### header or ### header or ---
+	const afterSeg = stepContent.slice(segMatch.index + segMatch[0].length);
+	const nextSectionMatch = afterSeg.search(/^(?:####\s|###\s|---)/m);
+	const segContent = nextSectionMatch !== -1 ? afterSeg.slice(0, nextSectionMatch) : afterSeg;
+
+	// Count checkboxes
+	let checked = 0;
+	let unchecked = 0;
+	const uncheckedTexts: string[] = [];
+	const cbRegex = /^\s*-\s*\[([ xX])\]\s*(.*)/gm;
+	let m;
+	while ((m = cbRegex.exec(segContent)) !== null) {
+		if (m[1].toLowerCase() === "x") {
+			checked++;
+		} else {
+			unchecked++;
+			uncheckedTexts.push(m[2].trim());
+		}
+	}
+
+	return { checked, unchecked, total: checked + unchecked, uncheckedTexts };
+}
+
+/**
+ * Check if all checkboxes in a segment block are checked.
+ *
+ * @param statusContent - Raw STATUS.md content
+ * @param stepNumber - Step number to check
+ * @param repoId - Repo ID of the segment
+ * @returns true when all checkboxes in the segment block are checked
+ * @since TP-174
+ */
+export function isSegmentComplete(
+	statusContent: string,
+	stepNumber: number,
+	repoId: string,
+): boolean {
+	const result = getSegmentCheckboxes(statusContent, stepNumber, repoId);
+	if (!result) return false;
+	if (result.total === 0) return false;
+	return result.unchecked === 0;
+}
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -94,8 +198,10 @@ export interface LaneRunnerConfig {
 	workerTools: string;
 	/** Worker thinking mode */
 	workerThinking: string;
-	/** Worker system prompt */
+	/** Worker system prompt (full-task mode) */
 	workerSystemPrompt: string;
+	/** Worker system prompt for segment-scoped mode (appended to base) */
+	workerSegmentPrompt: string;
 	/**
 	 * Reviewer model (empty string = inherit session default).
 	 * Set from TASKPLANE_REVIEWER_MODEL env var, sourced from runnerConfig.reviewer.model.
@@ -217,17 +323,53 @@ export async function executeTaskV2(
 	// TP-115: carry latest worker telemetry across iterations and into post-loop terminal snapshots
 	let lastTelemetry: Partial<AgentHostResult> = {};
 
+	// TP-174: Build segment context once for emitSnapshot calls.
+	// Available outside the loop so it can be passed to makeResult too.
+	const snapshotSegmentCtx: { stepSegmentMap: StepSegmentMapping[]; repoId: string } | null =
+		(segmentId && unit.task.stepSegmentMap && config.repoId)
+			? (() => {
+				const repoSteps = getStepsForRepoId(unit.task.stepSegmentMap!, config.repoId);
+				return repoSteps.size > 0
+					? { stepSegmentMap: unit.task.stepSegmentMap!, repoId: config.repoId }
+					: null;
+			})()
+			: null;
+
 	for (let iter = 0; iter < config.maxIterations; iter++) {
 		if (pauseSignal.paused) {
 			logExecution(statusPath, "Paused", `User paused at iteration ${totalIterations}`);
 			return makeResult(taskId, segmentId, workerAgentId, "skipped", startTime,
-				"Paused by user", false, totalIterations, cumulativeCostUsd, cumulativeTokens, config, statusPath, reviewerStatePath);
+				"Paused by user", false, totalIterations, cumulativeCostUsd, cumulativeTokens, config, statusPath, reviewerStatePath, undefined, snapshotSegmentCtx);
 		}
 
 		// Determine remaining steps
 		const currentStatus = parseStatusMd(readFileSync(statusPath, "utf-8"));
 		const parsed = parsePromptMd(readFileSync(promptPath, "utf-8"), promptPath);
+
+		// TP-174: Resolve segment-scoped step filtering.
+		// Use config.repoId (structured identity) instead of parsing opaque segmentId.
+		const stepSegmentMap = unit.task.stepSegmentMap;
+		const currentRepoId = segmentId ? config.repoId : null;
+		const rawRepoStepNumbers = (stepSegmentMap && currentRepoId)
+			? getStepsForRepoId(stepSegmentMap, currentRepoId)
+			: null;
+		// TP-174 legacy fallback: If no steps have segments for this repoId
+		// (multi-segment task without explicit markers, where all checkboxes
+		// are assigned to the fallback/packet repo), disable segment filtering.
+		const repoStepNumbers = (rawRepoStepNumbers && rawRepoStepNumbers.size > 0)
+			? rawRepoStepNumbers
+			: null;
+
+		// TP-174: Read STATUS.md content once for segment-scoped checks
+		const iterStatusContent = readFileSync(statusPath, "utf-8");
+
 		const remainingSteps = parsed.steps.filter(step => {
+			// TP-174: When segment-scoped, only show steps that have work for this repoId
+			if (repoStepNumbers && !repoStepNumbers.has(step.number)) return false;
+			// TP-174: Use segment-scoped completion check in segment mode
+			if (repoStepNumbers && currentRepoId) {
+				return !isSegmentComplete(iterStatusContent, step.number, currentRepoId);
+			}
 			const ss = currentStatus.steps.find(s => s.number === step.number);
 			return !isStepComplete(ss);
 		});
@@ -247,11 +389,25 @@ export async function executeTaskV2(
 		}
 
 		// Count checkboxes before worker runs
-		const prevTotalChecked = currentStatus.steps.reduce((sum, s) => sum + s.totalChecked, 0);
+		// TP-174: When segment-scoped, count only this segment's checkboxes
+		let prevTotalChecked: number;
+		if (repoStepNumbers && currentRepoId) {
+			const preStatusContent = readFileSync(statusPath, "utf-8");
+			const segCbs = getSegmentCheckboxes(preStatusContent, firstStep.number, currentRepoId);
+			prevTotalChecked = segCbs ? segCbs.checked : 0;
+		} else {
+			prevTotalChecked = currentStatus.steps.reduce((sum, s) => sum + s.totalChecked, 0);
+		}
 
 		// ── Build worker prompt ─────────────────────────────────────
 		const wrapUpFile = join(taskFolder, ".task-wrap-up");
 		if (existsSync(wrapUpFile)) try { unlinkSync(wrapUpFile); } catch { /* ignore */ }
+
+		// TP-174/TP-501: Compute segment scope mode BEFORE building prompt.
+		const isSegmentScoped = !!(stepSegmentMap && currentRepoId && repoStepNumbers
+			&& remainingSteps.length > 0
+			&& stepSegmentMap.find(s => s.stepNumber === remainingSteps[0].number)
+				?.segments.find(seg => seg.repoId === currentRepoId));
 
 		const promptLines = [
 			`Read your task instructions at: ${promptPath}`,
@@ -266,7 +422,11 @@ export async function executeTaskV2(
 			`- Execution repo ID: ${unit.executionRepoId}`,
 			`- Execution worktree (worker cwd): ${unit.worktreePath}`,
 			`- Lane repo ID: ${config.repoId}`,
-			`- Active segment ID: ${segmentId ?? "(none / whole-task execution)"}`,
+			// Only show segment ID when segment-scoped. For FULL_TASK, omit to avoid
+			// workers incorrectly self-scoping based on segment metadata.
+			...(isSegmentScoped
+				? [`- Active segment ID: ${segmentId}`]
+				: []),
 			``,
 			`Packet home context:`,
 			`- Packet home repo ID: ${unit.packetHomeRepoId}`,
@@ -281,7 +441,8 @@ export async function executeTaskV2(
 			`⚠️ CHECKPOINT RULE: After completing EACH checkbox item, immediately edit STATUS.md to check it off (- [ ] → - [x]) BEFORE starting the next item. Do NOT batch checkbox updates at the end of a step.`,
 		];
 
-		const segmentDag = unit.task.explicitSegmentDag;
+		// Only show segment DAG in segment-scoped mode
+		const segmentDag = isSegmentScoped ? unit.task.explicitSegmentDag : null;
 		if (segmentDag && segmentDag.repoIds.length > 0) {
 			const edgeSummary = segmentDag.edges.length > 0
 				? segmentDag.edges.map(edge => `${edge.fromRepoId}->${edge.toRepoId}`).join(", ")
@@ -292,6 +453,68 @@ export async function executeTaskV2(
 				`- Repos: ${segmentDag.repoIds.join(", ")}`,
 				`- Edges: ${edgeSummary}`,
 			);
+		}
+
+		// Segment scope mode is determined by which system prompt was loaded.
+		// No SegmentScopeMode line needed — the prompt IS the mode.
+
+		// TP-174: Segment-scoped prompt — show only this segment's checkboxes
+		if (stepSegmentMap && currentRepoId && repoStepNumbers && remainingSteps.length > 0) {
+			const currentStepNum = remainingSteps[0].number;
+			const currentStepMapping = stepSegmentMap.find(s => s.stepNumber === currentStepNum);
+			const mySegment = currentStepMapping?.segments.find(seg => seg.repoId === currentRepoId);
+
+			// Only inject segment-scoped prompt when the current step has an explicit
+			// segment for this repoId. If mySegment is missing (legacy task without
+			// markers, or step has no work for this repo), skip and preserve legacy behavior.
+			if (currentStepMapping && mySegment) {
+				const otherSegments = currentStepMapping.segments.filter(seg => seg.repoId !== currentRepoId);
+
+				// Count total segments for this repo across all steps
+				const totalStepsForRepo = repoStepNumbers ? repoStepNumbers.size : 0;
+				const segmentIndexInStep = currentStepMapping.segments.findIndex(seg => seg.repoId === currentRepoId) + 1;
+				const totalSegmentsInStep = currentStepMapping.segments.length;
+
+				promptLines.push(
+					``,
+					`Segment-scoped context (Phase A):`,
+					`Active segment: ${segmentId} (Step ${currentStepNum}, segment ${segmentIndexInStep} of ${totalSegmentsInStep})`,
+					`Your repo: ${currentRepoId}`,
+					``,
+				);
+
+				if (mySegment && mySegment.checkboxes.length > 0) {
+					promptLines.push(`Your checkboxes for this step:`);
+					for (const cb of mySegment.checkboxes) {
+						promptLines.push(`  ${cb}`);
+					}
+				}
+
+				if (otherSegments.length > 0) {
+					promptLines.push(``);
+					promptLines.push(`Other segments in this step (NOT yours — do not attempt):`);
+					for (const seg of otherSegments) {
+						promptLines.push(`  - ${seg.repoId}: ${seg.checkboxes.length} checkbox(es) (will run in a separate segment)`);
+					}
+				}
+
+				// List completed steps for this repo
+				const completedForRepo = parsed.steps.filter(step => {
+					if (!repoStepNumbers || !repoStepNumbers.has(step.number)) return false;
+					const ss = currentStatus.steps.find(s => s.number === step.number);
+					return isStepComplete(ss);
+				});
+				if (completedForRepo.length > 0) {
+					promptLines.push(``);
+					promptLines.push(`Prior steps completed: ${completedForRepo.map(s => `Step ${s.number} (${s.name})`).join(", ")}`);
+				}
+
+				promptLines.push(
+					``,
+					`When all YOUR checkboxes are checked, your segment is done — exit successfully.`,
+					`Do NOT attempt work in other repos.`,
+				);
+			}
 		}
 
 		if (totalIterations > 1 && remainingSteps.length > 0) {
@@ -341,7 +564,9 @@ export async function executeTaskV2(
 			repoId: config.repoId,
 			cwd: unit.worktreePath,
 			prompt: promptLines.join("\n"),
-			systemPrompt: config.workerSystemPrompt || undefined,
+			systemPrompt: (isSegmentScoped && config.workerSegmentPrompt
+				? config.workerSystemPrompt + "\n\n---\n\n" + config.workerSegmentPrompt
+				: config.workerSystemPrompt) || undefined,
 			model: config.workerModel || undefined,
 			tools: config.workerTools || "read,write,edit,bash,grep,find,ls",
 			thinking: config.workerThinking || undefined,
@@ -363,7 +588,10 @@ export async function executeTaskV2(
 				TASKPLANE_REVIEWER_STATE_PATH: reviewerStatePath,
 				TASKPLANE_PROJECT_NAME: config.projectName || "project",
 				TASKPLANE_TASK_ID: taskId,
-				TASKPLANE_ACTIVE_SEGMENT_ID: segmentId ?? "",
+				// Hard-set segment env vars based on mode. In FULL_TASK mode,
+				// explicitly clear them to prevent env inheritance leaking segment cues.
+				TASKPLANE_ACTIVE_SEGMENT_ID: isSegmentScoped ? (segmentId ?? "") : "",
+				TASKPLANE_SEGMENT_ID: isSegmentScoped ? (segmentId ?? "") : "",
 				TASKPLANE_SUPERVISOR_AUTONOMY: config.supervisorAutonomy || "autonomous",
 				ORCH_BATCH_ID: config.batchId,
 				...(config.reviewerModel ? { TASKPLANE_REVIEWER_MODEL: config.reviewerModel } : {}),
@@ -379,8 +607,15 @@ export async function executeTaskV2(
 					// 2. Blocker logged (non-empty Blockers section)
 					try {
 						const statusContent = readFileSync(statusPath, "utf-8");
-						const midStatus = parseStatusMd(statusContent);
-						const midTotalChecked = midStatus.steps.reduce((sum, s) => sum + s.totalChecked, 0);
+						// TP-174: Use same scope as prevTotalChecked (segment or global)
+						let midTotalChecked: number;
+						if (repoStepNumbers && currentRepoId) {
+							const segCbs = getSegmentCheckboxes(statusContent, firstStep.number, currentRepoId);
+							midTotalChecked = segCbs ? segCbs.checked : 0;
+						} else {
+							const midStatus = parseStatusMd(statusContent);
+							midTotalChecked = midStatus.steps.reduce((sum, s) => sum + s.totalChecked, 0);
+						}
 						if (midTotalChecked > prevTotalChecked) {
 							// Worker checked off checkboxes — let it exit normally
 							return null;
@@ -402,10 +637,20 @@ export async function executeTaskV2(
 					const uncheckedItems: string[] = [];
 					try {
 						const statusContent = readFileSync(statusPath, "utf-8");
-						const uncheckedMatches = statusContent.match(/^- \[ \] .+$/gm);
-						if (uncheckedMatches) {
-							for (const item of uncheckedMatches.slice(0, 5)) {
-								uncheckedItems.push(item.replace(/^- \[ \] /, "").trim());
+						// TP-174: When segment-scoped, report only this segment's unchecked items
+						if (repoStepNumbers && currentRepoId) {
+							const segCbs = getSegmentCheckboxes(statusContent, firstStep.number, currentRepoId);
+							if (segCbs) {
+								for (const text of segCbs.uncheckedTexts.slice(0, 5)) {
+									uncheckedItems.push(text);
+								}
+							}
+						} else {
+							const uncheckedMatches = statusContent.match(/^- \[ \] .+$/gm);
+							if (uncheckedMatches) {
+								for (const item of uncheckedMatches.slice(0, 5)) {
+									uncheckedItems.push(item.replace(/^- \[ \] /, "").trim());
+								}
 							}
 						}
 					} catch { /* best effort */ }
@@ -523,7 +768,7 @@ export async function executeTaskV2(
 				iterationTelemetry = telemetry;
 				lastTelemetry = telemetry;
 				// Emit lane snapshot
-				emitSnapshot(config, taskId, segmentId, "running", telemetry, statusPath, reviewerStatePath);
+				emitSnapshot(config, taskId, segmentId, "running", telemetry, statusPath, reviewerStatePath, snapshotSegmentCtx);
 			} catch { /* non-fatal: telemetry callback must never crash the engine */ }
 		});
 
@@ -533,7 +778,7 @@ export async function executeTaskV2(
 		let reviewerSnapshotFailures = 0;
 		const reviewerRefreshFailureThreshold = 5;
 		const reviewerRefresh = setInterval(() => {
-			const ok = emitSnapshot(config, taskId, segmentId, "running", iterationTelemetry, statusPath, reviewerStatePath);
+			const ok = emitSnapshot(config, taskId, segmentId, "running", iterationTelemetry, statusPath, reviewerStatePath, snapshotSegmentCtx);
 			if (ok) {
 				reviewerSnapshotFailures = 0;
 				return;
@@ -653,8 +898,16 @@ export async function executeTaskV2(
 			`${statusMsg} in ${Math.round(workerResult.durationMs / 1000)}s, tools: ${workerResult.toolCalls}`);
 
 		// ── Check progress ──────────────────────────────────────────
-		const afterStatus = parseStatusMd(readFileSync(statusPath, "utf-8"));
-		const afterTotalChecked = afterStatus.steps.reduce((sum, s) => sum + s.totalChecked, 0);
+		const afterStatusContent = readFileSync(statusPath, "utf-8");
+		const afterStatus = parseStatusMd(afterStatusContent);
+		// TP-174: Segment-scoped progress delta
+		let afterTotalChecked: number;
+		if (repoStepNumbers && currentRepoId) {
+			const segCbs = getSegmentCheckboxes(afterStatusContent, firstStep.number, currentRepoId);
+			afterTotalChecked = segCbs ? segCbs.checked : 0;
+		} else {
+			afterTotalChecked = afterStatus.steps.reduce((sum, s) => sum + s.totalChecked, 0);
+		}
 		const progressDelta = afterTotalChecked - prevTotalChecked;
 
 		if (progressDelta <= 0) {
@@ -689,7 +942,7 @@ export async function executeTaskV2(
 				if (noProgressCount >= config.noProgressLimit) {
 					logExecution(statusPath, "Task blocked", `No progress after ${noProgressCount} iterations`);
 					return makeResult(taskId, segmentId, workerAgentId, "failed", startTime,
-						`No progress after ${noProgressCount} iterations`, false, totalIterations, cumulativeCostUsd, cumulativeTokens, config, statusPath, reviewerStatePath, lastTelemetry);
+						`No progress after ${noProgressCount} iterations`, false, totalIterations, cumulativeCostUsd, cumulativeTokens, config, statusPath, reviewerStatePath, lastTelemetry, snapshotSegmentCtx);
 				}
 			}
 		} else {
@@ -697,41 +950,93 @@ export async function executeTaskV2(
 		}
 
 		// Mark completed steps
-		for (const step of parsed.steps) {
-			const ss = afterStatus.steps.find(s => s.number === step.number);
-			if (isStepComplete(ss)) {
-				updateStepStatus(statusPath, step.number, "complete");
+		// TP-174: When segment-scoped, mark step complete when the segment's
+		// checkboxes are all checked (not the full step which may have other segments).
+		if (repoStepNumbers && currentRepoId) {
+			for (const stepNum of repoStepNumbers) {
+				if (isSegmentComplete(afterStatusContent, stepNum, currentRepoId)) {
+					// Only mark step complete in STATUS.md if ALL segments in that step
+					// are complete (not just ours). But for loop exit, we only care about ours.
+					const ss = afterStatus.steps.find(s => s.number === stepNum);
+					if (isStepComplete(ss)) {
+						updateStepStatus(statusPath, stepNum, "complete");
+					}
+				}
+			}
+		} else {
+			for (const step of parsed.steps) {
+				const ss = afterStatus.steps.find(s => s.number === step.number);
+				if (isStepComplete(ss)) {
+					updateStepStatus(statusPath, step.number, "complete");
+				}
 			}
 		}
 
 		// Check if all steps are now complete
-		const allComplete = parsed.steps.every(step => {
-			const ss = afterStatus.steps.find(s => s.number === step.number);
-			return isStepComplete(ss);
-		});
+		// TP-174: When segment-scoped, exit when all steps for this repoId
+		// have their segment checkboxes complete.
+		let allComplete: boolean;
+		if (repoStepNumbers && currentRepoId) {
+			allComplete = [...repoStepNumbers].every(stepNum =>
+				isSegmentComplete(afterStatusContent, stepNum, currentRepoId),
+			);
+		} else {
+			allComplete = parsed.steps.every(step => {
+				const ss = afterStatus.steps.find(s => s.number === step.number);
+				return isStepComplete(ss);
+			});
+		}
 		if (allComplete) break;
 	}
 
 	// ── 3. Post-loop completion check ───────────────────────────────
-	const finalStatus = parseStatusMd(readFileSync(statusPath, "utf-8"));
+	const finalStatusContent = readFileSync(statusPath, "utf-8");
+	const finalStatus = parseStatusMd(finalStatusContent);
 	const parsed = parsePromptMd(readFileSync(promptPath, "utf-8"), promptPath);
-	const allStepsComplete = parsed.steps.every(step => {
-		const ss = finalStatus.steps.find(s => s.number === step.number);
-		return isStepComplete(ss);
-	});
+
+	// TP-174: Segment-scoped post-loop check. Re-derive repo scoping since
+	// the iteration loop variables are out of scope here.
+	const postLoopRepoId = segmentId ? config.repoId : null;
+	const postLoopStepSegMap = unit.task.stepSegmentMap;
+	const postLoopRepoSteps = (postLoopStepSegMap && postLoopRepoId)
+		? getStepsForRepoId(postLoopStepSegMap, postLoopRepoId)
+		: null;
+	const effectivePostLoopRepoSteps = (postLoopRepoSteps && postLoopRepoSteps.size > 0)
+		? postLoopRepoSteps
+		: null;
+
+	let allStepsComplete: boolean;
+	if (effectivePostLoopRepoSteps && postLoopRepoId) {
+		allStepsComplete = [...effectivePostLoopRepoSteps].every(stepNum =>
+			isSegmentComplete(finalStatusContent, stepNum, postLoopRepoId),
+		);
+	} else {
+		allStepsComplete = parsed.steps.every(step => {
+			const ss = finalStatus.steps.find(s => s.number === step.number);
+			return isStepComplete(ss);
+		});
+	}
 
 	if (!allStepsComplete) {
-		const incomplete = parsed.steps
-			.filter(step => {
-				const ss = finalStatus.steps.find(s => s.number === step.number);
-				return !isStepComplete(ss);
-			})
-			.map(s => `Step ${s.number}`)
-			.join(", ");
+		let incomplete: string;
+		if (effectivePostLoopRepoSteps && postLoopRepoId) {
+			incomplete = [...effectivePostLoopRepoSteps]
+				.filter(stepNum => !isSegmentComplete(finalStatusContent, stepNum, postLoopRepoId))
+				.map(n => `Step ${n}`)
+				.join(", ");
+		} else {
+			incomplete = parsed.steps
+				.filter(step => {
+					const ss = finalStatus.steps.find(s => s.number === step.number);
+					return !isStepComplete(ss);
+				})
+				.map(s => `Step ${s.number}`)
+				.join(", ");
+		}
 		logExecution(statusPath, "Task incomplete", `Max iterations reached. Incomplete: ${incomplete}`);
 		return makeResult(taskId, segmentId, workerAgentId, "failed", startTime,
 			`Max iterations (${config.maxIterations}) reached with incomplete steps: ${incomplete}`,
-			false, totalIterations, cumulativeCostUsd, cumulativeTokens, config, statusPath, reviewerStatePath, lastTelemetry);
+			false, totalIterations, cumulativeCostUsd, cumulativeTokens, config, statusPath, reviewerStatePath, lastTelemetry, snapshotSegmentCtx);
 	}
 
 	// TP-145: Determine if this is a non-final segment of a multi-segment task.
@@ -774,7 +1079,7 @@ export async function executeTaskV2(
 			? "non-final"
 			: "pending expansion requests";
 		return makeResult(taskId, segmentId, workerAgentId, "succeeded", startTime,
-			`Segment completed (${suppressionReason} — .DONE suppressed)`, false, totalIterations, cumulativeCostUsd, cumulativeTokens, config, statusPath, reviewerStatePath, lastTelemetry);
+			`Segment completed (${suppressionReason} — .DONE suppressed)`, false, totalIterations, cumulativeCostUsd, cumulativeTokens, config, statusPath, reviewerStatePath, lastTelemetry, snapshotSegmentCtx);
 	}
 
 	// Create .DONE if not already present (final segment or single-segment/whole-task execution)
@@ -785,7 +1090,7 @@ export async function executeTaskV2(
 	logExecution(statusPath, "Task complete", ".DONE created");
 
 	return makeResult(taskId, segmentId, workerAgentId, "succeeded", startTime,
-		".DONE file created by lane-runner", true, totalIterations, cumulativeCostUsd, cumulativeTokens, config, statusPath, reviewerStatePath, lastTelemetry);
+		".DONE file created by lane-runner", true, totalIterations, cumulativeCostUsd, cumulativeTokens, config, statusPath, reviewerStatePath, lastTelemetry, snapshotSegmentCtx);
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -846,6 +1151,8 @@ function makeResult(
 	statusPath?: string,
 	reviewerStatePath?: string,
 	finalTelemetry?: Partial<AgentHostResult>,
+	/** TP-174: Segment context for segment-scoped snapshot progress */
+	segmentCtx?: { stepSegmentMap: StepSegmentMapping[]; repoId: string } | null,
 ): LaneRunnerTaskResult {
 	const telemetry = status === "skipped"
 		? undefined
@@ -880,7 +1187,7 @@ function makeResult(
 	// TP-115: Emit terminal snapshot with real telemetry from agent-host result
 	if (config && statusPath && reviewerStatePath) {
 		const terminalStatus = mapLaneTaskStatusToTerminalSnapshotStatus(status);
-		emitSnapshot(config, taskId, segmentId, terminalStatus, finalTelemetry ?? {}, statusPath, reviewerStatePath);
+		emitSnapshot(config, taskId, segmentId, terminalStatus, finalTelemetry ?? {}, statusPath, reviewerStatePath, segmentCtx);
 	}
 
 	return result;
@@ -957,6 +1264,8 @@ function emitSnapshot(
 	telemetry: Partial<AgentHostResult>,
 	statusPath: string,
 	reviewerStatePath: string,
+	/** TP-174: Optional segment context for segment-scoped progress reporting */
+	segmentContext?: { stepSegmentMap: StepSegmentMapping[]; repoId: string } | null,
 ): boolean {
 	try {
 		// Parse progress from STATUS.md
@@ -965,8 +1274,30 @@ function emitSnapshot(
 			const content = readFileSync(statusPath, "utf-8");
 			const parsed = parseStatusMd(content);
 			const currentStepMatch = content.match(/\*\*Current Step:\*\*\s*(.+)/);
-			const checked = parsed.steps.reduce((sum, s) => sum + s.totalChecked, 0);
-			const total = parsed.steps.reduce((sum, s) => sum + s.totalItems, 0);
+
+			// TP-174: Segment-scoped progress when segment markers are present.
+			// Only count checkboxes from steps that belong to this segment's repoId.
+			let checked: number;
+			let total: number;
+			if (segmentContext) {
+				const { stepSegmentMap, repoId } = segmentContext;
+				const repoSteps = getStepsForRepoId(stepSegmentMap, repoId);
+				let segChecked = 0;
+				let segTotal = 0;
+				for (const stepNum of repoSteps) {
+					const segCbs = getSegmentCheckboxes(content, stepNum, repoId);
+					if (segCbs) {
+						segChecked += segCbs.checked;
+						segTotal += segCbs.total;
+					}
+				}
+				checked = segChecked;
+				total = segTotal;
+			} else {
+				checked = parsed.steps.reduce((sum, s) => sum + s.totalChecked, 0);
+				total = parsed.steps.reduce((sum, s) => sum + s.totalItems, 0);
+			}
+
 			progress = {
 				currentStep: currentStepMatch?.[1]?.trim() || "Unknown",
 				checked,
