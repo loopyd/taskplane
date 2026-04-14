@@ -11,7 +11,7 @@
 ---
 
 ### Step 0: Preflight
-**Status:** ✅ Done
+**Status:** ✅ Complete
 - [x] Read performCleanup() in extension.ts
 - [x] Read saveBatchHistory() in persistence.ts
 - [x] Read server.cjs supervisor actions API
@@ -20,7 +20,7 @@
 ---
 
 ### Step 1: Fix integratedAt lifecycle (#499)
-**Status:** ✅ Done
+**Status:** ✅ Complete
 - [x] Write integratedAt before deleting batch state
 - [x] Update batch history with integration timestamp
 - [x] Handle workspace mode (workspace-root batch state)
@@ -29,7 +29,7 @@
 ---
 
 ### Step 2: Add description column to supervisor actions (#497)
-**Status:** ✅ Done
+**Status:** ✅ Complete
 - [x] Include context/detail in server API response (already included — tailSupervisorJsonl passes all fields)
 - [x] Add description column to dashboard table
 - [x] Truncate long descriptions
@@ -38,7 +38,7 @@
 ---
 
 ### Step 3: Testing & Verification
-**Status:** ✅ Done
+**Status:** ✅ Complete
 - [x] Full test suite passing (3379/3379 pass)
 - [x] Tests for integratedAt lifecycle (4 tests added to batch-history-persistence.test.ts)
 - [x] Manual dashboard testing (verified via code inspection + unit tests — no live batch environment available)
@@ -46,7 +46,7 @@
 ---
 
 ### Step 4: Documentation & Delivery
-**Status:** ✅ Done
+**Status:** ✅ Complete
 - [x] Discoveries logged
 
 ---
@@ -75,6 +75,8 @@
 | 2026-04-13 | Task staged | PROMPT.md and STATUS.md created |
 | 2026-04-14 02:15 | Task started | Runtime V2 lane-runner execution |
 | 2026-04-14 02:15 | Step 0 started | Preflight |
+| 2026-04-14 02:31 | Worker iter 1 | done in 984s, tools: 113 |
+| 2026-04-14 02:31 | Task complete | .DONE created |
 
 ---
 
