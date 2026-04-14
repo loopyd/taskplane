@@ -1,30 +1,30 @@
 # TP-179: Dashboard State and Server Fixes — Status
 
-**Current Step:** Not Started
-**Status:** 🔵 Ready for Execution
-**Last Updated:** 2026-04-13
+**Current Step:** Step 1: Fix integratedAt lifecycle (#499)
+**Status:** 🟡 In Progress
+**Last Updated:** 2026-04-14
 **Review Level:** 1
-**Review Counter:** 0
-**Iteration:** 0
+**Review Counter:** 1
+**Iteration:** 1
 **Size:** M
 
 ---
 
 ### Step 0: Preflight
-**Status:** ⬜ Not Started
-- [ ] Read performCleanup() in extension.ts
-- [ ] Read saveBatchHistory() in persistence.ts
-- [ ] Read server.cjs supervisor actions API
-- [ ] Read app.js recovery actions rendering
+**Status:** ✅ Done
+- [x] Read performCleanup() in extension.ts
+- [x] Read saveBatchHistory() in persistence.ts
+- [x] Read server.cjs supervisor actions API
+- [x] Read app.js recovery actions rendering
 
 ---
 
 ### Step 1: Fix integratedAt lifecycle (#499)
-**Status:** ⬜ Not Started
-- [ ] Write integratedAt before deleting batch state
-- [ ] Update batch history with integration timestamp
-- [ ] Handle workspace mode (workspace-root batch state)
-- [ ] Run targeted tests
+**Status:** ✅ Done
+- [x] Write integratedAt before deleting batch state
+- [x] Update batch history with integration timestamp
+- [x] Handle workspace mode (workspace-root batch state)
+- [x] Run targeted tests
 
 ---
 
@@ -70,6 +70,8 @@
 | Timestamp | Action | Outcome |
 |-----------|--------|---------|
 | 2026-04-13 | Task staged | PROMPT.md and STATUS.md created |
+| 2026-04-14 02:15 | Task started | Runtime V2 lane-runner execution |
+| 2026-04-14 02:15 | Step 0 started | Preflight |
 
 ---
 
@@ -83,3 +85,4 @@
 
 GitHub issues: #497, #499
 TP-179 touches both dashboard and extension code (integration lifecycle).
+| 2026-04-14 02:21 | Review R001 | plan Step 1: APPROVE |
