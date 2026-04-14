@@ -415,6 +415,20 @@ body {
   color: var(--green);
 }
 
+/* TP-178: Merging wave indicator — pulsing accent to distinguish from executing (#493) */
+.wave-chip.merging {
+  animation: merge-pulse 1.5s ease-in-out infinite;
+}
+
+.wave-seg-merging {
+  animation: merge-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes merge-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
 /* ─── Content ──────────────────────────────────────────────────────────── */
 
 .content {
@@ -712,6 +726,16 @@ body {
 .task-progress-fill.pct-low { background: var(--yellow); }
 .task-progress-fill.pct-mid { background: var(--cyan); }
 .task-progress-fill.pct-hi  { background: var(--green); }
+
+/* TP-178: Pulsing indicator for executing tasks without sidecar progress (#494) */
+.task-progress-executing {
+  opacity: 0.4;
+  animation: executing-pulse 2s ease-in-out infinite;
+}
+@keyframes executing-pulse {
+  0%, 100% { opacity: 0.25; }
+  50% { opacity: 0.55; }
+}
 
 .task-progress-text {
   font-family: var(--font-mono);
@@ -1553,6 +1577,18 @@ body {
 .supervisor-action-outcome.action-pending {
   background: var(--badge-stalled-bg);
   color: var(--yellow);
+}
+
+.supervisor-action-description {
+  font-size: 0.8rem;
+  color: var(--text-secondary, #b0b0b0);
+  margin-top: 3px;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 600px;
+  cursor: default;
 }
 
 .supervisor-action-reason {
