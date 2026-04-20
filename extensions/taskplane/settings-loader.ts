@@ -110,8 +110,16 @@ export function loadPiSettingsPackages(stateRoot: string): string[] {
 		}
 	}
 
-	// Filter out taskplane itself (already loaded as bridge extension)
-	return merged.filter((pkg) => !pkg.toLowerCase().includes("taskplane"));
+	// Filter out taskplane itself (already loaded as bridge extension).
+	// Match known specifier patterns: "npm:taskplane", "taskplane", or scoped
+	// variants like "npm:@scope/taskplane". Avoid substring matching to prevent
+	// false positives on unrelated packages containing "taskplane" in their name.
+	return merged.filter((pkg) => {
+		// Strip npm:/git: prefix to get the bare package name
+		const bare = pkg.replace(/^(?:npm:|git:(?:github\.com\/[^/]+\/)?)/, "").toLowerCase();
+		// Exact match on bare name, or scoped exact match (@scope/taskplane)
+		return bare !== "taskplane" && !bare.endsWith("/taskplane");
+	});
 }
 
 /**

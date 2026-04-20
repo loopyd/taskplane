@@ -84,12 +84,16 @@ describe("loadPiSettingsPackages", () => {
 		assert.ok(Array.isArray(result));
 	});
 
-	it("filters out packages containing 'taskplane'", () => {
+	it("filters out taskplane itself but not unrelated packages", () => {
 		writeProjectSettings(tempDir, {
-			packages: ["npm:taskplane", "npm:pi-sage", "npm:taskplane-utils"],
+			packages: ["npm:taskplane", "npm:pi-sage", "npm:taskplane-utils", "npm:@myorg/taskplane"],
 		});
 		const result = loadPiSettingsPackages(tempDir);
-		assert.ok(!result.some(p => p.includes("taskplane")));
+		// Exact taskplane specifiers are filtered
+		assert.ok(!result.includes("npm:taskplane"));
+		assert.ok(!result.includes("npm:@myorg/taskplane"));
+		// Unrelated packages containing "taskplane" substring are kept
+		assert.ok(result.includes("npm:taskplane-utils"));
 		assert.ok(result.includes("npm:pi-sage"));
 	});
 
