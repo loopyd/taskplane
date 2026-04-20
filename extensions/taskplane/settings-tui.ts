@@ -1338,7 +1338,9 @@ async function showExtensionsSection(
 		const mergedConfig = loadProjectConfig(configRoot, pointerConfigRoot);
 
 		// Discover installed packages (excluding taskplane itself)
-		const packages = loadPiSettingsPackages(resolvedRoot);
+		// Use configRoot (project/state root) for consistency with runtime forwarding,
+		// not resolvedRoot (pointer-resolved config path).
+		const packages = loadPiSettingsPackages(configRoot);
 
 		if (packages.length === 0) {
 			await ctx.ui.custom((_tui, theme, _kb, done) => {
@@ -1422,11 +1424,9 @@ async function showExtensionsSection(
 
 		const enabling = result.value.includes("enabled");
 
-		// Read current exclusion array from config
-		const currentExcludeList: string[] = getNestedValue(
-			readRawProjectJson(resolvedRoot) ?? {},
-			configPath,
-		) ?? [];
+		// Read current exclusion array from merged effective config (handles YAML+JSON)
+		const freshConfig = loadProjectConfig(configRoot, pointerConfigRoot);
+		const currentExcludeList: string[] = (getNestedValue(freshConfig, configPath) as string[] | undefined) ?? [];
 
 		let newExcludeList: string[];
 		if (enabling) {

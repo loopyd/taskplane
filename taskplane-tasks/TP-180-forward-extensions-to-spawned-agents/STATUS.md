@@ -54,16 +54,16 @@
 ---
 
 ### Step 4: Add Settings TUI submenu
-**Status:** 🟨 In Progress
+**Status:** ✅ Complete
 
 - [x] Discover installed packages via `loadPiSettingsPackages()`
 - [x] Display toggle list per agent type (Worker, Reviewer, Merger)
 - [x] Toggle off → add to `excludeExtensions`; toggle on → remove
 - [x] Save to `taskplane-config.json`
 - [x] Follow existing settings-tui save/reload patterns
-- [ ] R010: Fix discovery root to use configRoot for runtime alignment
-- [ ] R010: Fix toggle mutations to use merged effective config base
-- [ ] R010: Update settings-tui tests for 14 sections
+- [x] R010: Fix discovery root to use configRoot for runtime alignment
+- [x] R010: Fix toggle mutations to use merged effective config base
+- [x] R010: Update settings-tui tests for 14 sections
 
 ---
 
