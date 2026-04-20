@@ -1,10 +1,10 @@
 # TP-180: Forward Project and Global Extensions to Spawned Agents — Status
 
-**Current Step:** Step 4: Add Settings TUI submenu
+**Current Step:** Step 5: Testing & Verification
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-20
 **Review Level:** 2
-**Review Counter:** 10
+**Review Counter:** 11
 **Iteration:** 1
 **Size:** L
 
@@ -68,12 +68,12 @@
 ---
 
 ### Step 5: Testing & Verification
-**Status:** ⬜ Not Started
+**Status:** ✅ Complete
 
-- [ ] Create `settings-loader.test.ts` with project, global, merge, filter tests
-- [ ] Create `extension-forwarding.test.ts` with spawn arg validation tests
-- [ ] Run FULL test suite
-- [ ] Fix all failures
+- [x] Create `settings-loader.test.ts` with project, global, merge, filter tests
+- [x] Create `extension-forwarding.test.ts` with spawn arg validation tests
+- [x] Run FULL test suite
+- [x] Fix all failures (no failures — 3410 tests pass)
 
 ---
 
@@ -129,3 +129,4 @@
 | 2026-04-20 22:10 | Review R008 | code Step 3: APPROVE |
 | 2026-04-20 22:12 | Review R009 | plan Step 4: APPROVE |
 | 2026-04-20 22:16 | Review R010 | code Step 4: REVISE |
+| 2026-04-20 22:20 | Review R011 | code Step 4: APPROVE |
