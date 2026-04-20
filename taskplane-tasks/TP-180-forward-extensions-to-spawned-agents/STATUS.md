@@ -1,10 +1,10 @@
 # TP-180: Forward Project and Global Extensions to Spawned Agents — Status
 
-**Current Step:** Step 3: Wire extensions into all three spawn points
+**Current Step:** Step 4: Add Settings TUI submenu
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-20
 **Review Level:** 2
-**Review Counter:** 7
+**Review Counter:** 8
 **Iteration:** 1
 **Size:** L
 
@@ -54,7 +54,7 @@
 ---
 
 ### Step 4: Add Settings TUI submenu
-**Status:** ⬜ Not Started
+**Status:** 🟨 In Progress
 
 - [ ] Discover installed packages via `loadPiSettingsPackages()`
 - [ ] Display toggle list per agent type (Worker, Reviewer, Merger)
@@ -123,3 +123,4 @@
 | 2026-04-20 21:55 | Review R005 | plan Step 3: REVISE |
 | 2026-04-20 21:56 | Review R006 | plan Step 3: APPROVE |
 | 2026-04-20 22:05 | Review R007 | code Step 3: REVISE |
+| 2026-04-20 22:10 | Review R008 | code Step 3: APPROVE |
