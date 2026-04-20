@@ -1125,6 +1125,7 @@ export function toOrchestratorConfig(config: TaskplaneConfig): import("./types.t
 			verify: [...o.merge.verify],
 			order: o.merge.order,
 			timeout_minutes: o.merge.timeoutMinutes ?? 90,
+			exclude_extensions: [...(o.merge.excludeExtensions ?? [])],
 		},
 		failure: {
 			on_task_failure: o.failure.onTaskFailure,
@@ -1183,7 +1184,9 @@ export function toTaskRunnerConfig(config: TaskplaneConfig): import("./types.ts"
 			model: config.taskRunner.reviewer.model,
 			thinking: config.taskRunner.reviewer.thinking,
 			tools: config.taskRunner.reviewer.tools,
+			excludeExtensions: [...(config.taskRunner.reviewer.excludeExtensions ?? [])],
 		},
+		workerExcludeExtensions: [...(config.taskRunner.worker.excludeExtensions ?? [])],
 	};
 }
 

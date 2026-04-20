@@ -148,6 +148,7 @@ Area-specific standards override global standards when the task folder path matc
 
 - `model: ""` — inherit the active session model.
 - `thinking: ""` — inherit the active session thinking mode (`"inherit"` alias is also accepted).
+- `excludeExtensions: []` — package specifiers to exclude from extension forwarding for worker agents (exact match). See [Extension Forwarding](#extension-forwarding) below.
 
 ### `taskRunner.reviewer`
 
@@ -164,6 +165,7 @@ Area-specific standards override global standards when the task folder path matc
 ```
 
 Set `reviewer.model` explicitly (optional) to use a different model than the worker for stronger cross-model review.
+- `excludeExtensions: []` — package specifiers to exclude from extension forwarding for reviewer agents (exact match).
 
 ### `taskRunner.context`
 
@@ -261,6 +263,36 @@ Targets where agents should log discoveries.
 ```
 
 Paths requiring explicit approval before edits.
+
+---
+
+## Extension Forwarding
+
+Taskplane automatically forwards third-party Pi extensions installed in your project or global settings to spawned worker, reviewer, and merge agents. Extensions are discovered from `.pi/settings.json` (project-level) and `~/.pi/agent/settings.json` (global), with taskplane itself always filtered out.
+
+The `--no-extensions` flag remains on all spawned agents to prevent cwd-based auto-discovery. Forwarded extensions are passed as explicit `-e` flags, which are honored alongside `--no-extensions`.
+
+### Per-agent-type exclusions
+
+You can exclude specific extensions from individual agent types:
+
+```json
+{
+  "taskRunner": {
+    "worker": { "excludeExtensions": ["npm:pi-smart-fetch"] },
+    "reviewer": { "excludeExtensions": [] }
+  },
+  "orchestrator": {
+    "merge": { "excludeExtensions": [] }
+  }
+}
+```
+
+Exclusions use exact package specifier matching. Empty arrays (the default) mean all discovered extensions are forwarded.
+
+### Settings TUI
+
+Use `/taskplane-settings` → **Agent Extensions** to interactively toggle extensions per agent type. The TUI discovers installed packages automatically — no manual text entry needed.
 
 ---
 

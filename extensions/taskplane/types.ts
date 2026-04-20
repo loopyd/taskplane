@@ -43,6 +43,8 @@ export interface OrchestratorConfig {
 		order: "fewest-files-first" | "sequential";
 		/** Merge agent timeout in minutes. Default: 10. Increase for large batches. */
 		timeout_minutes: number;
+		/** Package specifiers to exclude from extension forwarding (exact match). @since TP-180 */
+		exclude_extensions?: string[];
 	};
 	failure: {
 		on_task_failure: "skip-dependents" | "stop-wave" | "stop-all";
@@ -323,7 +325,11 @@ export interface TaskRunnerConfig {
 		thinking: string;
 		/** Comma-separated tool allowlist */
 		tools: string;
+		/** Package specifiers to exclude from extension forwarding (exact match). @since TP-180 */
+		excludeExtensions?: string[];
 	};
+	/** Worker agent extension exclusion list. @since TP-180 */
+	workerExcludeExtensions?: string[];
 }
 
 /** Result of a preflight check */
