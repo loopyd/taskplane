@@ -1,6 +1,6 @@
 # TP-180: Forward Project and Global Extensions to Spawned Agents — Status
 
-**Current Step:** Step 0: Preflight
+**Current Step:** Step 1: Create settings-loader utility
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-20
 **Review Level:** 2
@@ -21,7 +21,7 @@
 ---
 
 ### Step 1: Create settings-loader utility
-**Status:** ⬜ Not Started
+**Status:** 🟨 In Progress
 
 - [ ] Implement `loadPiSettingsPackages(stateRoot)` — project `.pi/settings.json`
 - [ ] Implement global packages loading from `~/.pi/agent/settings.json`
