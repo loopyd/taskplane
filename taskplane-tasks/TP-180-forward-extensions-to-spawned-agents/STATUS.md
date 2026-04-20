@@ -4,7 +4,7 @@
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-04-20
 **Review Level:** 2
-**Review Counter:** 2
+**Review Counter:** 3
 **Iteration:** 1
 **Size:** L
 
@@ -33,13 +33,13 @@
 ---
 
 ### Step 2: Add per-agent-type exclusion config
-**Status:** 🟨 In Progress
+**Status:** ✅ Complete
 
-- [ ] Add `excludeExtensions?: string[]` to worker config in schema + types
-- [ ] Add `excludeExtensions?: string[]` to reviewer config in schema + types
-- [ ] Add `excludeExtensions?: string[]` to merge config in schema + types
-- [ ] Update config-loader to load and default `excludeExtensions`
-- [ ] Implement `filterExcludedExtensions()` in settings-loader
+- [x] Add `excludeExtensions?: string[]` to worker config in schema + types
+- [x] Add `excludeExtensions?: string[]` to reviewer config in schema + types
+- [x] Add `excludeExtensions?: string[]` to merge config in schema + types
+- [x] Update config-loader to load and default `excludeExtensions`
+- [x] Implement `filterExcludedExtensions()` in settings-loader
 
 ---
 
@@ -118,3 +118,4 @@
 *Reserved for execution notes*
 | 2026-04-20 21:44 | Review R001 | plan Step 1: APPROVE |
 | 2026-04-20 21:46 | Review R002 | code Step 1: APPROVE |
+| 2026-04-20 21:48 | Review R003 | plan Step 2: APPROVE |
