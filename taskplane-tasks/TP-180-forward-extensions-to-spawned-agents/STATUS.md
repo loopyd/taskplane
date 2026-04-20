@@ -1,7 +1,7 @@
 # TP-180: Forward Project and Global Extensions to Spawned Agents — Status
 
-**Current Step:** Step 5: Testing & Verification
-**Status:** 🟡 In Progress
+**Current Step:** Step 6: Documentation & Delivery
+**Status:** ✅ Complete
 **Last Updated:** 2026-04-20
 **Review Level:** 2
 **Review Counter:** 11
@@ -78,11 +78,11 @@
 ---
 
 ### Step 6: Documentation & Delivery
-**Status:** ⬜ Not Started
+**Status:** ✅ Complete
 
-- [ ] Update `docs/how-to/configure-task-runner.md`
-- [ ] Check `docs/reference/commands.md` for settings section
-- [ ] Discoveries logged in STATUS.md
+- [x] Update `docs/how-to/configure-task-runner.md`
+- [x] Check `docs/reference/commands.md` for settings section
+- [x] Discoveries logged in STATUS.md
 
 ---
 
@@ -97,6 +97,10 @@
 
 | Discovery | Disposition | Location |
 |-----------|-------------|----------|
+| Reviewer uses direct spawn (not spawnAgent) — required `-e` flag injection into args array | Addressed in Step 3 | agent-bridge-extension.ts:442 |
+| Worktree settings.json absent — reviewer needs TASKPLANE_STATE_ROOT env for project settings | Addressed in Step 3 (R005) | lane-runner.ts env vars |
+| Global settings at `~/.pi/agent/settings.json` uses `packages` array for installed extensions | Used in settings-loader.ts | settings-loader.ts |
+| mergeStateRoot was declared twice in merge.ts scope — fixed in R007 | Fixed | merge.ts |
 
 ---
 
