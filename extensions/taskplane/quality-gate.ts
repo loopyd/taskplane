@@ -108,16 +108,11 @@ export interface VerdictEvaluation {
  * @param threshold - Configured pass threshold
  * @returns Evaluation result with pass/fail and reasons
  */
-export function applyVerdictRules(
-	verdict: ReviewVerdict,
-	threshold: PassThreshold,
-): VerdictEvaluation {
+export function applyVerdictRules(verdict: ReviewVerdict, threshold: PassThreshold): VerdictEvaluation {
 	const failReasons: VerdictFailReason[] = [];
 
 	// Rule 1: Any status_mismatch category → NEEDS_FIXES
-	const statusMismatches = verdict.findings.filter(
-		(f) => f.category === "status_mismatch",
-	);
+	const statusMismatches = verdict.findings.filter((f) => f.category === "status_mismatch");
 	if (statusMismatches.length > 0) {
 		failReasons.push({
 			rule: "status_mismatch",
@@ -135,9 +130,7 @@ export function applyVerdictRules(
 	}
 
 	// Rule 3: Threshold-dependent important check
-	const importants = verdict.findings.filter(
-		(f) => f.severity === "important",
-	);
+	const importants = verdict.findings.filter((f) => f.severity === "important");
 
 	if (threshold === "no_important" && importants.length >= 3) {
 		failReasons.push({
@@ -167,14 +160,8 @@ export function applyVerdictRules(
 	}
 
 	// For all_clear threshold: even suggestions-only should fail
-	if (
-		threshold === "all_clear" &&
-		failReasons.length === 0 &&
-		verdict.findings.length > 0
-	) {
-		const suggestions = verdict.findings.filter(
-			(f) => f.severity === "suggestion",
-		);
+	if (threshold === "all_clear" && failReasons.length === 0 && verdict.findings.length > 0) {
+		const suggestions = verdict.findings.filter((f) => f.severity === "suggestion");
 		if (suggestions.length > 0) {
 			failReasons.push({
 				rule: "important_threshold",
@@ -236,7 +223,10 @@ export function parseVerdict(jsonString: string | undefined | null): ReviewVerdi
 	// Validate verdict field
 	const verdict = obj.verdict;
 	if (verdict !== "PASS" && verdict !== "NEEDS_FIXES") {
-		return { ...FAIL_OPEN_VERDICT, summary: `Invalid verdict value "${String(verdict)}" — fail-open policy applied` };
+		return {
+			...FAIL_OPEN_VERDICT,
+			summary: `Invalid verdict value "${String(verdict)}" — fail-open policy applied`,
+		};
 	}
 
 	// Parse confidence with fallback
@@ -407,9 +397,7 @@ function buildGitDiff(cwd: string): { diff: string; fileList: string } {
 			cwd,
 			timeout: 30000,
 		});
-		const fileList = fileListResult.status === 0
-			? fileListResult.stdout.trim()
-			: "";
+		const fileList = fileListResult.status === 0 ? fileListResult.stdout.trim() : "";
 
 		// Get full diff (truncated to avoid blowing up context)
 		const diffResult = spawnSync("git", ["diff", range], {
@@ -418,9 +406,7 @@ function buildGitDiff(cwd: string): { diff: string; fileList: string } {
 			timeout: 30000,
 			maxBuffer: 200 * 1024, // 200KB max
 		});
-		const diff = diffResult.status === 0
-			? diffResult.stdout.trim()
-			: "(git diff unavailable)";
+		const diff = diffResult.status === 0 ? diffResult.stdout.trim() : "(git diff unavailable)";
 
 		return { diff, fileList };
 	} catch {
@@ -455,13 +441,17 @@ function buildThresholdRules(threshold: PassThreshold): string[] {
 	const rules: string[] = [];
 
 	// Common rules — always apply
-	rules.push(`- **NEEDS_FIXES** if any finding has category \`status_mismatch\` (checkbox claims work is done but it isn't)`);
+	rules.push(
+		`- **NEEDS_FIXES** if any finding has category \`status_mismatch\` (checkbox claims work is done but it isn't)`,
+	);
 	rules.push(`- **NEEDS_FIXES** if any finding has severity \`critical\``);
 
 	// Threshold-specific rules
 	switch (threshold) {
 		case "no_critical":
-			rules.push(`- **PASS** even if there are \`important\` or \`suggestion\` findings (threshold: \`no_critical\`)`);
+			rules.push(
+				`- **PASS** even if there are \`important\` or \`suggestion\` findings (threshold: \`no_critical\`)`,
+			);
 			break;
 		case "no_important":
 			rules.push(`- **NEEDS_FIXES** if 3 or more findings have severity \`important\``);
@@ -488,22 +478,25 @@ export function generateQualityGatePrompt(context: QualityGateContext, cwd: stri
 		if (existsSync(context.promptPath)) {
 			promptContent = readFileSync(context.promptPath, "utf-8");
 		}
-	} catch { /* fail-open: proceed without */ }
+	} catch {
+		/* fail-open: proceed without */
+	}
 
 	let statusContent = "(STATUS.md not found)";
 	try {
 		if (existsSync(statusPath)) {
 			statusContent = readFileSync(statusPath, "utf-8");
 		}
-	} catch { /* fail-open: proceed without */ }
+	} catch {
+		/* fail-open: proceed without */
+	}
 
 	const { diff, fileList } = buildGitDiff(cwd);
 
 	// Truncate diff if too long (keep first 100KB)
 	const maxDiffLen = 100 * 1024;
-	const truncatedDiff = diff.length > maxDiffLen
-		? diff.slice(0, maxDiffLen) + "\n\n... (diff truncated at 100KB) ..."
-		: diff;
+	const truncatedDiff =
+		diff.length > maxDiffLen ? diff.slice(0, maxDiffLen) + "\n\n... (diff truncated at 100KB) ..." : diff;
 
 	return [
 		`# Quality Gate Review`,
@@ -670,9 +663,9 @@ export interface ReconciliationAction {
  */
 function normalizeCheckboxText(text: string): string {
 	return text
-		.replace(/\*\*|__|``|`/g, "")       // strip bold/code formatting
-		.replace(/\s+/g, " ")                // collapse whitespace
-		.replace(/^\s*[-*•]\s*/, "")          // strip leading bullets
+		.replace(/\*\*|__|``|`/g, "") // strip bold/code formatting
+		.replace(/\s+/g, " ") // collapse whitespace
+		.replace(/^\s*[-*•]\s*/, "") // strip leading bullets
 		.trim()
 		.toLowerCase();
 }
@@ -742,7 +735,11 @@ export function applyStatusReconciliation(
 		const normalizedRecon = normalizeCheckboxText(recon.checkbox);
 		if (!normalizedRecon) {
 			result.unmatched++;
-			result.actions.push({ checkbox: recon.checkbox, outcome: "unmatched", reason: "Empty checkbox text after normalization" });
+			result.actions.push({
+				checkbox: recon.checkbox,
+				outcome: "unmatched",
+				reason: "Empty checkbox text after normalization",
+			});
 			continue;
 		}
 
@@ -755,7 +752,11 @@ export function applyStatusReconciliation(
 
 			const lineText = normalizeCheckboxText(cbMatch[4]);
 			// Match if either contains the other (handles paraphrasing)
-			if (lineText === normalizedRecon || lineText.includes(normalizedRecon) || normalizedRecon.includes(lineText)) {
+			if (
+				lineText === normalizedRecon ||
+				lineText.includes(normalizedRecon) ||
+				normalizedRecon.includes(lineText)
+			) {
 				matchedIdx = i;
 				break;
 			}
@@ -763,7 +764,11 @@ export function applyStatusReconciliation(
 
 		if (matchedIdx === -1) {
 			result.unmatched++;
-			result.actions.push({ checkbox: recon.checkbox, outcome: "unmatched", reason: "No matching checkbox found in STATUS.md" });
+			result.actions.push({
+				checkbox: recon.checkbox,
+				outcome: "unmatched",
+				reason: "No matching checkbox found in STATUS.md",
+			});
 			continue;
 		}
 
@@ -787,25 +792,36 @@ export function applyStatusReconciliation(
 				// Add partial annotation
 				lines[matchedIdx] = `${cbMatch[1]} ${cbMatch[3]}${currentText} (partial)`;
 				result.changed++;
-				result.actions.push({ checkbox: recon.checkbox, outcome: "unchecked", reason: "Added (partial) annotation" });
+				result.actions.push({
+					checkbox: recon.checkbox,
+					outcome: "unchecked",
+					reason: "Added (partial) annotation",
+				});
 			} else {
 				result.alreadyCorrect++;
-				result.actions.push({ checkbox: recon.checkbox, outcome: "no_change", reason: `Already unchecked (${recon.actualState})` });
+				result.actions.push({
+					checkbox: recon.checkbox,
+					outcome: "no_change",
+					reason: `Already unchecked (${recon.actualState})`,
+				});
 			}
 		} else if (shouldBeChecked && !currentlyChecked) {
 			// Need to check
 			lines[matchedIdx] = `${cbMatch[1]}x${cbMatch[3]}${currentText}`;
 			result.changed++;
-			result.actions.push({ checkbox: recon.checkbox, outcome: "checked", reason: "Work done but box was unchecked" });
+			result.actions.push({
+				checkbox: recon.checkbox,
+				outcome: "checked",
+				reason: "Work done but box was unchecked",
+			});
 		} else {
 			// currentlyChecked but should not be (not_done or partial)
 			const annotation = recon.actualState === "partial" ? " (partial)" : "";
 			const cleanText = currentText.replace(/\s*\(partial\)\s*$/, "");
 			lines[matchedIdx] = `${cbMatch[1]} ${cbMatch[3]}${cleanText}${annotation}`;
 			result.changed++;
-			const outcomeReason = recon.actualState === "partial"
-				? "Unchecked — work partially done"
-				: "Unchecked — work not done";
+			const outcomeReason =
+				recon.actualState === "partial" ? "Unchecked — work partially done" : "Unchecked — work not done";
 			result.actions.push({ checkbox: recon.checkbox, outcome: "unchecked", reason: outcomeReason });
 		}
 	}
@@ -860,17 +876,15 @@ export function generateFeedbackMd(
 	maxCycles: number,
 	passThreshold: PassThreshold = "no_critical",
 ): string {
-	const criticals = verdict.findings.filter(f => f.severity === "critical");
-	const importants = verdict.findings.filter(f => f.severity === "important");
-	const suggestions = verdict.findings.filter(f => f.severity === "suggestion");
-	const mismatches = verdict.statusReconciliation.filter(r => r.actualState !== "done");
+	const criticals = verdict.findings.filter((f) => f.severity === "critical");
+	const importants = verdict.findings.filter((f) => f.severity === "important");
+	const suggestions = verdict.findings.filter((f) => f.severity === "suggestion");
+	const mismatches = verdict.statusReconciliation.filter((r) => r.actualState !== "done");
 
 	// Under all_clear, suggestions are also blocking
 	const includeSuggestions = passThreshold === "all_clear";
 
-	const blockingLabel = includeSuggestions
-		? "critical, important, and suggestion"
-		: "critical and important";
+	const blockingLabel = includeSuggestions ? "critical, important, and suggestion" : "critical and important";
 
 	const lines: string[] = [
 		`# Review Feedback — Cycle ${cycleNum}/${maxCycles}`,
@@ -940,14 +954,18 @@ export function generateFeedbackMd(
 		lines.push(``);
 	}
 
-	const totalBlocking = criticals.length + importants.length
-		+ (includeSuggestions ? suggestions.length : 0) + mismatches.length;
+	const totalBlocking =
+		criticals.length + importants.length + (includeSuggestions ? suggestions.length : 0) + mismatches.length;
 
 	if (totalBlocking === 0) {
 		lines.push(`## No blocking findings`);
 		lines.push(``);
-		lines.push(`The review returned NEEDS_FIXES but no blocking findings were extracted for threshold \`${passThreshold}\`.`);
-		lines.push(`This may indicate a threshold or verdict-rule mismatch. Review the REVIEW_VERDICT.json for details.`);
+		lines.push(
+			`The review returned NEEDS_FIXES but no blocking findings were extracted for threshold \`${passThreshold}\`.`,
+		);
+		lines.push(
+			`This may indicate a threshold or verdict-rule mismatch. Review the REVIEW_VERDICT.json for details.`,
+		);
 		lines.push(``);
 	}
 
@@ -966,11 +984,7 @@ export function generateFeedbackMd(
  * @param cycleNum - Current fix cycle number
  * @returns Prompt string for the fix agent
  */
-export function buildFixAgentPrompt(
-	context: QualityGateContext,
-	feedbackContent: string,
-	cycleNum: number,
-): string {
+export function buildFixAgentPrompt(context: QualityGateContext, feedbackContent: string, cycleNum: number): string {
 	const statusPath = join(context.taskFolder, "STATUS.md");
 
 	let statusContent = "(STATUS.md not found)";
@@ -978,14 +992,18 @@ export function buildFixAgentPrompt(
 		if (existsSync(statusPath)) {
 			statusContent = readFileSync(statusPath, "utf-8");
 		}
-	} catch { /* proceed without */ }
+	} catch {
+		/* proceed without */
+	}
 
 	let promptContent = "(PROMPT.md not found)";
 	try {
 		if (existsSync(context.promptPath)) {
 			promptContent = readFileSync(context.promptPath, "utf-8");
 		}
-	} catch { /* proceed without */ }
+	} catch {
+		/* proceed without */
+	}
 
 	return [
 		`# Quality Gate Remediation — Fix Cycle ${cycleNum}`,

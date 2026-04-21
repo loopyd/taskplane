@@ -11,6 +11,8 @@
  */
 
 import { describe, it, mock, afterEach } from "node:test";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { expect } from "./expect.ts";
 
 // ── fs mocking for emitDiagnosticReports tests ──────────────────────
@@ -34,12 +36,8 @@ mock.module("fs", {
 
 // Dynamic imports so the module-under-test picks up the mocked 'fs'.
 // These MUST be after mock.module() to intercept the module's 'fs' import.
-const {
-	buildDiagnosticEvents,
-	eventsToJsonl,
-	buildMarkdownReport,
-	emitDiagnosticReports,
-} = await import("../taskplane/diagnostic-reports.ts");
+const { buildDiagnosticEvents, eventsToJsonl, buildMarkdownReport, emitDiagnosticReports } =
+	await import("../taskplane/diagnostic-reports.ts");
 type DiagnosticReportInput = import("../taskplane/diagnostic-reports.ts").DiagnosticReportInput;
 type DiagnosticEvent = import("../taskplane/diagnostic-reports.ts").DiagnosticEvent;
 
@@ -75,12 +73,12 @@ function makeInput(overrides: Partial<DiagnosticReportInput> = {}): DiagnosticRe
 				worktree_prefix: "orch",
 				integration: "manual",
 			},
-		} as OrchestratorConfig,
+		} as unknown as OrchestratorConfig,
 		batchId: "test-batch-001",
 		phase: "completed",
 		mode: "repo",
 		startedAt: 1710000000000,
-		endedAt: 1710000300000,    // 300 seconds
+		endedAt: 1710000300000, // 300 seconds
 		tasks: [],
 		diagnostics: defaultBatchDiagnostics(),
 		succeededTasks: 0,
@@ -104,14 +102,10 @@ describe("buildDiagnosticEvents", () => {
 
 	it("sorts events deterministically by taskId", () => {
 		const input = makeInput({
-			tasks: [
-				makeTask("ZZ-003"),
-				makeTask("AA-001"),
-				makeTask("MM-002"),
-			],
+			tasks: [makeTask("ZZ-003"), makeTask("AA-001"), makeTask("MM-002")],
 		});
 		const events = buildDiagnosticEvents(input);
-		expect(events.map(e => e.taskId)).toEqual(["AA-001", "MM-002", "ZZ-003"]);
+		expect(events.map((e) => e.taskId)).toEqual(["AA-001", "MM-002", "ZZ-003"]);
 	});
 
 	it("uses taskExits as primary data source (precedence over exitDiagnostic)", () => {
@@ -125,17 +119,17 @@ describe("buildDiagnosticEvents", () => {
 				taskExits: {
 					"TP-001": {
 						classification: "completed",
-						cost: 0.50,
+						cost: 0.5,
 						durationSec: 120,
 						retries: 0,
 					},
 				},
-				batchCost: 0.50,
+				batchCost: 0.5,
 			},
 		});
 		const events = buildDiagnosticEvents(input);
 		expect(events[0].classification).toBe("completed");
-		expect(events[0].cost).toBe(0.50);
+		expect(events[0].cost).toBe(0.5);
 		expect(events[0].durationSec).toBe(120);
 	});
 
@@ -150,7 +144,7 @@ describe("buildDiagnosticEvents", () => {
 		});
 		const events = buildDiagnosticEvents(input);
 		expect(events[0].classification).toBe("api_error");
-		expect(events[0].cost).toBe(0);  // no cost in exitDiagnostic
+		expect(events[0].cost).toBe(0); // no cost in exitDiagnostic
 	});
 
 	it("falls back to 'unknown' when both taskExits and exitDiagnostic missing", () => {
@@ -167,7 +161,7 @@ describe("buildDiagnosticEvents", () => {
 			tasks: [
 				makeTask("TP-001", {
 					startedAt: 1710000000000,
-					endedAt: 1710000090000,  // 90 seconds
+					endedAt: 1710000090000, // 90 seconds
 				}),
 			],
 		});
@@ -244,12 +238,12 @@ describe("buildDiagnosticEvents", () => {
 				taskExits: {
 					"TP-001": {
 						classification: "completed",
-						cost: 0.10,
+						cost: 0.1,
 						durationSec: 30,
 						retries: 3,
 					},
 				},
-				batchCost: 0.10,
+				batchCost: 0.1,
 			},
 		});
 		const events = buildDiagnosticEvents(input);
@@ -291,7 +285,7 @@ describe("eventsToJsonl", () => {
 				mode: "repo",
 				taskId: "T-002",
 				status: "failed",
-				classification: "crash",
+				classification: "process_crash",
 				cost: 0.3,
 				durationSec: 30,
 				retries: 1,
@@ -317,7 +311,7 @@ describe("eventsToJsonl", () => {
 
 		const parsed1 = JSON.parse(lines[1]);
 		expect(parsed1.taskId).toBe("T-002");
-		expect(parsed1.classification).toBe("crash");
+		expect(parsed1.classification).toBe("process_crash");
 	});
 
 	it("produces empty content for empty events", () => {
@@ -362,8 +356,8 @@ describe("buildMarkdownReport", () => {
 			],
 			diagnostics: {
 				taskExits: {
-					"TP-001": { classification: "completed", cost: 0.10, durationSec: 60, retries: 0 },
-					"TP-002": { classification: "crash", cost: 0.05, durationSec: 30, retries: 1 },
+					"TP-001": { classification: "completed", cost: 0.1, durationSec: 60, retries: 0 },
+					"TP-002": { classification: "process_crash", cost: 0.05, durationSec: 30, retries: 1 },
 				},
 				batchCost: 0.15,
 			},
@@ -373,7 +367,7 @@ describe("buildMarkdownReport", () => {
 
 		expect(report).toContain("## Per-Task Results");
 		expect(report).toContain("| TP-001 | succeeded | completed | $0.1000 |");
-		expect(report).toContain("| TP-002 | failed | crash | $0.0500 |");
+		expect(report).toContain("| TP-002 | failed | process_crash | $0.0500 |");
 	});
 
 	it("shows empty message when no tasks", () => {
@@ -394,9 +388,9 @@ describe("buildMarkdownReport", () => {
 			],
 			diagnostics: {
 				taskExits: {
-					"TP-001": { classification: "completed", cost: 0.10, durationSec: 60 },
-					"TP-002": { classification: "crash", cost: 0.05, durationSec: 30 },
-					"TP-003": { classification: "completed", cost: 0.20, durationSec: 90 },
+					"TP-001": { classification: "completed", cost: 0.1, durationSec: 60 },
+					"TP-002": { classification: "process_crash", cost: 0.05, durationSec: 30 },
+					"TP-003": { classification: "completed", cost: 0.2, durationSec: 90 },
 				},
 				batchCost: 0.35,
 			},
@@ -440,7 +434,7 @@ describe("buildMarkdownReport", () => {
 	it("formats duration correctly", () => {
 		const input = makeInput({
 			startedAt: 1710000000000,
-			endedAt: 1710003661000,  // 3661 seconds = 1h 1m 1s
+			endedAt: 1710003661000, // 3661 seconds = 1h 1m 1s
 		});
 		const events = buildDiagnosticEvents(input);
 		const report = buildMarkdownReport(input, events);
@@ -456,6 +450,58 @@ describe("buildMarkdownReport", () => {
 		const report = buildMarkdownReport(input, events);
 
 		expect(report).toContain("$0.00");
+	});
+
+	it("includes reviewer role metrics in generic agent diagnostics", () => {
+		const tempRoot = origFs.mkdtempSync(join(tmpdir(), "taskplane-review-metrics-"));
+		try {
+			const taskFolder = join(tempRoot, "TP-001");
+			const reviewsDir = join(taskFolder, ".reviews");
+			origFs.mkdirSync(reviewsDir, { recursive: true });
+			origFs.writeFileSync(
+				join(reviewsDir, "R001-plan-step1.md"),
+				"### Verdict: APPROVE\n\nLooks good.\n",
+				"utf-8",
+			);
+			origFs.writeFileSync(
+				join(reviewsDir, "R002-code-step2.md"),
+				"### Verdict: REVISE\n\nPlease adjust edge cases.\n",
+				"utf-8",
+			);
+
+			const input = makeInput({
+				tasks: [makeTask("TP-001", { taskFolder })],
+				totalTasks: 1,
+				succeededTasks: 1,
+			});
+
+			const events = buildDiagnosticEvents(input);
+			const report = buildMarkdownReport(input, events);
+
+			expect(report).toContain("## Agent Diagnostics");
+			expect(report).toContain("### Reviewer");
+			expect(report).toContain("| Runs | 2 |");
+			expect(report).toContain("| Succeeded | 1 |");
+			expect(report).toContain("| Failed | 1 |");
+			expect(report).toContain("| APPROVE | 1 |");
+			expect(report).toContain("| REVISE | 1 |");
+			expect(report).toContain("| TP-001 | 2 | 1 | 1 | $0.00 | 0s | 0 | REVISE |");
+		} finally {
+			origFs.rmSync(tempRoot, { recursive: true, force: true });
+		}
+	});
+
+	it("shows no-review message when reviewer diagnostics are empty", () => {
+		const input = makeInput({ tasks: [makeTask("TP-001")] });
+		const events = buildDiagnosticEvents(input);
+		const report = buildMarkdownReport(input, events);
+
+		expect(report).toContain("## Agent Diagnostics");
+		expect(report).toContain("### Worker");
+		expect(report).toContain("### Reviewer");
+		expect(report).toContain("### Supervisor");
+		expect(report).toContain("### Merger");
+		expect(report).toContain("_No reviewer runs recorded._");
 	});
 });
 
@@ -524,8 +570,8 @@ describe("emitDiagnosticReports — robustness", () => {
 			failedTasks: 1,
 			diagnostics: {
 				taskExits: {
-					"TP-001": { classification: "completed", cost: 0.10, durationSec: 60, retries: 0 },
-					"TP-002": { classification: "crash", cost: 0.05, durationSec: 30, retries: 1 },
+					"TP-001": { classification: "completed", cost: 0.1, durationSec: 60, retries: 0 },
+					"TP-002": { classification: "process_crash", cost: 0.05, durationSec: 30, retries: 1 },
 				},
 				batchCost: 0.15,
 			},
@@ -537,8 +583,8 @@ describe("emitDiagnosticReports — robustness", () => {
 		expect(mockWriteFileSync).toHaveBeenCalledTimes(2);
 
 		// Check JSONL file
-		const jsonlCall = mockWriteFileSync.mock.calls.find(
-			(call: any) => String(call.arguments[0]).endsWith("-events.jsonl"),
+		const jsonlCall = mockWriteFileSync.mock.calls.find((call: any) =>
+			String(call.arguments[0]).endsWith("-events.jsonl"),
 		);
 		expect(jsonlCall).toBeDefined();
 		const jsonlPath = String(jsonlCall!.arguments[0]);
@@ -560,8 +606,8 @@ describe("emitDiagnosticReports — robustness", () => {
 		}
 
 		// Check markdown file
-		const mdCall = mockWriteFileSync.mock.calls.find(
-			(call: any) => String(call.arguments[0]).endsWith("-report.md"),
+		const mdCall = mockWriteFileSync.mock.calls.find((call: any) =>
+			String(call.arguments[0]).endsWith("-report.md"),
 		);
 		expect(mdCall).toBeDefined();
 		const mdPath = String(mdCall!.arguments[0]);

@@ -27,23 +27,13 @@ import {
 	type ExitClassification,
 } from "../taskplane/diagnostics.ts";
 
-import {
-	TIER0_RETRYABLE_CLASSIFICATIONS,
-	TIER0_RETRY_BUDGETS,
-	tier0ScopeKey,
-} from "../taskplane/types.ts";
+import { TIER0_RETRYABLE_CLASSIFICATIONS, TIER0_RETRY_BUDGETS, tier0ScopeKey } from "../taskplane/types.ts";
 
-import type {
-	Tier0RecoveryPattern,
-} from "../taskplane/types.ts";
+import type { Tier0RecoveryPattern } from "../taskplane/types.ts";
 
-import {
-	DEFAULT_TASK_RUNNER_SECTION,
-} from "../taskplane/config-schema.ts";
+import { DEFAULT_TASK_RUNNER_SECTION } from "../taskplane/config-schema.ts";
 
-import type {
-	ModelFallbackMode,
-} from "../taskplane/config-schema.ts";
+import type { ModelFallbackMode } from "../taskplane/config-schema.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -131,7 +121,7 @@ describe("model_access_error classification", () => {
 			"connection timeout",
 			"network error",
 			"overloaded",
-			"service unavailable",  // generic, not model-specific
+			"service unavailable", // generic, not model-specific
 			"unknown error occurred",
 			"context window exceeded",
 			"max tokens exceeded",
@@ -139,7 +129,7 @@ describe("model_access_error classification", () => {
 		];
 
 		for (const pattern of negativePatterns) {
-			it(`does NOT match: "${pattern || '(empty string)'}"`, () => {
+			it(`does NOT match: "${pattern || "(empty string)"}"`, () => {
 				expect(isModelAccessError(pattern)).toBe(false);
 			});
 		}
@@ -149,9 +139,7 @@ describe("model_access_error classification", () => {
 		it("classifies model_access_error when last retry error matches pattern", () => {
 			const input = makeInput({
 				exitSummary: makeSummary({
-					retries: [
-						{ attempt: 1, error: "rate_limit_exceeded", delayMs: 5000, succeeded: false },
-					],
+					retries: [{ attempt: 1, error: "rate_limit_exceeded", delayMs: 5000, succeeded: false }],
 				}),
 			});
 			expect(classifyExit(input)).toBe("model_access_error");
@@ -160,9 +148,7 @@ describe("model_access_error classification", () => {
 		it("classifies model_access_error for 401 error in retries", () => {
 			const input = makeInput({
 				exitSummary: makeSummary({
-					retries: [
-						{ attempt: 1, error: "HTTP 401 Unauthorized", delayMs: 1000, succeeded: false },
-					],
+					retries: [{ attempt: 1, error: "HTTP 401 Unauthorized", delayMs: 1000, succeeded: false }],
 				}),
 			});
 			expect(classifyExit(input)).toBe("model_access_error");
@@ -171,9 +157,7 @@ describe("model_access_error classification", () => {
 		it("classifies model_access_error for model not found", () => {
 			const input = makeInput({
 				exitSummary: makeSummary({
-					retries: [
-						{ attempt: 1, error: "model not found: gpt-5-turbo", delayMs: 1000, succeeded: false },
-					],
+					retries: [{ attempt: 1, error: "model not found: gpt-5-turbo", delayMs: 1000, succeeded: false }],
 				}),
 			});
 			expect(classifyExit(input)).toBe("model_access_error");
@@ -182,9 +166,7 @@ describe("model_access_error classification", () => {
 		it("classifies api_error for non-model retry errors", () => {
 			const input = makeInput({
 				exitSummary: makeSummary({
-					retries: [
-						{ attempt: 1, error: "internal_server_error", delayMs: 1000, succeeded: false },
-					],
+					retries: [{ attempt: 1, error: "internal_server_error", delayMs: 1000, succeeded: false }],
 				}),
 			});
 			expect(classifyExit(input)).toBe("api_error");
@@ -217,9 +199,7 @@ describe("model_access_error classification", () => {
 			const input = makeInput({
 				doneFileFound: true,
 				exitSummary: makeSummary({
-					retries: [
-						{ attempt: 1, error: "rate_limit_exceeded", delayMs: 1000, succeeded: false },
-					],
+					retries: [{ attempt: 1, error: "rate_limit_exceeded", delayMs: 1000, succeeded: false }],
 				}),
 			});
 			expect(classifyExit(input)).toBe("completed");
@@ -229,9 +209,7 @@ describe("model_access_error classification", () => {
 			const input = makeInput({
 				exitSummary: makeSummary({
 					compactions: 2,
-					retries: [
-						{ attempt: 1, error: "model not found", delayMs: 1000, succeeded: false },
-					],
+					retries: [{ attempt: 1, error: "model not found", delayMs: 1000, succeeded: false }],
 				}),
 				contextPct: 95,
 			});
@@ -241,9 +219,7 @@ describe("model_access_error classification", () => {
 		it("model_access_error beats wall_clock_timeout", () => {
 			const input = makeInput({
 				exitSummary: makeSummary({
-					retries: [
-						{ attempt: 1, error: "authentication failed", delayMs: 1000, succeeded: false },
-					],
+					retries: [{ attempt: 1, error: "authentication failed", delayMs: 1000, succeeded: false }],
 				}),
 				timerKilled: true,
 			});
@@ -403,10 +379,11 @@ describe("model fallback retry logic", () => {
 		});
 
 		it("executeLaneV2 batchId resolution preserves config-first fallback chain", () => {
-			expect(executionSource).toContain("config.orchestrator?.batchId || extraEnvVars?.ORCH_BATCH_ID || String(Date.now())");
+			expect(executionSource).toContain(
+				"config.orchestrator?.batchId || extraEnvVars?.ORCH_BATCH_ID || String(Date.now())",
+			);
 		});
 	});
-
 });
 
 // ── 4. Edge Cases ────────────────────────────────────────────────────
@@ -424,9 +401,7 @@ describe("model fallback edge cases", () => {
 		it("api_error (generic) is not model_access_error", () => {
 			const input = makeInput({
 				exitSummary: makeSummary({
-					retries: [
-						{ attempt: 1, error: "overloaded", delayMs: 1000, succeeded: false },
-					],
+					retries: [{ attempt: 1, error: "overloaded", delayMs: 1000, succeeded: false }],
 				}),
 			});
 			expect(classifyExit(input)).toBe("api_error");

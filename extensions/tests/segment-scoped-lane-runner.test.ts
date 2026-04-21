@@ -14,11 +14,7 @@
 import { describe, it } from "node:test";
 import { expect } from "./expect.ts";
 
-import {
-	getStepsForRepoId,
-	getSegmentCheckboxes,
-	isSegmentComplete,
-} from "../taskplane/lane-runner.ts";
+import { getStepsForRepoId, getSegmentCheckboxes, isSegmentComplete } from "../taskplane/lane-runner.ts";
 
 import type { StepSegmentMapping } from "../taskplane/types.ts";
 
@@ -44,9 +40,7 @@ const MULTI_SEGMENT_MAP: StepSegmentMapping[] = [
 	{
 		stepNumber: 2,
 		stepName: "Documentation & Delivery",
-		segments: [
-			{ repoId: "shared-libs", checkboxes: ["- [ ] Update STATUS.md"] },
-		],
+		segments: [{ repoId: "shared-libs", checkboxes: ["- [ ] Update STATUS.md"] }],
 	},
 ];
 
@@ -54,16 +48,12 @@ const SINGLE_SEGMENT_MAP: StepSegmentMapping[] = [
 	{
 		stepNumber: 0,
 		stepName: "Preflight",
-		segments: [
-			{ repoId: "default", checkboxes: ["- [ ] Verify project structure"] },
-		],
+		segments: [{ repoId: "default", checkboxes: ["- [ ] Verify project structure"] }],
 	},
 	{
 		stepNumber: 1,
 		stepName: "Implement feature",
-		segments: [
-			{ repoId: "default", checkboxes: ["- [ ] Create src/utils.js", "- [ ] Add tests"] },
-		],
+		segments: [{ repoId: "default", checkboxes: ["- [ ] Create src/utils.js", "- [ ] Add tests"] }],
 	},
 ];
 
@@ -397,7 +387,9 @@ describe("7.x: Legacy fallback — no behavior change for tasks without markers"
 	});
 
 	it("7.3: segment prompt block skipped when repoStepNumbers is null", () => {
-		expect(laneRunnerSrc).toContain("if (stepSegmentMap && currentRepoId && repoStepNumbers && remainingSteps.length > 0)");
+		expect(laneRunnerSrc).toContain(
+			"if (stepSegmentMap && currentRepoId && repoStepNumbers && remainingSteps.length > 0)",
+		);
 	});
 
 	it("7.4: progress counting falls back to full-task when no segment context", () => {
@@ -413,7 +405,9 @@ describe("7.x: Legacy fallback — no behavior change for tasks without markers"
 	});
 
 	it("7.6: emitSnapshot receives null segmentContext for non-segment tasks", () => {
-		expect(laneRunnerSrc).toContain("snapshotSegmentCtx: { stepSegmentMap: StepSegmentMapping[]; repoId: string } | null");
+		expect(laneRunnerSrc).toContain(
+			"snapshotSegmentCtx: { stepSegmentMap: StepSegmentMapping[]; repoId: string } | null",
+		);
 	});
 });
 
@@ -431,7 +425,9 @@ describe("8.x: Snapshot segment-scoped progress (emitSnapshot)", () => {
 	});
 
 	it("8.1: emitSnapshot accepts segmentContext parameter", () => {
-		expect(laneRunnerSrc).toContain("segmentContext?: { stepSegmentMap: StepSegmentMapping[]; repoId: string } | null");
+		expect(laneRunnerSrc).toContain(
+			"segmentContext?: { stepSegmentMap: StepSegmentMapping[]; repoId: string } | null",
+		);
 	});
 
 	it("8.2: emitSnapshot uses segment-scoped checked/total when segmentContext provided", () => {
@@ -446,6 +442,8 @@ describe("8.x: Snapshot segment-scoped progress (emitSnapshot)", () => {
 	});
 
 	it("8.4: makeResult passes segmentCtx to emitSnapshot", () => {
-		expect(laneRunnerSrc).toContain("emitSnapshot(config, taskId, segmentId, terminalStatus, finalTelemetry ?? {}, statusPath, reviewerStatePath, segmentCtx)");
+		expect(laneRunnerSrc).toContain(
+			"emitSnapshot(config, taskId, segmentId, terminalStatus, finalTelemetry ?? {}, statusPath, reviewerStatePath, segmentCtx)",
+		);
 	});
 });

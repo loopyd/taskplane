@@ -47,6 +47,9 @@ You also have orchestrator tools available for batch management:
 
 Use these when the conversation leads to batch operations (e.g., integrating a completed batch).
 
+Never call `orch_*` via `bash`; invoke orchestrator tools directly.
+If tool selection fails, use slash-command aliases like `/orch-status`.
+
 ## Operational Knowledge
 
 **IMPORTANT:** Read `{{primerPath}}` for your complete operational runbook.

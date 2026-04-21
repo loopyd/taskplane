@@ -40,7 +40,11 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-	try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ignore */ }
+	try {
+		rmSync(tmpDir, { recursive: true, force: true });
+	} catch {
+		/* ignore */
+	}
 	_resetRateLimits();
 });
 
@@ -58,7 +62,7 @@ describe("1.x: Agent outbox", () => {
 		});
 		const outDir = sessionOutboxDir(tmpDir, batchId, agentId);
 		expect(existsSync(outDir)).toBe(true);
-		const files = readdirSync(outDir).filter(f => f.endsWith(".msg.json"));
+		const files = readdirSync(outDir).filter((f) => f.endsWith(".msg.json"));
 		expect(files.length).toBe(1);
 		expect(msg.to).toBe("supervisor");
 		expect(msg.type).toBe("reply");
@@ -69,7 +73,7 @@ describe("1.x: Agent outbox", () => {
 		writeOutboxMessage(tmpDir, batchId, agentId, { from: agentId, type: "escalate", content: "second" });
 		const messages = readOutbox(tmpDir, batchId, agentId);
 		expect(messages.length).toBe(2);
-		const contents = messages.map(m => m.content).sort();
+		const contents = messages.map((m) => m.content).sort();
 		expect(contents).toContain("first");
 		expect(contents).toContain("second");
 	});
@@ -114,7 +118,16 @@ describe("1.x: Agent outbox", () => {
 		expect(readOutbox(tmpDir, batchId, agentId).length).toBe(1);
 		expect(ackOutboxMessage(tmpDir, batchId, agentId, msg.id)).toBe(true);
 		expect(readOutbox(tmpDir, batchId, agentId).length).toBe(0);
-		const processedPath = join(tmpDir, ".pi", "mailbox", batchId, agentId, "outbox", "processed", `${msg.id}.msg.json`);
+		const processedPath = join(
+			tmpDir,
+			".pi",
+			"mailbox",
+			batchId,
+			agentId,
+			"outbox",
+			"processed",
+			`${msg.id}.msg.json`,
+		);
 		expect(existsSync(processedPath)).toBe(true);
 	});
 });
@@ -132,7 +145,7 @@ describe("2.x: Broadcast messages", () => {
 		});
 		const broadcastInbox = join(tmpDir, ".pi", "mailbox", batchId, "_broadcast", "inbox");
 		expect(existsSync(broadcastInbox)).toBe(true);
-		const files = readdirSync(broadcastInbox).filter(f => f.endsWith(".msg.json"));
+		const files = readdirSync(broadcastInbox).filter((f) => f.endsWith(".msg.json"));
 		expect(files.length).toBe(1);
 		expect(msg.to).toBe("_broadcast");
 	});
@@ -424,8 +437,8 @@ describe("9.x: Outbox history (pending + processed)", () => {
 		ackOutboxMessage(tmpDir, bid, aid, msg2.id);
 		const history = readOutboxHistory(tmpDir, bid, aid);
 		expect(history.length).toBe(2);
-		const acked = history.filter(h => h.acked);
-		const pending = history.filter(h => !h.acked);
+		const acked = history.filter((h) => h.acked);
+		const pending = history.filter((h) => !h.acked);
 		expect(acked.length).toBe(1);
 		expect(pending.length).toBe(1);
 	});
@@ -460,7 +473,11 @@ describe("10.x: discoverMailboxAgentIds", () => {
 	});
 
 	it("10.4: includes agent with only processed outbox (no longer active)", () => {
-		const msg = writeOutboxMessage(tmpDir, bid, "dead-agent", { from: "dead-agent", type: "reply", content: "old" });
+		const msg = writeOutboxMessage(tmpDir, bid, "dead-agent", {
+			from: "dead-agent",
+			type: "reply",
+			content: "old",
+		});
 		ackOutboxMessage(tmpDir, bid, "dead-agent", msg.id);
 		const ids = discoverMailboxAgentIds(tmpDir, bid);
 		expect(ids).toContain("dead-agent");

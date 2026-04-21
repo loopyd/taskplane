@@ -16,7 +16,17 @@
  */
 
 import { execSync, spawnSync } from "child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync, readdirSync, unlinkSync, rmdirSync } from "fs";
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	rmSync,
+	writeFileSync,
+	readFileSync,
+	readdirSync,
+	unlinkSync,
+	rmdirSync,
+} from "fs";
 import { join, resolve, basename, dirname } from "path";
 import { tmpdir } from "os";
 import { fileURLToPath } from "url";
@@ -102,7 +112,9 @@ function initTestRepo(name: string = "test-repo"): string {
 
 	try {
 		execSync("git branch -M main", { cwd: repoDir, encoding: "utf-8", stdio: "pipe" });
-	} catch { /* might already be main */ }
+	} catch {
+		/* might already be main */
+	}
 	execSync("git branch develop", { cwd: repoDir, encoding: "utf-8", stdio: "pipe" });
 
 	return repoDir;
@@ -112,22 +124,32 @@ function cleanupTestRepo(repoDir: string): void {
 	const parentDir = resolve(repoDir, "..");
 	try {
 		const worktrees = execSync("git worktree list --porcelain", {
-			cwd: repoDir, encoding: "utf-8", stdio: "pipe",
+			cwd: repoDir,
+			encoding: "utf-8",
+			stdio: "pipe",
 		});
 		for (const line of worktrees.split("\n")) {
 			if (line.startsWith("worktree ") && !line.includes(repoDir)) {
 				const wtPath = line.slice("worktree ".length).trim();
 				try {
 					execSync(`git worktree remove --force "${wtPath}"`, {
-						cwd: repoDir, encoding: "utf-8", stdio: "pipe",
+						cwd: repoDir,
+						encoding: "utf-8",
+						stdio: "pipe",
 					});
-				} catch { /* ignore */ }
+				} catch {
+					/* ignore */
+				}
 			}
 		}
-	} catch { /* repo might already be gone */ }
+	} catch {
+		/* repo might already be gone */
+	}
 	try {
 		rmSync(parentDir, { recursive: true, force: true });
-	} catch { /* Windows may need a moment */ }
+	} catch {
+		/* Windows may need a moment */
+	}
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -147,17 +169,38 @@ describe("CR.1 Multi-repo cleanup — repos from earlier waves", () => {
 		const batchId = "multi001";
 
 		// Create worktrees in repo A (simulating wave 1 allocation)
-		createWorktree({
-			laneNumber: 1, batchId, baseBranch: "develop", opId: "test", prefix: prefixA,
-		}, repoA);
-		createWorktree({
-			laneNumber: 2, batchId, baseBranch: "develop", opId: "test", prefix: prefixA,
-		}, repoA);
+		createWorktree(
+			{
+				laneNumber: 1,
+				batchId,
+				baseBranch: "develop",
+				opId: "test",
+				prefix: prefixA,
+			},
+			repoA,
+		);
+		createWorktree(
+			{
+				laneNumber: 2,
+				batchId,
+				baseBranch: "develop",
+				opId: "test",
+				prefix: prefixA,
+			},
+			repoA,
+		);
 
 		// Create worktrees in repo B (simulating wave 2 allocation)
-		createWorktree({
-			laneNumber: 1, batchId, baseBranch: "develop", opId: "test", prefix: prefixB,
-		}, repoB);
+		createWorktree(
+			{
+				laneNumber: 1,
+				batchId,
+				baseBranch: "develop",
+				opId: "test",
+				prefix: prefixB,
+			},
+			repoB,
+		);
 
 		// Verify both repos have worktrees
 		assertEqual(listWorktrees(prefixA, repoA, "test", batchId).length, 2, "repo A should have 2 worktrees");
@@ -175,10 +218,16 @@ describe("CR.1 Multi-repo cleanup — repos from earlier waves", () => {
 		}
 
 		// Verify BOTH repos are fully cleaned — the critical check
-		assertEqual(listWorktrees(prefixA, repoA, "test", batchId).length, 0,
-			"repo A (wave-1-only) should have 0 worktrees after terminal cleanup");
-		assertEqual(listWorktrees(prefixB, repoB, "test", batchId).length, 0,
-			"repo B should have 0 worktrees after terminal cleanup");
+		assertEqual(
+			listWorktrees(prefixA, repoA, "test", batchId).length,
+			0,
+			"repo A (wave-1-only) should have 0 worktrees after terminal cleanup",
+		);
+		assertEqual(
+			listWorktrees(prefixB, repoB, "test", batchId).length,
+			0,
+			"repo B should have 0 worktrees after terminal cleanup",
+		);
 
 		// Verify lane branches are deleted in both repos
 		const branchCheckA1 = runGit(["rev-parse", "--verify", "refs/heads/task/test-lane-1-multi001"], repoA);
@@ -214,21 +263,33 @@ describe("CR.1 Multi-repo cleanup — repos from earlier waves", () => {
 		const prefixA = basename(repoA);
 		const prefixB = basename(repoB);
 
-		createWorktree({
-			laneNumber: 1, batchId: "batchX", baseBranch: "develop", opId: "test", prefix: prefixA,
-		}, repoA);
-		createWorktree({
-			laneNumber: 1, batchId: "batchY", baseBranch: "develop", opId: "test", prefix: prefixB,
-		}, repoB);
+		createWorktree(
+			{
+				laneNumber: 1,
+				batchId: "batchX",
+				baseBranch: "develop",
+				opId: "test",
+				prefix: prefixA,
+			},
+			repoA,
+		);
+		createWorktree(
+			{
+				laneNumber: 1,
+				batchId: "batchY",
+				baseBranch: "develop",
+				opId: "test",
+				prefix: prefixB,
+			},
+			repoB,
+		);
 
 		// Clean only batchX
 		removeAllWorktrees(prefixA, repoA, "test", "develop", "batchX");
 
 		// Repo A batch X cleaned, repo B batch Y untouched
-		assertEqual(listWorktrees(prefixA, repoA, "test", "batchX").length, 0,
-			"repo A batchX should be cleaned");
-		assertEqual(listWorktrees(prefixB, repoB, "test", "batchY").length, 1,
-			"repo B batchY should be untouched");
+		assertEqual(listWorktrees(prefixA, repoA, "test", "batchX").length, 0, "repo A batchX should be cleaned");
+		assertEqual(listWorktrees(prefixB, repoB, "test", "batchY").length, 1, "repo B batchY should be untouched");
 
 		cleanupTestRepo(repoA);
 		cleanupTestRepo(repoB);
@@ -246,9 +307,16 @@ describe("CR.2 Force cleanup fallback — git worktree remove failure path", () 
 		const batchId = "force001";
 
 		// Create a worktree
-		const wt = createWorktree({
-			laneNumber: 1, batchId, baseBranch: "develop", opId: "test", prefix,
-		}, repoDir);
+		const wt = createWorktree(
+			{
+				laneNumber: 1,
+				batchId,
+				baseBranch: "develop",
+				opId: "test",
+				prefix,
+			},
+			repoDir,
+		);
 
 		assert(existsSync(wt.path), "worktree should exist before corruption");
 
@@ -273,10 +341,14 @@ describe("CR.2 Force cleanup fallback — git worktree remove failure path", () 
 
 		// 3. Worktree should not be registered (after prune)
 		const worktreeList = execSync("git worktree list --porcelain", {
-			cwd: repoDir, encoding: "utf-8", stdio: "pipe",
+			cwd: repoDir,
+			encoding: "utf-8",
+			stdio: "pipe",
 		});
-		assert(!worktreeList.includes(wt.path.replace(/\\/g, "/")),
-			"worktree should not be in git worktree list after force cleanup");
+		assert(
+			!worktreeList.includes(wt.path.replace(/\\/g, "/")),
+			"worktree should not be in git worktree list after force cleanup",
+		);
 
 		cleanupTestRepo(repoDir);
 	});
@@ -286,9 +358,16 @@ describe("CR.2 Force cleanup fallback — git worktree remove failure path", () 
 		const prefix = basename(repoDir);
 		const batchId = "force002";
 
-		const wt = createWorktree({
-			laneNumber: 1, batchId, baseBranch: "develop", opId: "test", prefix,
-		}, repoDir);
+		const wt = createWorktree(
+			{
+				laneNumber: 1,
+				batchId,
+				baseBranch: "develop",
+				opId: "test",
+				prefix,
+			},
+			repoDir,
+		);
 
 		// Clean up normally first
 		removeWorktree(wt, repoDir);
@@ -310,13 +389,22 @@ describe("CR.2 Force cleanup fallback — git worktree remove failure path", () 
 		const prefix = basename(repoDir);
 		const batchId = "force003";
 
-		const wt = createWorktree({
-			laneNumber: 1, batchId, baseBranch: "develop", opId: "test", prefix,
-		}, repoDir);
+		const wt = createWorktree(
+			{
+				laneNumber: 1,
+				batchId,
+				baseBranch: "develop",
+				opId: "test",
+				prefix,
+			},
+			repoDir,
+		);
 
 		// Simulate an orphaned worktree: prune git state but leave directory
 		execSync(`git worktree remove --force "${wt.path}"`, {
-			cwd: repoDir, encoding: "utf-8", stdio: "pipe",
+			cwd: repoDir,
+			encoding: "utf-8",
+			stdio: "pipe",
 		});
 		// Recreate the directory as if it was left behind
 		mkdirSync(wt.path, { recursive: true });
@@ -344,9 +432,16 @@ describe("CR.3 .worktrees base-dir cleanup — subdirectory mode", () => {
 		const batchId = "basedir001";
 
 		// Create worktrees in subdirectory mode (default)
-		const wt = createWorktree({
-			laneNumber: 1, batchId, baseBranch: "develop", opId: "test", prefix,
-		}, repoDir);
+		const wt = createWorktree(
+			{
+				laneNumber: 1,
+				batchId,
+				baseBranch: "develop",
+				opId: "test",
+				prefix,
+			},
+			repoDir,
+		);
 
 		// .worktrees dir should exist
 		const worktreeBase = resolve(repoDir, ".worktrees");
@@ -375,9 +470,16 @@ describe("CR.3 .worktrees base-dir cleanup — subdirectory mode", () => {
 		const batchId = "basedir002";
 
 		// Create worktrees
-		createWorktree({
-			laneNumber: 1, batchId, baseBranch: "develop", opId: "test", prefix,
-		}, repoDir);
+		createWorktree(
+			{
+				laneNumber: 1,
+				batchId,
+				baseBranch: "develop",
+				opId: "test",
+				prefix,
+			},
+			repoDir,
+		);
 
 		// Add a leftover file to .worktrees to make it non-empty after cleanup
 		const worktreeBase = resolve(repoDir, ".worktrees");
@@ -399,8 +501,7 @@ describe("CR.3 .worktrees base-dir cleanup — subdirectory mode", () => {
 			orchestrator: { worktree_location: "subdirectory" as const },
 		} as OrchestratorConfig;
 		const basePath = resolveWorktreeBasePath("/tmp/test-repo", subdirConfig);
-		assertEqual(basePath, resolve("/tmp/test-repo", ".worktrees"),
-			"subdirectory mode base path");
+		assertEqual(basePath, resolve("/tmp/test-repo", ".worktrees"), "subdirectory mode base path");
 	});
 
 	test("resolveWorktreeBasePath returns parent dir for sibling mode", () => {
@@ -408,8 +509,7 @@ describe("CR.3 .worktrees base-dir cleanup — subdirectory mode", () => {
 			orchestrator: { worktree_location: "sibling" as const },
 		} as OrchestratorConfig;
 		const basePath = resolveWorktreeBasePath("/tmp/parent/test-repo", siblingConfig);
-		assertEqual(basePath, resolve("/tmp/parent/test-repo", ".."),
-			"sibling mode base path");
+		assertEqual(basePath, resolve("/tmp/parent/test-repo", ".."), "sibling mode base path");
 	});
 
 	test("sibling mode: parent directory is never removed even when no worktrees remain", () => {
@@ -425,15 +525,13 @@ describe("CR.3 .worktrees base-dir cleanup — subdirectory mode", () => {
 		const basePath = resolveWorktreeBasePath(repoDir, siblingConfig);
 
 		// basePath should NOT end with ".worktrees"
-		assert(!basePath.endsWith(".worktrees"),
-			"sibling mode base path should not end with .worktrees");
+		assert(!basePath.endsWith(".worktrees"), "sibling mode base path should not end with .worktrees");
 
 		// The engine.ts code gates .worktrees cleanup on basePath.endsWith(".worktrees").
 		// In sibling mode, this gate prevents removal of the parent directory.
 		// Verify the gate condition:
 		const wouldCleanup = basePath.endsWith(".worktrees");
-		assertEqual(wouldCleanup, false,
-			"sibling mode should NOT trigger .worktrees base-dir cleanup");
+		assertEqual(wouldCleanup, false, "sibling mode should NOT trigger .worktrees base-dir cleanup");
 
 		// Parent directory must still exist
 		assert(existsSync(parentDir), "parent dir must still exist (sibling mode safety)");
@@ -490,12 +588,14 @@ describe("CR.4 Merge worktree force cleanup — forceRemoveMergeWorktree pattern
 
 		// Verify the merge worktree is no longer registered in git
 		const wtList = execSync("git worktree list --porcelain", {
-			cwd: repoDir, encoding: "utf-8", stdio: "pipe",
+			cwd: repoDir,
+			encoding: "utf-8",
+			stdio: "pipe",
 		});
 		// Check no worktree line references the merge directory
 		const normalizedMergeDir = mergeWorkDir.replace(/\\/g, "/");
-		const wtLines = wtList.split("\n").filter(l => l.startsWith("worktree "));
-		const hasMergeWorktree = wtLines.some(l => {
+		const wtLines = wtList.split("\n").filter((l) => l.startsWith("worktree "));
+		const hasMergeWorktree = wtLines.some((l) => {
 			const wtPath = l.slice("worktree ".length).trim().replace(/\\/g, "/");
 			return wtPath === normalizedMergeDir;
 		});
@@ -504,7 +604,9 @@ describe("CR.4 Merge worktree force cleanup — forceRemoveMergeWorktree pattern
 		// Clean up temp branch
 		try {
 			execSync(`git branch -D "${tempBranch}"`, { cwd: repoDir, encoding: "utf-8", stdio: "pipe" });
-		} catch { /* may already be gone */ }
+		} catch {
+			/* may already be gone */
+		}
 
 		cleanupTestRepo(repoDir);
 	});
@@ -565,7 +667,9 @@ describe("CR.4 Merge worktree force cleanup — forceRemoveMergeWorktree pattern
 		// Clean up temp branch
 		try {
 			execSync(`git branch -D "${tempBranch}"`, { cwd: repoDir, encoding: "utf-8", stdio: "pipe" });
-		} catch { /* may already be gone */ }
+		} catch {
+			/* may already be gone */
+		}
 
 		cleanupTestRepo(repoDir);
 	});
@@ -573,24 +677,17 @@ describe("CR.4 Merge worktree force cleanup — forceRemoveMergeWorktree pattern
 	test("merge.ts callsites use forceRemoveMergeWorktree at both stale-prep and end-of-wave", () => {
 		// Structural verification that merge.ts calls forceRemoveMergeWorktree
 		// at both required locations (stale-prep and end-of-wave).
-		const mergeSource = readFileSync(
-			resolve(__dirname, "..", "taskplane", "merge.ts"),
-			"utf-8",
-		);
+		const mergeSource = readFileSync(resolve(__dirname, "..", "taskplane", "merge.ts"), "utf-8");
 
 		// Stale-prep cleanup (before creating new merge worktree)
-		const stalePrepMatch = mergeSource.match(
-			/Clean up stale merge worktree[\s\S]*?forceRemoveMergeWorktree/,
-		);
-		assert(stalePrepMatch !== null,
-			"merge.ts should call forceRemoveMergeWorktree for stale-prep cleanup");
+		const stalePrepMatch = mergeSource.match(/Clean up stale merge worktree[\s\S]*?forceRemoveMergeWorktree/);
+		assert(stalePrepMatch !== null, "merge.ts should call forceRemoveMergeWorktree for stale-prep cleanup");
 
 		// End-of-wave cleanup (after all lane merges complete)
 		const endOfWaveMatch = mergeSource.match(
 			/Clean up merge worktree and temp branch[\s\S]*?forceRemoveMergeWorktree/,
 		);
-		assert(endOfWaveMatch !== null,
-			"merge.ts should call forceRemoveMergeWorktree for end-of-wave cleanup");
+		assert(endOfWaveMatch !== null, "merge.ts should call forceRemoveMergeWorktree for end-of-wave cleanup");
 	});
 });
 
@@ -638,20 +735,15 @@ describe("CR.5 Engine-level multi-repo cleanup — behavioral verification", () 
 
 		// 2. For each repo: resolve prefix/target and call removeAllWorktrees
 		for (const [perRepoRoot, perRepoId] of encounteredRepoRoots) {
-			const prefix = perRepoRoot === repoA ? prefixA
-				: perRepoRoot === repoB ? prefixB
-				: prefixC;
+			const prefix = perRepoRoot === repoA ? prefixA : perRepoRoot === repoB ? prefixB : prefixC;
 			removeAllWorktrees(prefix, perRepoRoot, "test", "develop", batchId);
 		}
 
 		// 3. Verify ALL repos are fully cleaned (no worktrees, no lane branches)
 		for (const [perRepoRoot, perRepoId] of encounteredRepoRoots) {
-			const prefix = perRepoRoot === repoA ? prefixA
-				: perRepoRoot === repoB ? prefixB
-				: prefixC;
+			const prefix = perRepoRoot === repoA ? prefixA : perRepoRoot === repoB ? prefixB : prefixC;
 			const remaining = listWorktrees(prefix, perRepoRoot, "test", batchId);
-			assertEqual(remaining.length, 0,
-				`${perRepoId} should have 0 worktrees after terminal cleanup`);
+			assertEqual(remaining.length, 0, `${perRepoId} should have 0 worktrees after terminal cleanup`);
 		}
 
 		// 4. Verify lane branches are deleted in ALL repos
@@ -672,27 +764,25 @@ describe("CR.5 Engine-level multi-repo cleanup — behavioral verification", () 
 	test("engine.ts terminal cleanup delegates .worktrees cleanup to removeAllWorktrees", () => {
 		// Structural verification: engine.ts should NOT have its own .worktrees
 		// base-dir cleanup loop — removeAllWorktrees owns that responsibility.
-		const engineSource = readFileSync(
-			resolve(__dirname, "..", "taskplane", "engine.ts"),
-			"utf-8",
-		);
+		const engineSource = readFileSync(resolve(__dirname, "..", "taskplane", "engine.ts"), "utf-8");
 
 		// engine.ts should have a comment indicating delegation, not a readdirSync/rmdirSync loop
 		const hasDelegationComment = engineSource.includes(
 			"Empty .worktrees base-dir cleanup (subdirectory mode) is handled",
 		);
-		assert(hasDelegationComment,
-			"engine.ts should have delegation comment for .worktrees cleanup");
+		assert(hasDelegationComment, "engine.ts should have delegation comment for .worktrees cleanup");
 
 		// engine.ts should NOT import rmdirSync (it was removed as part of dedup)
 		const hasRmdirImport = /import.*rmdirSync.*from\s+"fs"/.test(engineSource);
-		assertEqual(hasRmdirImport, false,
-			"engine.ts should not import rmdirSync (cleanup delegated to removeAllWorktrees)");
+		assertEqual(
+			hasRmdirImport,
+			false,
+			"engine.ts should not import rmdirSync (cleanup delegated to removeAllWorktrees)",
+		);
 
 		// engine.ts should NOT import resolveWorktreeBasePath (no longer needed)
 		const hasResolveImport = /import.*resolveWorktreeBasePath.*from.*worktree/.test(engineSource);
-		assertEqual(hasResolveImport, false,
-			"engine.ts should not import resolveWorktreeBasePath (cleanup delegated)");
+		assertEqual(hasResolveImport, false, "engine.ts should not import resolveWorktreeBasePath (cleanup delegated)");
 	});
 
 	test("removeAllWorktrees handles .worktrees cleanup in subdirectory mode when config passed", () => {
@@ -707,9 +797,16 @@ describe("CR.5 Engine-level multi-repo cleanup — behavioral verification", () 
 		} as OrchestratorConfig;
 
 		// Create a worktree (creates .worktrees dir)
-		createWorktree({
-			laneNumber: 1, batchId, baseBranch: "develop", opId: "test", prefix,
-		}, repoDir);
+		createWorktree(
+			{
+				laneNumber: 1,
+				batchId,
+				baseBranch: "develop",
+				opId: "test",
+				prefix,
+			},
+			repoDir,
+		);
 
 		const worktreeBase = resolve(repoDir, ".worktrees");
 		assert(existsSync(worktreeBase), ".worktrees should exist after creating worktree");
@@ -718,8 +815,10 @@ describe("CR.5 Engine-level multi-repo cleanup — behavioral verification", () 
 		removeAllWorktrees(prefix, repoDir, "test", "develop", batchId, subdirConfig);
 
 		// .worktrees should be gone (removeAllWorktrees handles it when config is passed)
-		assert(!existsSync(worktreeBase),
-			".worktrees dir should be removed by removeAllWorktrees when empty and config is passed");
+		assert(
+			!existsSync(worktreeBase),
+			".worktrees dir should be removed by removeAllWorktrees when empty and config is passed",
+		);
 
 		cleanupTestRepo(repoDir);
 	});
@@ -731,11 +830,13 @@ describe("CR.5 Engine-level multi-repo cleanup — behavioral verification", () 
 
 describe("CR.6 Cleanup gate policy — computeCleanupGatePolicy", () => {
 	test("single-repo failure produces correct policy result", () => {
-		const failures: CleanupGateRepoFailure[] = [{
-			repoRoot: "/repos/api",
-			repoId: "api",
-			staleWorktrees: ["/repos/api/.worktrees/lane-1", "/repos/api/.worktrees/lane-2"],
-		}];
+		const failures: CleanupGateRepoFailure[] = [
+			{
+				repoRoot: "/repos/api",
+				repoId: "api",
+				staleWorktrees: ["/repos/api/.worktrees/lane-1", "/repos/api/.worktrees/lane-2"],
+			},
+		];
 
 		const result = computeCleanupGatePolicy(2, failures); // waveIndex=2 → wave 3
 
@@ -753,7 +854,10 @@ describe("CR.6 Cleanup gate policy — computeCleanupGatePolicy", () => {
 		assert(result.errorMessage.includes("/orch-resume"), "errorMessage should include recovery command");
 
 		// Notification includes manual recovery commands
-		assert(result.notifyMessage.includes("git worktree remove"), "notifyMessage should include manual cleanup command");
+		assert(
+			result.notifyMessage.includes("git worktree remove"),
+			"notifyMessage should include manual cleanup command",
+		);
 		assert(result.notifyMessage.includes("/orch-resume"), "notifyMessage should include resume command");
 		assert(result.notifyMessage.includes("lane-1"), "notifyMessage should include stale worktree paths");
 		assert(result.notifyMessage.includes("lane-2"), "notifyMessage should include stale worktree paths");
@@ -791,11 +895,13 @@ describe("CR.6 Cleanup gate policy — computeCleanupGatePolicy", () => {
 	});
 
 	test("default repoId renders as (default) in messages", () => {
-		const failures: CleanupGateRepoFailure[] = [{
-			repoRoot: "/repos/main",
-			repoId: undefined,
-			staleWorktrees: ["/repos/main/.worktrees/lane-1"],
-		}];
+		const failures: CleanupGateRepoFailure[] = [
+			{
+				repoRoot: "/repos/main",
+				repoId: undefined,
+				staleWorktrees: ["/repos/main/.worktrees/lane-1"],
+			},
+		];
 
 		const result = computeCleanupGatePolicy(0, failures);
 
@@ -817,12 +923,26 @@ describe("CR.6 Cleanup gate — behavioral: stale worktrees block wave advance",
 		const batchId = "gate001";
 
 		// Create worktrees in both repos
-		createWorktree({
-			laneNumber: 1, batchId, baseBranch: "develop", opId: "test", prefix: prefixA,
-		}, repoA);
-		createWorktree({
-			laneNumber: 1, batchId, baseBranch: "develop", opId: "test", prefix: prefixB,
-		}, repoB);
+		createWorktree(
+			{
+				laneNumber: 1,
+				batchId,
+				baseBranch: "develop",
+				opId: "test",
+				prefix: prefixA,
+			},
+			repoA,
+		);
+		createWorktree(
+			{
+				laneNumber: 1,
+				batchId,
+				baseBranch: "develop",
+				opId: "test",
+				prefix: prefixB,
+			},
+			repoB,
+		);
 
 		// Clean only repo A (simulating successful reset)
 		removeAllWorktrees(prefixA, repoA, "test", "develop", batchId);
@@ -840,7 +960,7 @@ describe("CR.6 Cleanup gate — behavioral: stale worktrees block wave advance",
 				cleanupGateFailures.push({
 					repoRoot: perRepoRoot,
 					repoId: perRepoId,
-					staleWorktrees: remaining.map(wt => wt.path),
+					staleWorktrees: remaining.map((wt) => wt.path),
 				});
 			}
 		}
@@ -865,12 +985,26 @@ describe("CR.6 Cleanup gate — behavioral: stale worktrees block wave advance",
 		const batchId = "gate002";
 
 		// Create and then clean worktrees
-		createWorktree({
-			laneNumber: 1, batchId, baseBranch: "develop", opId: "test", prefix,
-		}, repo);
-		createWorktree({
-			laneNumber: 2, batchId, baseBranch: "develop", opId: "test", prefix,
-		}, repo);
+		createWorktree(
+			{
+				laneNumber: 1,
+				batchId,
+				baseBranch: "develop",
+				opId: "test",
+				prefix,
+			},
+			repo,
+		);
+		createWorktree(
+			{
+				laneNumber: 2,
+				batchId,
+				baseBranch: "develop",
+				opId: "test",
+				prefix,
+			},
+			repo,
+		);
 
 		removeAllWorktrees(prefix, repo, "test", "develop", batchId);
 
@@ -905,12 +1039,26 @@ describe("CR.7 Cleanup gate regression — successful reset does NOT trigger gat
 		const batchId = "gater001";
 
 		// Create worktrees (simulating wave 1 allocation)
-		const wt1 = createWorktree({
-			laneNumber: 1, batchId, baseBranch: "develop", opId: "test", prefix,
-		}, repoDir);
-		const wt2 = createWorktree({
-			laneNumber: 2, batchId, baseBranch: "develop", opId: "test", prefix,
-		}, repoDir);
+		const wt1 = createWorktree(
+			{
+				laneNumber: 1,
+				batchId,
+				baseBranch: "develop",
+				opId: "test",
+				prefix,
+			},
+			repoDir,
+		);
+		const wt2 = createWorktree(
+			{
+				laneNumber: 2,
+				batchId,
+				baseBranch: "develop",
+				opId: "test",
+				prefix,
+			},
+			repoDir,
+		);
 
 		// Successfully reset both worktrees (simulating inter-wave reset)
 		const reset1 = safeResetWorktree(wt1, "develop", repoDir);
@@ -932,8 +1080,8 @@ describe("CR.7 Cleanup gate regression — successful reset does NOT trigger gat
 			// This block is never entered — all resets succeeded
 			for (const [perRepoRoot, { repoId, paths: failedPaths }] of failedRemovalWorktrees) {
 				const rem = listWorktrees(prefix, perRepoRoot, "test", batchId);
-				const remPaths = new Set(rem.map(wt => wt.path));
-				const stale = failedPaths.filter(p => remPaths.has(p));
+				const remPaths = new Set(rem.map((wt) => wt.path));
+				const stale = failedPaths.filter((p) => remPaths.has(p));
 				if (stale.length > 0) {
 					cleanupGateFailures.push({ repoRoot: perRepoRoot, repoId, staleWorktrees: stale });
 				}
@@ -941,8 +1089,11 @@ describe("CR.7 Cleanup gate regression — successful reset does NOT trigger gat
 		}
 
 		// Gate should NOT fire — no failures to report
-		assertEqual(cleanupGateFailures.length, 0,
-			"cleanup gate should NOT fire after successful resets (worktrees are reusable)");
+		assertEqual(
+			cleanupGateFailures.length,
+			0,
+			"cleanup gate should NOT fire after successful resets (worktrees are reusable)",
+		);
 
 		cleanupTestRepo(repoDir);
 	});
@@ -961,18 +1112,32 @@ describe("CR.7 Cleanup gate regression — successful reset does NOT trigger gat
 		const prefix = basename(repoDir);
 		const batchId = "gater002";
 
-		createWorktree({
-			laneNumber: 1, batchId, baseBranch: "develop", opId: "test", prefix,
-		}, repoDir);
-		createWorktree({
-			laneNumber: 2, batchId, baseBranch: "develop", opId: "test", prefix,
-		}, repoDir);
+		createWorktree(
+			{
+				laneNumber: 1,
+				batchId,
+				baseBranch: "develop",
+				opId: "test",
+				prefix,
+			},
+			repoDir,
+		);
+		createWorktree(
+			{
+				laneNumber: 2,
+				batchId,
+				baseBranch: "develop",
+				opId: "test",
+				prefix,
+			},
+			repoDir,
+		);
 
 		// Get the listed worktree info (production code uses this, not createWorktree return)
 		const listed = listWorktrees(prefix, repoDir, "test", batchId);
 		assertEqual(listed.length, 2, "should have 2 worktrees initially");
-		const wt1Listed = listed.find(w => w.laneNumber === 1)!;
-		const wt2Listed = listed.find(w => w.laneNumber === 2)!;
+		const wt1Listed = listed.find((w) => w.laneNumber === 1)!;
+		const wt2Listed = listed.find((w) => w.laneNumber === 2)!;
 
 		// Reset wt1 successfully (simulating normal inter-wave behavior)
 		const reset1 = safeResetWorktree(wt1Listed, "develop", repoDir);
@@ -988,8 +1153,8 @@ describe("CR.7 Cleanup gate regression — successful reset does NOT trigger gat
 		const cleanupGateFailures: CleanupGateRepoFailure[] = [];
 		for (const [perRepoRoot, { repoId, paths: failedPaths }] of failedRemovalWorktrees) {
 			const remaining = listWorktrees(prefix, perRepoRoot, "test", batchId);
-			const remainingPaths = new Set(remaining.map(wt => wt.path));
-			const stale = failedPaths.filter(p => remainingPaths.has(p));
+			const remainingPaths = new Set(remaining.map((wt) => wt.path));
+			const stale = failedPaths.filter((p) => remainingPaths.has(p));
 			if (stale.length > 0) {
 				cleanupGateFailures.push({ repoRoot: perRepoRoot, repoId, staleWorktrees: stale });
 			}
@@ -998,8 +1163,11 @@ describe("CR.7 Cleanup gate regression — successful reset does NOT trigger gat
 		// Gate should fire, but only for wt2
 		assertEqual(cleanupGateFailures.length, 1, "should detect 1 repo with stale worktrees");
 		assertEqual(cleanupGateFailures[0].staleWorktrees.length, 1, "only 1 stale worktree");
-		assertEqual(cleanupGateFailures[0].staleWorktrees[0], wt2Listed.path,
-			"stale worktree should be wt2 (the one that failed removal)");
+		assertEqual(
+			cleanupGateFailures[0].staleWorktrees[0],
+			wt2Listed.path,
+			"stale worktree should be wt2 (the one that failed removal)",
+		);
 
 		cleanupTestRepo(repoDir);
 	});
@@ -1011,9 +1179,16 @@ describe("CR.7 Cleanup gate regression — successful reset does NOT trigger gat
 		const prefix = basename(repoDir);
 		const batchId = "gater003";
 
-		const wt = createWorktree({
-			laneNumber: 1, batchId, baseBranch: "develop", opId: "test", prefix,
-		}, repoDir);
+		const wt = createWorktree(
+			{
+				laneNumber: 1,
+				batchId,
+				baseBranch: "develop",
+				opId: "test",
+				prefix,
+			},
+			repoDir,
+		);
 
 		// Force-cleanup the worktree (simulating reset fail → remove fail → force cleanup)
 		forceCleanupWorktree(wt, repoDir, batchId);
@@ -1026,31 +1201,35 @@ describe("CR.7 Cleanup gate regression — successful reset does NOT trigger gat
 		const cleanupGateFailures: CleanupGateRepoFailure[] = [];
 		for (const [perRepoRoot, { repoId, paths: failedPaths }] of failedRemovalWorktrees) {
 			const remaining = listWorktrees(prefix, perRepoRoot, "test", batchId);
-			const remainingPaths = new Set(remaining.map(wt => wt.path));
-			const stale = failedPaths.filter(p => remainingPaths.has(p));
+			const remainingPaths = new Set(remaining.map((wt) => wt.path));
+			const stale = failedPaths.filter((p) => remainingPaths.has(p));
 			if (stale.length > 0) {
 				cleanupGateFailures.push({ repoRoot: perRepoRoot, repoId, staleWorktrees: stale });
 			}
 		}
 
 		// Gate should NOT fire — forceCleanup successfully removed the worktree
-		assertEqual(cleanupGateFailures.length, 0,
-			"cleanup gate should not fire when forceCleanup actually succeeded");
+		assertEqual(cleanupGateFailures.length, 0, "cleanup gate should not fire when forceCleanup actually succeeded");
 
 		cleanupTestRepo(repoDir);
 	});
 
 	test("persistTrigger uses underscore format (cleanup_post_merge_failed)", () => {
 		// Verify the canonical classification token uses underscore per spec
-		const failures: CleanupGateRepoFailure[] = [{
-			repoRoot: "/repos/main",
-			repoId: undefined,
-			staleWorktrees: ["/repos/main/.worktrees/lane-1"],
-		}];
+		const failures: CleanupGateRepoFailure[] = [
+			{
+				repoRoot: "/repos/main",
+				repoId: undefined,
+				staleWorktrees: ["/repos/main/.worktrees/lane-1"],
+			},
+		];
 
 		const result = computeCleanupGatePolicy(0, failures);
-		assertEqual(result.persistTrigger, "cleanup_post_merge_failed",
-			"persistTrigger should use underscore format matching spec classification");
+		assertEqual(
+			result.persistTrigger,
+			"cleanup_post_merge_failed",
+			"persistTrigger should use underscore format matching spec classification",
+		);
 	});
 });
 

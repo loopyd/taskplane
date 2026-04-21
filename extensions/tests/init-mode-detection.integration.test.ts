@@ -69,7 +69,9 @@ function isGitRepoRoot(dir: string): boolean {
 			cwd: dir,
 			stdio: ["pipe", "pipe", "pipe"],
 			timeout: 5000,
-		}).toString().trim();
+		})
+			.toString()
+			.trim();
 		// Normalize paths for comparison (handles Windows path separators
 		// and 8.3 short name mismatches on Windows)
 		const normalizedToplevel = resolve(toplevel);
@@ -77,7 +79,9 @@ function isGitRepoRoot(dir: string): boolean {
 		// On Windows, fs.realpathSync.native resolves 8.3 short names to
 		// long names, matching what git returns. Without this, paths like
 		// C:\Users\HENRYL~1\... won't match C:\Users\HenryLach\...
-		try { normalizedDir = realpathSync.native(normalizedDir); } catch {}
+		try {
+			normalizedDir = realpathSync.native(normalizedDir);
+		} catch {}
 		return normalizedToplevel === normalizedDir;
 	} catch {
 		return false;
@@ -146,9 +150,7 @@ function detectInitMode(dir: string): DetectResult {
 			alreadyInitialized: hasLocalConfig,
 			existingConfigPath: hasLocalConfig ? join(dir, ".pi") : null,
 			workspaceConfigRepo,
-			workspaceConfigPath: workspaceConfigRepo
-				? join(dir, workspaceConfigRepo, ".taskplane")
-				: null,
+			workspaceConfigPath: workspaceConfigRepo ? join(dir, workspaceConfigRepo, ".taskplane") : null,
 		};
 	}
 
@@ -165,9 +167,7 @@ function detectInitMode(dir: string): DetectResult {
 			mode: "workspace",
 			subRepos,
 			alreadyInitialized: existingConfigRepo !== null,
-			existingConfigPath: existingConfigRepo
-				? join(dir, existingConfigRepo, ".taskplane")
-				: null,
+			existingConfigPath: existingConfigRepo ? join(dir, existingConfigRepo, ".taskplane") : null,
 		};
 	}
 
@@ -652,7 +652,7 @@ describe("CLI dry-run integration", () => {
 				encoding: "utf-8",
 				stdio: ["pipe", "pipe", "pipe"],
 				timeout: 15000,
-			}
+			},
 		);
 
 		expect(output).toContain("Mode:");
@@ -668,16 +668,12 @@ describe("CLI dry-run integration", () => {
 		let exitCode = 0;
 		let output = "";
 		try {
-			execFileSync(
-				"node",
-				["bin/taskplane.mjs", "init", "--dry-run", "--force", "--preset", "runner-only"],
-				{
-					cwd: projectRoot,
-					encoding: "utf-8",
-					stdio: ["pipe", "pipe", "pipe"],
-					timeout: 15000,
-				}
-			);
+			execFileSync("node", ["bin/taskplane.mjs", "init", "--dry-run", "--force", "--preset", "runner-only"], {
+				cwd: projectRoot,
+				encoding: "utf-8",
+				stdio: ["pipe", "pipe", "pipe"],
+				timeout: 15000,
+			});
 		} catch (e: any) {
 			exitCode = e.status;
 			output = (e.stdout || "") + (e.stderr || "");
@@ -689,16 +685,12 @@ describe("CLI dry-run integration", () => {
 
 	it("5.3 — full preset generates JSON config only (no YAML)", () => {
 		const projectRoot = resolve(__dirname, "../..");
-		const output = execFileSync(
-			"node",
-			["bin/taskplane.mjs", "init", "--dry-run", "--force", "--preset", "full"],
-			{
-				cwd: projectRoot,
-				encoding: "utf-8",
-				stdio: ["pipe", "pipe", "pipe"],
-				timeout: 15000,
-			}
-		);
+		const output = execFileSync("node", ["bin/taskplane.mjs", "init", "--dry-run", "--force", "--preset", "full"], {
+			cwd: projectRoot,
+			encoding: "utf-8",
+			stdio: ["pipe", "pipe", "pipe"],
+			timeout: 15000,
+		});
 
 		expect(output).toContain("taskplane-config.json");
 		expect(output).not.toContain("task-runner.yaml");
@@ -707,16 +699,12 @@ describe("CLI dry-run integration", () => {
 
 	it("5.4 — YAML config files are NOT generated (JSON only)", () => {
 		const projectRoot = resolve(__dirname, "../..");
-		const output = execFileSync(
-			"node",
-			["bin/taskplane.mjs", "init", "--dry-run", "--force", "--preset", "full"],
-			{
-				cwd: projectRoot,
-				encoding: "utf-8",
-				stdio: ["pipe", "pipe", "pipe"],
-				timeout: 15000,
-			}
-		);
+		const output = execFileSync("node", ["bin/taskplane.mjs", "init", "--dry-run", "--force", "--preset", "full"], {
+			cwd: projectRoot,
+			encoding: "utf-8",
+			stdio: ["pipe", "pipe", "pipe"],
+			timeout: 15000,
+		});
 
 		// YAML files should no longer be generated
 		expect(output).not.toContain("task-runner.yaml");

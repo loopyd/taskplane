@@ -102,7 +102,7 @@ describe("loadPiSettingsPackages", () => {
 			packages: ["npm:pi-sage", "npm:pi-sage"],
 		});
 		const result = loadPiSettingsPackages(tempDir);
-		const sageCount = result.filter(p => p === "npm:pi-sage").length;
+		const sageCount = result.filter((p) => p === "npm:pi-sage").length;
 		assert.equal(sageCount, 1);
 	});
 
@@ -114,7 +114,7 @@ describe("loadPiSettingsPackages", () => {
 		assert.ok(result.includes("npm:pi-sage"));
 		assert.ok(result.includes("npm:pi-memory"));
 		// Numeric/null/boolean values should be excluded
-		assert.ok(!result.some(p => typeof p !== "string"));
+		assert.ok(!result.some((p) => typeof p !== "string"));
 	});
 
 	it("handles packages that is not an array", () => {

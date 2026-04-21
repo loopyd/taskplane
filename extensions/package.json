@@ -4,8 +4,20 @@
     "node": ">=22.0.0"
   },
   "scripts": {
+    "lint": "eslint --cache --max-warnings=0 \"{task-orchestrator.ts,reviewer-extension.ts,taskplane/**/*.ts,tests/**/*.ts}\"",
+    "lint:fix": "npm run lint -- --fix",
+    "format": "prettier --write \"{task-orchestrator.ts,reviewer-extension.ts,taskplane/**/*.ts,tests/**/*.ts}\"",
+    "format:check": "prettier --check \"{task-orchestrator.ts,reviewer-extension.ts,taskplane/**/*.ts,tests/**/*.ts}\"",
     "test": "node --experimental-strip-types --experimental-test-module-mocks --no-warnings --import ./tests/loader.mjs --test tests/*.test.ts tests/*.integration.test.ts",
     "test:fast": "node --experimental-strip-types --experimental-test-module-mocks --no-warnings --import ./tests/loader.mjs --test tests/*.test.ts"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "eslint": "^9.39.1",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^16.4.0",
+    "prettier": "^3.6.2",
+    "typescript-eslint": "^8.46.2"
   },
   "dependencies": {
     "yaml": "^2.8.3"

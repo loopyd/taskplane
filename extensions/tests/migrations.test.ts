@@ -72,10 +72,7 @@ describe("migrations", () => {
 
 			// Verify content matches template
 			const created = readFileSync(targetPath, "utf-8");
-			const template = readFileSync(
-				join(packageRoot, "templates", "agents", "local", "supervisor.md"),
-				"utf-8",
-			);
+			const template = readFileSync(join(packageRoot, "templates", "agents", "local", "supervisor.md"), "utf-8");
 			expect(created).toBe(template);
 		});
 
@@ -118,11 +115,7 @@ describe("migrations", () => {
 				lastUpgraded: "2026-03-25T00:00:00.000Z",
 				components: { agents: "0.15.0", config: "0.15.0" },
 			};
-			writeFileSync(
-				join(tempDir, ".pi", "taskplane.json"),
-				JSON.stringify(existingMeta, null, 2),
-				"utf-8",
-			);
+			writeFileSync(join(tempDir, ".pi", "taskplane.json"), JSON.stringify(existingMeta, null, 2), "utf-8");
 
 			runMigrations(tempDir, packageRoot);
 
@@ -279,7 +272,7 @@ describe("migrations", () => {
 		});
 
 		it("has unique migration IDs", () => {
-			const ids = MIGRATION_REGISTRY.map(m => m.id);
+			const ids = MIGRATION_REGISTRY.map((m) => m.id);
 			expect(new Set(ids).size).toBe(ids.length);
 		});
 

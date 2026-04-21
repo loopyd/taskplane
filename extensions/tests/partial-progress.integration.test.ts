@@ -44,10 +44,7 @@ import type {
 	SavePartialProgressResult,
 } from "../taskplane/types.ts";
 
-import type {
-	PreserveFailedLaneProgressResult,
-	ResolveRepoContext,
-} from "../taskplane/worktree.ts";
+import type { PreserveFailedLaneProgressResult, ResolveRepoContext } from "../taskplane/worktree.ts";
 
 import { BATCH_STATE_SCHEMA_VERSION } from "../taskplane/types.ts";
 
@@ -72,12 +69,7 @@ function makeParsedTask(taskId: string, repoId?: string): ParsedTask {
 }
 
 /** Build a minimal AllocatedLane for tests */
-function makeLane(
-	laneNumber: number,
-	branch: string,
-	taskIds: string[],
-	repoId?: string,
-): AllocatedLane {
+function makeLane(laneNumber: number, branch: string, taskIds: string[], repoId?: string): AllocatedLane {
 	return {
 		laneNumber,
 		laneId: `lane-${laneNumber}`,
@@ -172,14 +164,16 @@ function makePersistedState(taskOverrides?: Array<Record<string, unknown>>): Rec
 		currentWaveIndex: 0,
 		totalWaves: 1,
 		wavePlan: [["TP-001"]],
-		lanes: [{
-			laneNumber: 1,
-			laneId: "lane-1",
-			laneSessionId: "orch-lane-1",
-			worktreePath: "/worktrees/lane-1",
-			branch: "task/test-lane-1-20260319T140000",
-			taskIds: ["TP-001"],
-		}],
+		lanes: [
+			{
+				laneNumber: 1,
+				laneId: "lane-1",
+				laneSessionId: "orch-lane-1",
+				worktreePath: "/worktrees/lane-1",
+				branch: "task/test-lane-1-20260319T140000",
+				taskIds: ["TP-001"],
+			},
+		],
 		tasks: defaultTasks,
 		mergeResults: [],
 		totalTasks: 1,
@@ -195,7 +189,6 @@ function makePersistedState(taskOverrides?: Array<Record<string, unknown>>): Rec
 		segments: [],
 	};
 }
-
 
 // ═══════════════════════════════════════════════════════════════════════
 // 1 — Branch Preservation Behavior Tests (Pure Functions)
@@ -254,9 +247,7 @@ describe("resolveSavedBranchCollision", () => {
 	});
 
 	it("different SHA → create-suffixed with timestamp", () => {
-		const result = resolveSavedBranchCollision(
-			savedName, "abc123", "def456", "2026-03-19T14-00-00-000Z",
-		);
+		const result = resolveSavedBranchCollision(savedName, "abc123", "def456", "2026-03-19T14-00-00-000Z");
 		expect(result.action).toBe("create-suffixed");
 		expect(result.savedName).toBe(`${savedName}-2026-03-19T14-00-00-000Z`);
 	});
@@ -267,7 +258,6 @@ describe("resolveSavedBranchCollision", () => {
 		expect(result.savedName).toMatch(/^saved\/henry-TP-028-20260319T140000-\d{4}-\d{2}-\d{2}T/);
 	});
 });
-
 
 // ═══════════════════════════════════════════════════════════════════════
 // 2 — preserveFailedLaneProgress Behavior (mocked git)
@@ -281,15 +271,10 @@ describe("resolveSavedBranchCollision", () => {
 
 describe("applyPartialProgressToOutcomes", () => {
 	it("stamps outcomes for saved tasks", () => {
-		const outcomes: LaneTaskOutcome[] = [
-			makeOutcome("TP-001", "failed"),
-			makeOutcome("TP-002", "succeeded"),
-		];
+		const outcomes: LaneTaskOutcome[] = [makeOutcome("TP-001", "failed"), makeOutcome("TP-002", "succeeded")];
 
 		const ppResult: PreserveFailedLaneProgressResult = {
-			results: [
-				{ saved: true, savedBranch: "saved/henry-TP-001-batch1", commitCount: 3, taskId: "TP-001" },
-			],
+			results: [{ saved: true, savedBranch: "saved/henry-TP-001-batch1", commitCount: 3, taskId: "TP-001" }],
 			preservedBranches: new Set(["saved/henry-TP-001-batch1"]),
 			unsafeBranches: new Set(),
 		};
@@ -304,14 +289,10 @@ describe("applyPartialProgressToOutcomes", () => {
 	});
 
 	it("skips unsaved results (no commits)", () => {
-		const outcomes: LaneTaskOutcome[] = [
-			makeOutcome("TP-001", "failed"),
-		];
+		const outcomes: LaneTaskOutcome[] = [makeOutcome("TP-001", "failed")];
 
 		const ppResult: PreserveFailedLaneProgressResult = {
-			results: [
-				{ saved: false, commitCount: 0, taskId: "TP-001" },
-			],
+			results: [{ saved: false, commitCount: 0, taskId: "TP-001" }],
 			preservedBranches: new Set(),
 			unsafeBranches: new Set(),
 		};
@@ -322,14 +303,10 @@ describe("applyPartialProgressToOutcomes", () => {
 	});
 
 	it("skips results where save failed but commits existed (unsafe)", () => {
-		const outcomes: LaneTaskOutcome[] = [
-			makeOutcome("TP-001", "failed"),
-		];
+		const outcomes: LaneTaskOutcome[] = [makeOutcome("TP-001", "failed")];
 
 		const ppResult: PreserveFailedLaneProgressResult = {
-			results: [
-				{ saved: false, commitCount: 5, taskId: "TP-001", error: "branch create failed" },
-			],
+			results: [{ saved: false, commitCount: 5, taskId: "TP-001", error: "branch create failed" }],
 			preservedBranches: new Set(),
 			unsafeBranches: new Set(["task/test-lane-1-batch1"]),
 		};
@@ -364,16 +341,13 @@ describe("applyPartialProgressToOutcomes", () => {
 	});
 });
 
-
 // ═══════════════════════════════════════════════════════════════════════
 // 3 — upsertTaskOutcome Change Detection for Partial Progress Fields
 // ═══════════════════════════════════════════════════════════════════════
 
 describe("upsertTaskOutcome — partialProgress change detection", () => {
 	it("detects change when partialProgressCommits is added", () => {
-		const outcomes: LaneTaskOutcome[] = [
-			makeOutcome("TP-001", "failed"),
-		];
+		const outcomes: LaneTaskOutcome[] = [makeOutcome("TP-001", "failed")];
 
 		const updated = makeOutcome("TP-001", "failed", {
 			partialProgressCommits: 3,
@@ -427,7 +401,6 @@ describe("upsertTaskOutcome — partialProgress change detection", () => {
 	});
 });
 
-
 // ═══════════════════════════════════════════════════════════════════════
 // 4 — State Contract Tests: Serialization & Validation Round-Trip
 // ═══════════════════════════════════════════════════════════════════════
@@ -456,9 +429,7 @@ describe("serializeBatchState — partialProgress fields", () => {
 		const state = makeRuntimeState();
 		const wavePlan = [["TP-001"]];
 		const lanes = [makeLane(1, "task/test-lane-1-batch1", ["TP-001"])];
-		const outcomes: LaneTaskOutcome[] = [
-			makeOutcome("TP-001", "succeeded"),
-		];
+		const outcomes: LaneTaskOutcome[] = [makeOutcome("TP-001", "succeeded")];
 
 		const json = serializeBatchState(state, wavePlan, lanes, outcomes);
 		const parsed = JSON.parse(json);
@@ -505,9 +476,7 @@ describe("serializeBatchState — partialProgress fields", () => {
 		const state = makeRuntimeState({ phase: "completed", endedAt: Date.now() });
 		const wavePlan = [["TP-001"]];
 		const lanes = [makeLane(1, "task/test-lane-1-batch1", ["TP-001"])];
-		const outcomes: LaneTaskOutcome[] = [
-			makeOutcome("TP-001", "succeeded"),
-		];
+		const outcomes: LaneTaskOutcome[] = [makeOutcome("TP-001", "succeeded")];
 
 		const json = serializeBatchState(state, wavePlan, lanes, outcomes);
 		const parsed = JSON.parse(json);
@@ -522,19 +491,21 @@ describe("serializeBatchState — partialProgress fields", () => {
 
 describe("validatePersistedState — partialProgress field validation", () => {
 	it("accepts task with valid partialProgress fields", () => {
-		const state = makePersistedState([{
-			taskId: "TP-001",
-			laneNumber: 1,
-			sessionName: "orch-lane-1",
-			status: "failed",
-			taskFolder: "/tasks/TP-001",
-			startedAt: 1000,
-			endedAt: 2000,
-			doneFileFound: false,
-			exitReason: "Task failed",
-			partialProgressCommits: 5,
-			partialProgressBranch: "saved/henry-TP-001-20260319T140000",
-		}]);
+		const state = makePersistedState([
+			{
+				taskId: "TP-001",
+				laneNumber: 1,
+				sessionName: "orch-lane-1",
+				status: "failed",
+				taskFolder: "/tasks/TP-001",
+				startedAt: 1000,
+				endedAt: 2000,
+				doneFileFound: false,
+				exitReason: "Task failed",
+				partialProgressCommits: 5,
+				partialProgressBranch: "saved/henry-TP-001-20260319T140000",
+			},
+		]);
 
 		expect(() => validatePersistedState(state)).not.toThrow();
 		const validated = validatePersistedState(state);
@@ -543,90 +514,99 @@ describe("validatePersistedState — partialProgress field validation", () => {
 	});
 
 	it("accepts task without partialProgress fields (backward compat)", () => {
-		const state = makePersistedState([{
-			taskId: "TP-001",
-			laneNumber: 1,
-			sessionName: "orch-lane-1",
-			status: "succeeded",
-			taskFolder: "/tasks/TP-001",
-			startedAt: 1000,
-			endedAt: 2000,
-			doneFileFound: true,
-			exitReason: "Completed",
-		}]);
+		const state = makePersistedState([
+			{
+				taskId: "TP-001",
+				laneNumber: 1,
+				sessionName: "orch-lane-1",
+				status: "succeeded",
+				taskFolder: "/tasks/TP-001",
+				startedAt: 1000,
+				endedAt: 2000,
+				doneFileFound: true,
+				exitReason: "Completed",
+			},
+		]);
 
 		expect(() => validatePersistedState(state)).not.toThrow();
 	});
 
 	it("rejects partialProgressCommits when not a number", () => {
-		const state = makePersistedState([{
-			taskId: "TP-001",
-			laneNumber: 1,
-			sessionName: "orch-lane-1",
-			status: "failed",
-			taskFolder: "/tasks/TP-001",
-			startedAt: 1000,
-			endedAt: 2000,
-			doneFileFound: false,
-			exitReason: "Task failed",
-			partialProgressCommits: "five",
-		}]);
+		const state = makePersistedState([
+			{
+				taskId: "TP-001",
+				laneNumber: 1,
+				sessionName: "orch-lane-1",
+				status: "failed",
+				taskFolder: "/tasks/TP-001",
+				startedAt: 1000,
+				endedAt: 2000,
+				doneFileFound: false,
+				exitReason: "Task failed",
+				partialProgressCommits: "five",
+			},
+		]);
 
 		expect(() => validatePersistedState(state)).toThrow(/partialProgressCommits/);
 	});
 
 	it("rejects partialProgressBranch when not a string", () => {
-		const state = makePersistedState([{
-			taskId: "TP-001",
-			laneNumber: 1,
-			sessionName: "orch-lane-1",
-			status: "failed",
-			taskFolder: "/tasks/TP-001",
-			startedAt: 1000,
-			endedAt: 2000,
-			doneFileFound: false,
-			exitReason: "Task failed",
-			partialProgressBranch: 42,
-		}]);
+		const state = makePersistedState([
+			{
+				taskId: "TP-001",
+				laneNumber: 1,
+				sessionName: "orch-lane-1",
+				status: "failed",
+				taskFolder: "/tasks/TP-001",
+				startedAt: 1000,
+				endedAt: 2000,
+				doneFileFound: false,
+				exitReason: "Task failed",
+				partialProgressBranch: 42,
+			},
+		]);
 
 		expect(() => validatePersistedState(state)).toThrow(/partialProgressBranch/);
 	});
 
 	it("rejects partialProgressCommits when null", () => {
-		const state = makePersistedState([{
-			taskId: "TP-001",
-			laneNumber: 1,
-			sessionName: "orch-lane-1",
-			status: "failed",
-			taskFolder: "/tasks/TP-001",
-			startedAt: 1000,
-			endedAt: 2000,
-			doneFileFound: false,
-			exitReason: "Task failed",
-			partialProgressCommits: null,
-		}]);
+		const state = makePersistedState([
+			{
+				taskId: "TP-001",
+				laneNumber: 1,
+				sessionName: "orch-lane-1",
+				status: "failed",
+				taskFolder: "/tasks/TP-001",
+				startedAt: 1000,
+				endedAt: 2000,
+				doneFileFound: false,
+				exitReason: "Task failed",
+				partialProgressCommits: null,
+			},
+		]);
 
 		expect(() => validatePersistedState(state)).toThrow(/partialProgressCommits/);
 	});
 
 	it("rejects partialProgressBranch when null", () => {
-		const state = makePersistedState([{
-			taskId: "TP-001",
-			laneNumber: 1,
-			sessionName: "orch-lane-1",
-			status: "failed",
-			taskFolder: "/tasks/TP-001",
-			startedAt: 1000,
-			endedAt: 2000,
-			doneFileFound: false,
-			exitReason: "Task failed",
-			partialProgressBranch: null,
-		}]);
+		const state = makePersistedState([
+			{
+				taskId: "TP-001",
+				laneNumber: 1,
+				sessionName: "orch-lane-1",
+				status: "failed",
+				taskFolder: "/tasks/TP-001",
+				startedAt: 1000,
+				endedAt: 2000,
+				doneFileFound: false,
+				exitReason: "Task failed",
+				partialProgressBranch: null,
+			},
+		]);
 
 		expect(() => validatePersistedState(state)).toThrow(/partialProgressBranch/);
 	});
 });
-
 
 // ═══════════════════════════════════════════════════════════════════════
 // 5 — Unsafe Branch Tracking Contract
@@ -663,7 +643,6 @@ describe("PreserveFailedLaneProgressResult — unsafeBranches contract", () => {
 		expect(result.unsafeBranches.size).toBe(0);
 	});
 });
-
 
 // ═══════════════════════════════════════════════════════════════════════
 // 6 — End-to-End: Outcome → Serialize → Validate → Reconstruct
@@ -748,7 +727,6 @@ describe("end-to-end partial progress flow", () => {
 	});
 });
 
-
 // ═══════════════════════════════════════════════════════════════════════
 // 7 — Integration Tests: savePartialProgress with Disposable Git Repos
 // ═══════════════════════════════════════════════════════════════════════
@@ -771,7 +749,9 @@ function initTestRepo(name: string): string {
 	execSync('git commit -m "initial commit"', { cwd: repoDir, encoding: "utf-8", stdio: "pipe" });
 	try {
 		execSync("git branch -M main", { cwd: repoDir, encoding: "utf-8", stdio: "pipe" });
-	} catch { /* might already be main */ }
+	} catch {
+		/* might already be main */
+	}
 
 	return repoDir;
 }
@@ -781,13 +761,17 @@ function cleanupTestRepo(repoDir: string): void {
 	const parentDir = resolve(repoDir, "..");
 	try {
 		rmSync(parentDir, { recursive: true, force: true });
-	} catch { /* Windows may need a moment */ }
+	} catch {
+		/* Windows may need a moment */
+	}
 }
 
 /** Add a commit to a branch in a test repo. Returns the SHA. */
 function addCommitToRepo(repoDir: string, branch: string, filename: string, content: string): string {
 	const currentBranch = execSync("git rev-parse --abbrev-ref HEAD", {
-		cwd: repoDir, encoding: "utf-8", stdio: "pipe",
+		cwd: repoDir,
+		encoding: "utf-8",
+		stdio: "pipe",
 	}).trim();
 
 	if (currentBranch !== branch) {
@@ -824,7 +808,12 @@ describe("savePartialProgress — integration with real git", () => {
 		execSync("git checkout main", { cwd: repoDir, encoding: "utf-8", stdio: "pipe" });
 
 		const result = savePartialProgress(
-			"task/test-lane-1-batch1", "main", "henry", "TP-001", "20260319T140000", repoDir,
+			"task/test-lane-1-batch1",
+			"main",
+			"henry",
+			"TP-001",
+			"20260319T140000",
+			repoDir,
 		);
 
 		expect(result.saved).toBe(true);
@@ -849,7 +838,12 @@ describe("savePartialProgress — integration with real git", () => {
 		execSync("git branch task/test-lane-1-batch2 main", { cwd: repoDir, encoding: "utf-8", stdio: "pipe" });
 
 		const result = savePartialProgress(
-			"task/test-lane-1-batch2", "main", "henry", "TP-002", "20260319T140000", repoDir,
+			"task/test-lane-1-batch2",
+			"main",
+			"henry",
+			"TP-002",
+			"20260319T140000",
+			repoDir,
 		);
 
 		expect(result.saved).toBe(false);
@@ -869,7 +863,13 @@ describe("savePartialProgress — integration with real git", () => {
 		execSync("git checkout main", { cwd: repoDir, encoding: "utf-8", stdio: "pipe" });
 
 		const result = savePartialProgress(
-			"task/test-lane-1-batch3", "main", "henry", "TP-003", "20260319T140000", repoDir, "api",
+			"task/test-lane-1-batch3",
+			"main",
+			"henry",
+			"TP-003",
+			"20260319T140000",
+			repoDir,
+			"api",
 		);
 
 		expect(result.saved).toBe(true);
@@ -890,14 +890,24 @@ describe("savePartialProgress — integration with real git", () => {
 
 		// First save
 		const result1 = savePartialProgress(
-			"task/test-lane-1-batch4", "main", "henry", "TP-004", "20260319T140000", repoDir,
+			"task/test-lane-1-batch4",
+			"main",
+			"henry",
+			"TP-004",
+			"20260319T140000",
+			repoDir,
 		);
 		expect(result1.saved).toBe(true);
 		expect(result1.savedBranch).toBe("saved/henry-TP-004-20260319T140000");
 
 		// Second save at same SHA → should keep existing
 		const result2 = savePartialProgress(
-			"task/test-lane-1-batch4", "main", "henry", "TP-004", "20260319T140000", repoDir,
+			"task/test-lane-1-batch4",
+			"main",
+			"henry",
+			"TP-004",
+			"20260319T140000",
+			repoDir,
 		);
 		expect(result2.saved).toBe(true);
 		expect(result2.savedBranch).toBe("saved/henry-TP-004-20260319T140000");
@@ -918,7 +928,12 @@ describe("savePartialProgress — integration with real git", () => {
 
 		// First save
 		const result1 = savePartialProgress(
-			"task/test-lane-1-batch5", "main", "henry", "TP-005", "20260319T140000", repoDir,
+			"task/test-lane-1-batch5",
+			"main",
+			"henry",
+			"TP-005",
+			"20260319T140000",
+			repoDir,
 		);
 		expect(result1.saved).toBe(true);
 		const firstSavedSha = runGit(["rev-parse", `refs/heads/${result1.savedBranch}`], repoDir).stdout.trim();
@@ -928,7 +943,12 @@ describe("savePartialProgress — integration with real git", () => {
 
 		// Second save at different SHA → should create suffixed branch
 		const result2 = savePartialProgress(
-			"task/test-lane-1-batch5", "main", "henry", "TP-005", "20260319T140000", repoDir,
+			"task/test-lane-1-batch5",
+			"main",
+			"henry",
+			"TP-005",
+			"20260319T140000",
+			repoDir,
 		);
 		expect(result2.saved).toBe(true);
 		expect(result2.savedBranch).not.toBe(result1.savedBranch);
@@ -942,9 +962,7 @@ describe("savePartialProgress — integration with real git", () => {
 	it("returns error for nonexistent lane branch", () => {
 		repoDir = initTestRepo("spp-no-branch");
 
-		const result = savePartialProgress(
-			"nonexistent-branch", "main", "henry", "TP-006", "20260319T140000", repoDir,
-		);
+		const result = savePartialProgress("nonexistent-branch", "main", "henry", "TP-006", "20260319T140000", repoDir);
 
 		expect(result.saved).toBe(false);
 		expect(result.commitCount).toBe(0);
@@ -960,12 +978,7 @@ describe("preserveFailedLaneProgress — integration with real git", () => {
 	});
 
 	/** Build an AllocatedLane pointing at a real branch in our test repo */
-	function makeRealLane(
-		laneNumber: number,
-		branch: string,
-		taskIds: string[],
-		repoId?: string,
-	): AllocatedLane {
+	function makeRealLane(laneNumber: number, branch: string, taskIds: string[], repoId?: string): AllocatedLane {
 		return makeLane(laneNumber, branch, taskIds, repoId);
 	}
 
@@ -985,10 +998,7 @@ describe("preserveFailedLaneProgress — integration with real git", () => {
 			makeRealLane(2, "task/test-lane-2-batch1", ["TP-002"]),
 		];
 
-		const outcomes: LaneTaskOutcome[] = [
-			makeOutcome("TP-001", "failed"),
-			makeOutcome("TP-002", "succeeded"),
-		];
+		const outcomes: LaneTaskOutcome[] = [makeOutcome("TP-001", "failed"), makeOutcome("TP-002", "succeeded")];
 
 		const resolveRepo: ResolveRepoContext = () => ({ repoRoot: repoDir, targetBranch: "main" });
 
@@ -1074,13 +1084,8 @@ describe("preserveFailedLaneProgress — integration with real git", () => {
 		execSync("git checkout main", { cwd: repoDir, encoding: "utf-8", stdio: "pipe" });
 
 		// Both tasks on the same lane branch
-		const lanes: AllocatedLane[] = [
-			makeRealLane(1, "task/test-lane-1-batch5", ["TP-001", "TP-002"]),
-		];
-		const outcomes: LaneTaskOutcome[] = [
-			makeOutcome("TP-001", "failed"),
-			makeOutcome("TP-002", "failed"),
-		];
+		const lanes: AllocatedLane[] = [makeRealLane(1, "task/test-lane-1-batch5", ["TP-001", "TP-002"])];
+		const outcomes: LaneTaskOutcome[] = [makeOutcome("TP-001", "failed"), makeOutcome("TP-002", "failed")];
 		const resolveRepo: ResolveRepoContext = () => ({ repoRoot: repoDir, targetBranch: "main" });
 
 		const result = preserveFailedLaneProgress(lanes, outcomes, "henry", "batch5", resolveRepo);
@@ -1090,7 +1095,6 @@ describe("preserveFailedLaneProgress — integration with real git", () => {
 		expect(result.preservedBranches.size).toBe(1);
 	});
 });
-
 
 // ── TP-147: preserveSkippedLaneProgress Tests ──────────────────────
 
@@ -1109,13 +1113,9 @@ describe("preserveSkippedLaneProgress — integration with real git", () => {
 		addCommitToRepo(repoDir, "task/test-lane-1-batch1", "status.md", "partial work");
 		execSync("git checkout main", { cwd: repoDir, encoding: "utf-8", stdio: "pipe" });
 
-		const lanes: AllocatedLane[] = [
-			makeLane(1, "task/test-lane-1-batch1", ["TP-001"]),
-		];
+		const lanes: AllocatedLane[] = [makeLane(1, "task/test-lane-1-batch1", ["TP-001"])];
 
-		const outcomes: LaneTaskOutcome[] = [
-			makeOutcome("TP-001", "skipped"),
-		];
+		const outcomes: LaneTaskOutcome[] = [makeOutcome("TP-001", "skipped")];
 
 		const resolveRepo: ResolveRepoContext = () => ({ repoRoot: repoDir, targetBranch: "main" });
 
@@ -1171,10 +1171,7 @@ describe("preserveSkippedLaneProgress — integration with real git", () => {
 			makeLane(2, "task/test-lane-2-batch3", ["TP-002"]),
 		];
 
-		const outcomes: LaneTaskOutcome[] = [
-			makeOutcome("TP-001", "failed"),
-			makeOutcome("TP-002", "succeeded"),
-		];
+		const outcomes: LaneTaskOutcome[] = [makeOutcome("TP-001", "failed"), makeOutcome("TP-002", "succeeded")];
 
 		const resolveRepo: ResolveRepoContext = () => ({ repoRoot: repoDir, targetBranch: "main" });
 
@@ -1194,14 +1191,9 @@ describe("preserveSkippedLaneProgress — integration with real git", () => {
 		addCommitToRepo(repoDir, "task/test-lane-1-batch4", "shared-work.txt", "shared progress");
 		execSync("git checkout main", { cwd: repoDir, encoding: "utf-8", stdio: "pipe" });
 
-		const lanes: AllocatedLane[] = [
-			makeLane(1, "task/test-lane-1-batch4", ["TP-001", "TP-002"]),
-		];
+		const lanes: AllocatedLane[] = [makeLane(1, "task/test-lane-1-batch4", ["TP-001", "TP-002"])];
 
-		const outcomes: LaneTaskOutcome[] = [
-			makeOutcome("TP-001", "skipped"),
-			makeOutcome("TP-002", "skipped"),
-		];
+		const outcomes: LaneTaskOutcome[] = [makeOutcome("TP-001", "skipped"), makeOutcome("TP-002", "skipped")];
 
 		const resolveRepo: ResolveRepoContext = () => ({ repoRoot: repoDir, targetBranch: "main" });
 
@@ -1213,7 +1205,6 @@ describe("preserveSkippedLaneProgress — integration with real git", () => {
 		expect(result.preservedBranches.size).toBe(1);
 	});
 });
-
 
 // ── TP-147: BatchTaskSummary "pending" status in persisted state ───────
 
@@ -1261,16 +1252,43 @@ describe("TP-147 — pending task status accepted in persisted state", () => {
 		// are included in the history. Verify the type contract by creating a
 		// BatchHistorySummary-compatible object with the correct structure.
 		const tasks: import("../taskplane/types.ts").BatchTaskSummary[] = [
-			{ taskId: "TP-001", taskName: "TP-001", status: "succeeded", wave: 1, lane: 1, durationMs: 5000, tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, costUsd: 0 }, exitReason: null },
-			{ taskId: "TP-002", taskName: "TP-002", status: "blocked", wave: 2, lane: 0, durationMs: 0, tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, costUsd: 0 }, exitReason: "Blocked by upstream failure" },
-			{ taskId: "TP-003", taskName: "TP-003", status: "pending", wave: 2, lane: 0, durationMs: 0, tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, costUsd: 0 }, exitReason: null },
+			{
+				taskId: "TP-001",
+				taskName: "TP-001",
+				status: "succeeded",
+				wave: 1,
+				lane: 1,
+				durationMs: 5000,
+				tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, costUsd: 0 },
+				exitReason: null,
+			},
+			{
+				taskId: "TP-002",
+				taskName: "TP-002",
+				status: "blocked",
+				wave: 2,
+				lane: 0,
+				durationMs: 0,
+				tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, costUsd: 0 },
+				exitReason: "Blocked by upstream failure",
+			},
+			{
+				taskId: "TP-003",
+				taskName: "TP-003",
+				status: "pending",
+				wave: 2,
+				lane: 0,
+				durationMs: 0,
+				tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, costUsd: 0 },
+				exitReason: null,
+			},
 		];
 
 		// totalTasks should equal tasks array length
 		const totalTasks = tasks.length;
 		expect(totalTasks).toBe(3);
-		expect(tasks.filter(t => t.status === "blocked").length).toBe(1);
-		expect(tasks.filter(t => t.status === "pending").length).toBe(1);
-		expect(tasks.filter(t => t.status === "succeeded").length).toBe(1);
+		expect(tasks.filter((t) => t.status === "blocked").length).toBe(1);
+		expect(tasks.filter((t) => t.status === "pending").length).toBe(1);
+		expect(tasks.filter((t) => t.status === "succeeded").length).toBe(1);
 	});
 });

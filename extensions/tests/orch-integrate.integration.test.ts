@@ -11,7 +11,13 @@
 
 import { describe, it } from "node:test";
 import { expect } from "./expect.ts";
-import { parseIntegrateArgs, resolveIntegrationContext, executeIntegration, dropBatchAutostash, collectRepoCleanupFindings } from "../taskplane/extension.ts";
+import {
+	parseIntegrateArgs,
+	resolveIntegrationContext,
+	executeIntegration,
+	dropBatchAutostash,
+	collectRepoCleanupFindings,
+} from "../taskplane/extension.ts";
 import { computeIntegrateCleanupResult } from "../taskplane/messages.ts";
 import type {
 	IntegrateArgs,
@@ -337,7 +343,16 @@ describe("resolveIntegrationContext — phase gating", () => {
 		expect(ctx.currentBranch).toBe("main");
 	});
 
-	const nonCompletedPhases: OrchBatchPhase[] = ["idle", "launching", "planning", "executing", "merging", "paused", "stopped", "failed"];
+	const nonCompletedPhases: OrchBatchPhase[] = [
+		"idle",
+		"launching",
+		"planning",
+		"executing",
+		"merging",
+		"paused",
+		"stopped",
+		"failed",
+	];
 	for (const phase of nonCompletedPhases) {
 		it(`rejects phase "${phase}" with info severity`, () => {
 			const deps = makeDeps({
@@ -399,7 +414,7 @@ describe("resolveIntegrationContext — no state + branch scan", () => {
 		const result = resolveIntegrationContext(defaultParsed(), deps);
 		const ctx = expectContext(result);
 		expect(ctx.orchBranch).toBe("orch/auto-detected");
-		expect(ctx.notices.some(n => n.includes("Auto-detected"))).toBe(true);
+		expect(ctx.notices.some((n) => n.includes("Auto-detected"))).toBe(true);
 	});
 
 	it("returns error when no state, no arg, and multiple orch branches", () => {
@@ -419,10 +434,7 @@ describe("resolveIntegrationContext — no state + branch scan", () => {
 			loadBatchState: () => null,
 			orchBranchExists: () => true,
 		});
-		const result = resolveIntegrationContext(
-			defaultParsed({ orchBranchArg: "orch/my-branch" }),
-			deps,
-		);
+		const result = resolveIntegrationContext(defaultParsed({ orchBranchArg: "orch/my-branch" }), deps);
 		const ctx = expectContext(result);
 		expect(ctx.orchBranch).toBe("orch/my-branch");
 		// baseBranch inferred from currentBranch when state is unavailable
@@ -437,7 +449,9 @@ describe("resolveIntegrationContext — no state + branch scan", () => {
 describe("resolveIntegrationContext — StateFileError", () => {
 	it("returns error on IO error without branch arg", () => {
 		const deps = makeDeps({
-			loadBatchState: () => { throw new StateFileError("STATE_FILE_IO_ERROR", "permission denied"); },
+			loadBatchState: () => {
+				throw new StateFileError("STATE_FILE_IO_ERROR", "permission denied");
+			},
 		});
 		const result = resolveIntegrationContext(defaultParsed(), deps);
 		const err = expectContextError(result, "error");
@@ -446,7 +460,9 @@ describe("resolveIntegrationContext — StateFileError", () => {
 
 	it("returns error on parse error without branch arg", () => {
 		const deps = makeDeps({
-			loadBatchState: () => { throw new StateFileError("STATE_FILE_PARSE_ERROR", "unexpected token"); },
+			loadBatchState: () => {
+				throw new StateFileError("STATE_FILE_PARSE_ERROR", "unexpected token");
+			},
 		});
 		const result = resolveIntegrationContext(defaultParsed(), deps);
 		const err = expectContextError(result, "error");
@@ -455,7 +471,9 @@ describe("resolveIntegrationContext — StateFileError", () => {
 
 	it("returns error on schema error without branch arg", () => {
 		const deps = makeDeps({
-			loadBatchState: () => { throw new StateFileError("STATE_SCHEMA_INVALID", "missing batchId"); },
+			loadBatchState: () => {
+				throw new StateFileError("STATE_SCHEMA_INVALID", "missing batchId");
+			},
 		});
 		const result = resolveIntegrationContext(defaultParsed(), deps);
 		const err = expectContextError(result, "error");
@@ -464,47 +482,46 @@ describe("resolveIntegrationContext — StateFileError", () => {
 
 	it("falls back to branch arg on IO error when arg provided", () => {
 		const deps = makeDeps({
-			loadBatchState: () => { throw new StateFileError("STATE_FILE_IO_ERROR", "permission denied"); },
+			loadBatchState: () => {
+				throw new StateFileError("STATE_FILE_IO_ERROR", "permission denied");
+			},
 			orchBranchExists: () => true,
 		});
-		const result = resolveIntegrationContext(
-			defaultParsed({ orchBranchArg: "orch/fallback" }),
-			deps,
-		);
+		const result = resolveIntegrationContext(defaultParsed({ orchBranchArg: "orch/fallback" }), deps);
 		const ctx = expectContext(result);
 		expect(ctx.orchBranch).toBe("orch/fallback");
-		expect(ctx.notices.some(n => n.includes("Could not read"))).toBe(true);
+		expect(ctx.notices.some((n) => n.includes("Could not read"))).toBe(true);
 	});
 
 	it("falls back to branch arg on parse error when arg provided", () => {
 		const deps = makeDeps({
-			loadBatchState: () => { throw new StateFileError("STATE_FILE_PARSE_ERROR", "bad json"); },
+			loadBatchState: () => {
+				throw new StateFileError("STATE_FILE_PARSE_ERROR", "bad json");
+			},
 			orchBranchExists: () => true,
 		});
-		const result = resolveIntegrationContext(
-			defaultParsed({ orchBranchArg: "orch/fallback" }),
-			deps,
-		);
+		const result = resolveIntegrationContext(defaultParsed({ orchBranchArg: "orch/fallback" }), deps);
 		const ctx = expectContext(result);
 		expect(ctx.orchBranch).toBe("orch/fallback");
 	});
 
 	it("falls back to branch arg on non-StateFileError when arg provided", () => {
 		const deps = makeDeps({
-			loadBatchState: () => { throw new Error("something unexpected"); },
+			loadBatchState: () => {
+				throw new Error("something unexpected");
+			},
 			orchBranchExists: () => true,
 		});
-		const result = resolveIntegrationContext(
-			defaultParsed({ orchBranchArg: "orch/fallback" }),
-			deps,
-		);
+		const result = resolveIntegrationContext(defaultParsed({ orchBranchArg: "orch/fallback" }), deps);
 		const ctx = expectContext(result);
 		expect(ctx.orchBranch).toBe("orch/fallback");
 	});
 
 	it("returns error on non-StateFileError without branch arg", () => {
 		const deps = makeDeps({
-			loadBatchState: () => { throw new Error("unknown failure"); },
+			loadBatchState: () => {
+				throw new Error("unknown failure");
+			},
 		});
 		const result = resolveIntegrationContext(defaultParsed(), deps);
 		const err = expectContextError(result, "error");
@@ -529,7 +546,10 @@ describe("resolveIntegrationContext — branch existence", () => {
 	it("passes orchBranch to orchBranchExists for verification", () => {
 		let checkedBranch = "";
 		const deps = makeDeps({
-			orchBranchExists: (b) => { checkedBranch = b; return true; },
+			orchBranchExists: (b) => {
+				checkedBranch = b;
+				return true;
+			},
 		});
 		resolveIntegrationContext(defaultParsed(), deps);
 		expect(checkedBranch).toBe("orch/henry-20260318T140000");
@@ -580,10 +600,7 @@ describe("resolveIntegrationContext — branch safety", () => {
 			loadBatchState: () => makeBatchState({ baseBranch: "main" }),
 			getCurrentBranch: () => "feature/other",
 		});
-		const result = resolveIntegrationContext(
-			defaultParsed({ force: true }),
-			deps,
-		);
+		const result = resolveIntegrationContext(defaultParsed({ force: true }), deps);
 		const ctx = expectContext(result);
 		expect(ctx.currentBranch).toBe("feature/other");
 		expect(ctx.baseBranch).toBe("main");
@@ -624,10 +641,7 @@ describe("resolveIntegrationContext — happy path", () => {
 		const deps = makeDeps({
 			orchBranchExists: (b) => b === "orch/override",
 		});
-		const result = resolveIntegrationContext(
-			defaultParsed({ orchBranchArg: "orch/override" }),
-			deps,
-		);
+		const result = resolveIntegrationContext(defaultParsed({ orchBranchArg: "orch/override" }), deps);
 		const ctx = expectContext(result);
 		expect(ctx.orchBranch).toBe("orch/override");
 		// baseBranch still comes from state
@@ -689,9 +703,9 @@ describe("executeIntegration — fast-forward mode", () => {
 		});
 		executeIntegration("ff", makeContext(), deps);
 		// status --porcelain (stash check) must occur before merge
-		const statusIdx = gitCalls.findIndex(c => c[0] === "status");
-		const mergeCall = gitCalls.find(c => c[0] === "merge");
-		const mergeIdx = gitCalls.findIndex(c => c[0] === "merge");
+		const statusIdx = gitCalls.findIndex((c) => c[0] === "status");
+		const mergeCall = gitCalls.find((c) => c[0] === "merge");
+		const mergeIdx = gitCalls.findIndex((c) => c[0] === "merge");
 		expect(statusIdx).toBeGreaterThanOrEqual(0);
 		expect(mergeCall).toEqual(["merge", "--ff-only", "orch/henry-20260318T140000"]);
 		expect(statusIdx).toBeLessThan(mergeIdx);
@@ -730,7 +744,9 @@ describe("executeIntegration — fast-forward mode", () => {
 				}
 				return { ok: true, stdout: "", stderr: "" };
 			},
-			deleteBatchState: () => { cleanupCalled = true; },
+			deleteBatchState: () => {
+				cleanupCalled = true;
+			},
 		});
 		executeIntegration("ff", makeContext(), deps);
 		expect(cleanupCalled).toBe(false);
@@ -759,9 +775,9 @@ describe("executeIntegration — merge mode", () => {
 		});
 		executeIntegration("merge", makeContext(), deps);
 		// status --porcelain (stash check) must occur before merge
-		const statusIdx = gitCalls.findIndex(c => c[0] === "status");
-		const mergeCall = gitCalls.find(c => c[0] === "merge");
-		const mergeIdx = gitCalls.findIndex(c => c[0] === "merge");
+		const statusIdx = gitCalls.findIndex((c) => c[0] === "status");
+		const mergeCall = gitCalls.find((c) => c[0] === "merge");
+		const mergeIdx = gitCalls.findIndex((c) => c[0] === "merge");
 		expect(statusIdx).toBeGreaterThanOrEqual(0);
 		expect(mergeCall).toEqual(["merge", "orch/henry-20260318T140000", "--no-edit"]);
 		expect(statusIdx).toBeLessThan(mergeIdx);
@@ -798,7 +814,9 @@ describe("executeIntegration — merge mode", () => {
 				}
 				return { ok: true, stdout: "", stderr: "" };
 			},
-			deleteBatchState: () => { cleanupCalled = true; },
+			deleteBatchState: () => {
+				cleanupCalled = true;
+			},
 		});
 		executeIntegration("merge", makeContext(), deps);
 		expect(cleanupCalled).toBe(false);
@@ -839,8 +857,8 @@ describe("executeIntegration — PR mode", () => {
 		});
 		executeIntegration("pr", makeContext(), deps);
 		// git push must occur before gh pr create
-		const pushCall = calls.find(c => c.type === "git" && c.args[0] === "push");
-		const prCall = calls.find(c => c.type === "gh");
+		const pushCall = calls.find((c) => c.type === "git" && c.args[0] === "push");
+		const prCall = calls.find((c) => c.type === "gh");
 		expect(pushCall).toBeDefined();
 		expect(pushCall!.args).toEqual(["push", "origin", "orch/henry-20260318T140000"]);
 		expect(prCall).toBeDefined();
@@ -884,7 +902,9 @@ describe("executeIntegration — PR mode", () => {
 				return { ok: true, stdout: "", stderr: "" };
 			},
 			runCommand: () => ({ ok: true, stdout: "https://example.com/pr/1", stderr: "" }),
-			deleteBatchState: () => { stateDeleted = true; },
+			deleteBatchState: () => {
+				stateDeleted = true;
+			},
 		});
 		executeIntegration("pr", makeContext(), deps);
 		expect(branchDeleted).toBe(false);
@@ -935,13 +955,15 @@ describe("executeIntegration — already merged detection", () => {
 				if (args[0] === "branch" && args[1] === "-D") branchDeleted = true;
 				return { ok: true, stdout: "", stderr: "" };
 			},
-			deleteBatchState: () => { stateDeleted = true; },
+			deleteBatchState: () => {
+				stateDeleted = true;
+			},
 		});
 		const result = executeIntegration("ff", makeContext(), deps);
 		expect(result.success).toBe(true);
-		expect(mergeAttempted).toBe(false);      // no merge attempt
-		expect(branchDeleted).toBe(true);         // cleanup ran
-		expect(stateDeleted).toBe(true);          // cleanup ran
+		expect(mergeAttempted).toBe(false); // no merge attempt
+		expect(branchDeleted).toBe(true); // cleanup ran
+		expect(stateDeleted).toBe(true); // cleanup ran
 		expect(result.message).toContain("Already integrated");
 	});
 });
@@ -960,7 +982,9 @@ describe("executeIntegration — cleanup", () => {
 				}
 				return { ok: true, stdout: "", stderr: "" };
 			},
-			deleteBatchState: () => { stateDeleted = true; },
+			deleteBatchState: () => {
+				stateDeleted = true;
+			},
 		});
 		executeIntegration("ff", makeContext(), deps);
 		expect(branchDeleted).toBe(true);
@@ -975,7 +999,9 @@ describe("executeIntegration — cleanup", () => {
 				if (args[0] === "branch" && args[1] === "-D") branchDeleted = true;
 				return { ok: true, stdout: "", stderr: "" };
 			},
-			deleteBatchState: () => { stateDeleted = true; },
+			deleteBatchState: () => {
+				stateDeleted = true;
+			},
 		});
 		executeIntegration("merge", makeContext(), deps);
 		expect(branchDeleted).toBe(true);
@@ -998,7 +1024,9 @@ describe("executeIntegration — cleanup", () => {
 
 	it("warns but still succeeds if state deletion throws", () => {
 		const deps = makeExecDeps({
-			deleteBatchState: () => { throw new Error("permission denied"); },
+			deleteBatchState: () => {
+				throw new Error("permission denied");
+			},
 		});
 		const result = executeIntegration("ff", makeContext(), deps);
 		expect(result.success).toBe(true);
@@ -1013,7 +1041,9 @@ describe("executeIntegration — cleanup", () => {
 				}
 				return { ok: true, stdout: "", stderr: "" };
 			},
-			deleteBatchState: () => { throw new Error("state error"); },
+			deleteBatchState: () => {
+				throw new Error("state error");
+			},
 		});
 		const result = executeIntegration("ff", makeContext(), deps);
 		expect(result.success).toBe(true);
@@ -1134,9 +1164,9 @@ describe("computeIntegrateCleanupResult — pure function", () => {
 			},
 		];
 		const result = computeIntegrateCleanupResult(findings);
-		expect(result.report).toContain('git worktree remove --force');
-		expect(result.report).toContain('git branch -D');
-		expect(result.report).toContain('git stash drop');
+		expect(result.report).toContain("git worktree remove --force");
+		expect(result.report).toContain("git branch -D");
+		expect(result.report).toContain("git stash drop");
 	});
 });
 
@@ -1443,7 +1473,10 @@ describe("collectRepoCleanupFindings — real git repo", () => {
 	it("detects stale autostash entries", () => {
 		const dir = initRepo();
 		writeFileSync(join(dir, "dirty.txt"), "dirty");
-		execSync(`git stash push --include-untracked -m "orch-integrate-autostash-${batchId}"`, { cwd: dir, stdio: "pipe" });
+		execSync(`git stash push --include-untracked -m "orch-integrate-autostash-${batchId}"`, {
+			cwd: dir,
+			stdio: "pipe",
+		});
 		const config = makeConfig();
 		const findings = collectRepoCleanupFindings(dir, "myrepo", opId, batchId, prefix, orchBranch, config);
 		expect(findings.staleAutostashEntries).toHaveLength(1);
@@ -1484,12 +1517,16 @@ describe("collectRepoCleanupFindings — real git repo", () => {
 		expect(findingsDefault.staleOrchBranches[0]).toBe(orchBranch);
 
 		// With skipOrchBranch → orch branch is NOT flagged (PR mode contract)
-		const findingsPr = collectRepoCleanupFindings(dir, "myrepo", opId, batchId, prefix, orchBranch, config, { skipOrchBranch: true });
+		const findingsPr = collectRepoCleanupFindings(dir, "myrepo", opId, batchId, prefix, orchBranch, config, {
+			skipOrchBranch: true,
+		});
 		expect(findingsPr.staleOrchBranches).toHaveLength(0);
 
 		// Other findings still work normally with skipOrchBranch
 		execSync(`git branch "task/${opId}-lane-1-${batchId}"`, { cwd: dir, stdio: "pipe" });
-		const findingsWithLane = collectRepoCleanupFindings(dir, "myrepo", opId, batchId, prefix, orchBranch, config, { skipOrchBranch: true });
+		const findingsWithLane = collectRepoCleanupFindings(dir, "myrepo", opId, batchId, prefix, orchBranch, config, {
+			skipOrchBranch: true,
+		});
 		expect(findingsWithLane.staleLaneBranches).toHaveLength(1);
 		expect(findingsWithLane.staleOrchBranches).toHaveLength(0);
 
@@ -1502,7 +1539,9 @@ describe("collectRepoCleanupFindings — real git repo", () => {
 		const config = makeConfig();
 
 		// With skipOrchBranch, the repo should be considered clean
-		const findings = collectRepoCleanupFindings(dir, "myrepo", opId, batchId, prefix, orchBranch, config, { skipOrchBranch: true });
+		const findings = collectRepoCleanupFindings(dir, "myrepo", opId, batchId, prefix, orchBranch, config, {
+			skipOrchBranch: true,
+		});
 		const result = computeIntegrateCleanupResult([findings]);
 		expect(result.clean).toBe(true);
 		expect(result.dirtyRepos).toHaveLength(0);
@@ -1536,10 +1575,11 @@ describe("TP-099: artifact staging preserves lane-merged STATUS.md", () => {
 
 		// Create initial task folder with unchecked STATUS.md
 		mkdirSync(join(dir, "taskplane-tasks", "TP-001-test"), { recursive: true });
-		writeFileSync(join(dir, "taskplane-tasks", "TP-001-test", "STATUS.md"),
-			"# TP-001\n- [ ] Item A\n- [ ] Item B\n");
-		writeFileSync(join(dir, "taskplane-tasks", "TP-001-test", "PROMPT.md"),
-			"# Task: TP-001\n");
+		writeFileSync(
+			join(dir, "taskplane-tasks", "TP-001-test", "STATUS.md"),
+			"# TP-001\n- [ ] Item A\n- [ ] Item B\n",
+		);
+		writeFileSync(join(dir, "taskplane-tasks", "TP-001-test", "PROMPT.md"), "# Task: TP-001\n");
 		writeFileSync(join(dir, "src.txt"), "initial code\n");
 		execSync("git add -A && git commit -m init", { cwd: dir, stdio: "pipe" });
 		return dir;
@@ -1566,10 +1606,10 @@ describe("TP-099: artifact staging preserves lane-merged STATUS.md", () => {
 			execSync('git add -A && git commit -m "lane merge: feature + updated STATUS"', { cwd: dir, stdio: "pipe" });
 
 			// Verify the lane merge commit has correct STATUS.md
-			const laneMergedStatus = execSync(
-				"git show HEAD:taskplane-tasks/TP-001-test/STATUS.md",
-				{ cwd: dir, encoding: "utf-8" },
-			);
+			const laneMergedStatus = execSync("git show HEAD:taskplane-tasks/TP-001-test/STATUS.md", {
+				cwd: dir,
+				encoding: "utf-8",
+			});
 			expect(laneMergedStatus).toContain("[x] Item A");
 			expect(laneMergedStatus).toContain("[x] Item B");
 			expect(laneMergedStatus).toContain("Execution Log");
@@ -1608,10 +1648,10 @@ describe("TP-099: artifact staging preserves lane-merged STATUS.md", () => {
 			expect(existsSync(donePath)).toBe(true);
 
 			// Verify it's in the git tree
-			const doneContent = execSync(
-				"git show HEAD:taskplane-tasks/TP-001-test/.DONE",
-				{ cwd: dir, encoding: "utf-8" },
-			);
+			const doneContent = execSync("git show HEAD:taskplane-tasks/TP-001-test/.DONE", {
+				cwd: dir,
+				encoding: "utf-8",
+			});
 			expect(doneContent).toContain("completed");
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
@@ -1638,10 +1678,10 @@ describe("TP-099: artifact staging preserves lane-merged STATUS.md", () => {
 			execSync("git merge --squash orch/test", { cwd: dir, stdio: "pipe" });
 			execSync('git commit -m "Integrate orch batch (squash)"', { cwd: dir, stdio: "pipe" });
 
-			const reviewFile = execSync(
-				"git show HEAD:taskplane-tasks/TP-001-test/.reviews/R001-code-step1.md",
-				{ cwd: dir, encoding: "utf-8" },
-			);
+			const reviewFile = execSync("git show HEAD:taskplane-tasks/TP-001-test/.reviews/R001-code-step1.md", {
+				cwd: dir,
+				encoding: "utf-8",
+			});
 			expect(reviewFile).toContain("APPROVE");
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
@@ -1669,19 +1709,19 @@ describe("TP-099: artifact staging preserves lane-merged STATUS.md", () => {
 			execSync('git commit -m "Integrate orch batch (squash)"', { cwd: dir, stdio: "pipe" });
 
 			// Verify STATUS.md on main has checked items
-			const mainStatus = execSync(
-				"git show HEAD:taskplane-tasks/TP-001-test/STATUS.md",
-				{ cwd: dir, encoding: "utf-8" },
-			);
+			const mainStatus = execSync("git show HEAD:taskplane-tasks/TP-001-test/STATUS.md", {
+				cwd: dir,
+				encoding: "utf-8",
+			});
 			expect(mainStatus).toContain("[x] Item A");
 			expect(mainStatus).toContain("[x] Item B");
 			expect(mainStatus).toContain("Discoveries");
 
 			// Verify .DONE on main
-			const mainDone = execSync(
-				"git show HEAD:taskplane-tasks/TP-001-test/.DONE",
-				{ cwd: dir, encoding: "utf-8" },
-			);
+			const mainDone = execSync("git show HEAD:taskplane-tasks/TP-001-test/.DONE", {
+				cwd: dir,
+				encoding: "utf-8",
+			});
 			expect(mainDone).toContain("completed");
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
@@ -1693,15 +1733,19 @@ describe("TP-099: artifact staging preserves lane-merged STATUS.md", () => {
 		try {
 			// Create orch branch with updated STATUS.md
 			execSync("git checkout -b orch/test", { cwd: dir, stdio: "pipe" });
-			writeFileSync(join(dir, "taskplane-tasks", "TP-001-test", "STATUS.md"),
-				"# TP-001\n- [x] Item A\n- [x] Item B\n");
+			writeFileSync(
+				join(dir, "taskplane-tasks", "TP-001-test", "STATUS.md"),
+				"# TP-001\n- [x] Item A\n- [x] Item B\n",
+			);
 			writeFileSync(join(dir, "taskplane-tasks", "TP-001-test", ".DONE"), "completed\n");
 			writeFileSync(join(dir, "src.txt"), "feature code\n");
 			execSync('git add -A && git commit -m "lane merge"', { cwd: dir, stdio: "pipe" });
 
 			// Simulate the OLD artifact staging (pre-fix): overwrite with template
-			writeFileSync(join(dir, "taskplane-tasks", "TP-001-test", "STATUS.md"),
-				"# TP-001\n- [ ] Item A\n- [ ] Item B\n");
+			writeFileSync(
+				join(dir, "taskplane-tasks", "TP-001-test", "STATUS.md"),
+				"# TP-001\n- [ ] Item A\n- [ ] Item B\n",
+			);
 			// Old code also removed .DONE from merge worktree if repoRoot didn't have it
 			execSync('git add -A && git commit -m "checkpoint artifacts (old behavior)"', { cwd: dir, stdio: "pipe" });
 
@@ -1715,10 +1759,10 @@ describe("TP-099: artifact staging preserves lane-merged STATUS.md", () => {
 			execSync('git commit -m "squash"', { cwd: dir, stdio: "pipe" });
 
 			// STATUS.md should have been reverted to template (demonstrates the bug)
-			const mainStatus = execSync(
-				"git show HEAD:taskplane-tasks/TP-001-test/STATUS.md",
-				{ cwd: dir, encoding: "utf-8" },
-			);
+			const mainStatus = execSync("git show HEAD:taskplane-tasks/TP-001-test/STATUS.md", {
+				cwd: dir,
+				encoding: "utf-8",
+			});
 			// This demonstrates the pre-fix bug: STATUS.md has unchecked items
 			expect(mainStatus).toContain("[ ] Item A");
 			expect(mainStatus).not.toContain("[x]");

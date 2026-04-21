@@ -162,11 +162,14 @@ describe("3.x — Template composition: base + local override", () => {
 	it("3.2: composes base + local override", () => {
 		const agentDir = join(tmpDir, ".pi", "agents");
 		mkdirSync(agentDir, { recursive: true });
-		writeFileSync(join(agentDir, "supervisor.md"), `---
+		writeFileSync(
+			join(agentDir, "supervisor.md"),
+			`---
 name: supervisor
 ---
 Always run the linter before integration.
-`);
+`,
+		);
 
 		const result = loadSupervisorTemplate("supervisor", tmpDir);
 		expect(result).not.toBeNull();
@@ -180,12 +183,15 @@ Always run the linter before integration.
 	it("3.3: standalone mode uses local only, ignores base", () => {
 		const agentDir = join(tmpDir, ".pi", "agents");
 		mkdirSync(agentDir, { recursive: true });
-		writeFileSync(join(agentDir, "supervisor.md"), `---
+		writeFileSync(
+			join(agentDir, "supervisor.md"),
+			`---
 name: supervisor
 standalone: true
 ---
 Custom standalone supervisor prompt.
-`);
+`,
+		);
 
 		const result = loadSupervisorTemplate("supervisor", tmpDir);
 		expect(result).not.toBeNull();
@@ -246,11 +252,14 @@ describe("4.x — Prompt builder: template loading + variable replacement", () =
 	it("4.2: buildSupervisorSystemPrompt includes local override content", () => {
 		const agentDir = join(tmpDir, ".pi", "agents");
 		mkdirSync(agentDir, { recursive: true });
-		writeFileSync(join(agentDir, "supervisor.md"), `---
+		writeFileSync(
+			join(agentDir, "supervisor.md"),
+			`---
 name: supervisor
 ---
 Check CI dashboard at https://ci.example.com before approving merges.
-`);
+`,
+		);
 
 		const batchState = makeTestBatchState();
 		const config = DEFAULT_ORCHESTRATOR_CONFIG;

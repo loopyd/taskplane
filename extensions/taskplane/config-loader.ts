@@ -24,8 +24,8 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
-import { parse as yamlParse } from "yaml";
 import { resolvePointer, loadWorkspaceConfig } from "./workspace.ts";
+import { parseYamlLoose } from "./yaml-utils.ts";
 import type { PointerResolution } from "./types.ts";
 
 import {
@@ -43,8 +43,8 @@ import type {
 	OrchestratorSection,
 	WorkspaceSectionConfig,
 	GlobalPreferences,
+	DeepPartial,
 } from "./config-schema.ts";
-
 
 // ── Error Types ──────────────────────────────────────────────────────
 
@@ -72,14 +72,12 @@ export class ConfigLoadError extends Error {
 	}
 }
 
-
 // ── Deep Clone Helper ────────────────────────────────────────────────
 
 /** Deep clone a config object to avoid cross-call mutation. */
 function deepClone<T>(obj: T): T {
 	return JSON.parse(JSON.stringify(obj));
 }
-
 
 // ── Deep Merge Helper ────────────────────────────────────────────────
 
@@ -176,7 +174,9 @@ function migrateGlobalPreferences(raw: Record<string, any>, prefsPath: string): 
 	}
 	if (raw.orchestrator?.orchestrator?.spawnMode === "tmux") {
 		raw.orchestrator.orchestrator.spawnMode = "subprocess";
-		console.error(`[taskplane] Auto-migrated global preference: orchestrator.orchestrator.spawnMode "tmux" → "subprocess"`);
+		console.error(
+			`[taskplane] Auto-migrated global preference: orchestrator.orchestrator.spawnMode "tmux" → "subprocess"`,
+		);
 		migrated = true;
 	}
 	if (raw.taskRunner?.worker?.spawnMode === "tmux") {
@@ -191,15 +191,18 @@ function migrateGlobalPreferences(raw: Record<string, any>, prefsPath: string): 
 			renameSync(tmpPath, prefsPath);
 			console.error(`[taskplane] Preferences file updated: ${prefsPath}`);
 		} catch (err) {
-			console.error(`[taskplane] Warning: could not persist preferences migration to disk: ${err instanceof Error ? err.message : err}`);
+			console.error(
+				`[taskplane] Warning: could not persist preferences migration to disk: ${err instanceof Error ? err.message : err}`,
+			);
 		}
 	}
 	return migrated;
 }
 
 /** Reset migration guard (for testing). @internal */
-export function _resetMigrationGuard(): void { _projectMigrationDone = false; }
-
+export function _resetMigrationGuard(): void {
+	_projectMigrationDone = false;
+}
 
 // ── YAML snake_case → camelCase Mapping ──────────────────────────────
 
@@ -367,10 +370,7 @@ function mapOrchestratorYaml(raw: any): Partial<OrchestratorSection> {
  * Compatibility: if `routing.taskPacketRepo` is missing, defaults to
  * `routing.defaultRepo` and emits a warning message.
  */
-function normalizeWorkspaceSection(
-	rawWorkspace: any,
-	sourcePath: string,
-): WorkspaceSectionConfig | undefined {
+function normalizeWorkspaceSection(rawWorkspace: any, sourcePath: string): WorkspaceSectionConfig | undefined {
 	if (!rawWorkspace || typeof rawWorkspace !== "object" || Array.isArray(rawWorkspace)) {
 		return undefined;
 	}
@@ -426,7 +426,6 @@ function normalizeWorkspaceSection(
 	};
 }
 
-
 // ── Config File Path Resolution ──────────────────────────────────────
 
 /**
@@ -464,7 +463,7 @@ function resolveConfigFilePath(configRoot: string, filename: string): string {
  * Returns the parsed config or null if the file doesn't exist.
  * Throws ConfigLoadError for malformed JSON or unsupported versions.
  */
-function loadJsonConfig(configRoot: string): Partial<TaskplaneConfig> | null {
+function loadJsonConfig(configRoot: string): DeepPartial<TaskplaneConfig> | null {
 	const jsonPath = resolveConfigFilePath(configRoot, PROJECT_CONFIG_FILENAME);
 	if (!existsSync(jsonPath)) return null;
 
@@ -489,8 +488,7 @@ function loadJsonConfig(configRoot: string): Partial<TaskplaneConfig> | null {
 	if (parsed.configVersion === undefined || parsed.configVersion === null) {
 		throw new ConfigLoadError(
 			"CONFIG_VERSION_MISSING",
-			`${jsonPath} is missing required field "configVersion". ` +
-			`Expected configVersion: ${CONFIG_VERSION}.`,
+			`${jsonPath} is missing required field "configVersion". ` + `Expected configVersion: ${CONFIG_VERSION}.`,
 		);
 	}
 
@@ -498,11 +496,11 @@ function loadJsonConfig(configRoot: string): Partial<TaskplaneConfig> | null {
 		throw new ConfigLoadError(
 			"CONFIG_VERSION_UNSUPPORTED",
 			`${jsonPath} has configVersion ${parsed.configVersion}, but this version of Taskplane ` +
-			`only supports configVersion ${CONFIG_VERSION}. Please upgrade Taskplane.`,
+				`only supports configVersion ${CONFIG_VERSION}. Please upgrade Taskplane.`,
 		);
 	}
 
-	const overrides: Partial<TaskplaneConfig> = {};
+	const overrides: DeepPartial<TaskplaneConfig> = {};
 	if (parsed.taskRunner && typeof parsed.taskRunner === "object" && !Array.isArray(parsed.taskRunner)) {
 		overrides.taskRunner = deepClone(parsed.taskRunner);
 	}
@@ -518,7 +516,6 @@ function loadJsonConfig(configRoot: string): Partial<TaskplaneConfig> | null {
 
 	return overrides;
 }
-
 
 // ── YAML Loading ─────────────────────────────────────────────────────
 
@@ -537,7 +534,7 @@ function loadTaskRunnerYaml(configRoot: string): Partial<TaskRunnerSection> {
 
 	try {
 		const raw = readFileSync(yamlPath, "utf-8");
-		const loaded = yamlParse(raw) as any;
+		const loaded = parseYamlLoose(raw) as any;
 		if (!loaded || typeof loaded !== "object") return {};
 
 		// Section-aware mapping: structural keys → camelCase, record keys → preserved
@@ -579,7 +576,7 @@ function loadOrchestratorYaml(configRoot: string): Partial<OrchestratorSection> 
 
 	try {
 		const raw = readFileSync(yamlPath, "utf-8");
-		const loaded = yamlParse(raw) as any;
+		const loaded = parseYamlLoose(raw) as any;
 		if (!loaded || typeof loaded !== "object") return {};
 
 		// Section-aware mapping: structural keys → camelCase, record keys → preserved
@@ -602,7 +599,7 @@ function loadWorkspaceYaml(configRoot: string): WorkspaceSectionConfig | undefin
 
 	try {
 		const raw = readFileSync(yamlPath, "utf-8");
-		const loaded = yamlParse(raw) as any;
+		const loaded = parseYamlLoose(raw) as any;
 		if (!loaded || typeof loaded !== "object") return undefined;
 
 		const converted = convertStructuralKeys(loaded);
@@ -611,7 +608,6 @@ function loadWorkspaceYaml(configRoot: string): WorkspaceSectionConfig | undefin
 		return undefined;
 	}
 }
-
 
 // ── Global Preferences (Layer 2) ─────────────────────────────────────
 
@@ -730,7 +726,9 @@ export function loadGlobalPreferences(): GlobalPreferences {
  * Unknown keys are silently dropped — this is the Layer 2 boundary guardrail.
  */
 function normalizePreferenceThinkingMode(value: unknown): string {
-	const cleaned = String(value ?? "").trim().toLowerCase();
+	const cleaned = String(value ?? "")
+		.trim()
+		.toLowerCase();
 	if (!cleaned || cleaned === "inherit") return "";
 	if (cleaned === "on") return "high";
 	if (["off", "minimal", "low", "medium", "high", "xhigh"].includes(cleaned)) {
@@ -750,8 +748,10 @@ function extractInitAgentDefaults(rawInitDefaults: unknown): GlobalPreferences["
 	if (typeof raw.workerModel === "string") extracted.workerModel = raw.workerModel;
 	if (typeof raw.reviewerModel === "string") extracted.reviewerModel = raw.reviewerModel;
 	if (typeof raw.mergeModel === "string") extracted.mergeModel = raw.mergeModel;
-	if (raw.workerThinking !== undefined) extracted.workerThinking = normalizePreferenceThinkingMode(raw.workerThinking);
-	if (raw.reviewerThinking !== undefined) extracted.reviewerThinking = normalizePreferenceThinkingMode(raw.reviewerThinking);
+	if (raw.workerThinking !== undefined)
+		extracted.workerThinking = normalizePreferenceThinkingMode(raw.workerThinking);
+	if (raw.reviewerThinking !== undefined)
+		extracted.reviewerThinking = normalizePreferenceThinkingMode(raw.reviewerThinking);
 	if (raw.mergeThinking !== undefined) extracted.mergeThinking = normalizePreferenceThinkingMode(raw.mergeThinking);
 
 	return Object.keys(extracted).length > 0 ? extracted : undefined;
@@ -828,20 +828,30 @@ export function applyGlobalPreferences(config: TaskplaneConfig, prefs: GlobalPre
 	};
 
 	// 1) Legacy flat aliases
-	applyStr(prefs.operatorId, (v) => { config.orchestrator.orchestrator.operatorId = v; });
-	applyStr(prefs.sessionPrefix, (v) => { config.orchestrator.orchestrator.sessionPrefix = v; });
-	applyStr(prefs.workerModel, (v) => { config.taskRunner.worker.model = v; });
-	applyStr(prefs.reviewerModel, (v) => { config.taskRunner.reviewer.model = v; });
-	applyStr(prefs.mergeModel, (v) => { config.orchestrator.merge.model = v; });
-	applyStr(prefs.mergeThinking, (v) => { config.orchestrator.merge.thinking = v; });
-	applyStr(prefs.supervisorModel, (v) => { config.orchestrator.supervisor.model = v; });
+	applyStr(prefs.operatorId, (v) => {
+		config.orchestrator.orchestrator.operatorId = v;
+	});
+	applyStr(prefs.sessionPrefix, (v) => {
+		config.orchestrator.orchestrator.sessionPrefix = v;
+	});
+	applyStr(prefs.workerModel, (v) => {
+		config.taskRunner.worker.model = v;
+	});
+	applyStr(prefs.reviewerModel, (v) => {
+		config.taskRunner.reviewer.model = v;
+	});
+	applyStr(prefs.mergeModel, (v) => {
+		config.orchestrator.merge.model = v;
+	});
+	applyStr(prefs.mergeThinking, (v) => {
+		config.orchestrator.merge.thinking = v;
+	});
+	applyStr(prefs.supervisorModel, (v) => {
+		config.orchestrator.supervisor.model = v;
+	});
 
 	// spawnMode: enum — apply if defined (not a string-empty check)
 	if (prefs.spawnMode !== undefined) {
-		if (prefs.spawnMode === "tmux") {
-			prefs.spawnMode = "subprocess";
-			console.error(`[taskplane] Auto-migrated runtime preference: spawnMode "tmux" → "subprocess"`);
-		}
 		config.orchestrator.orchestrator.spawnMode = prefs.spawnMode;
 	}
 
@@ -862,11 +872,15 @@ export function applyGlobalPreferences(config: TaskplaneConfig, prefs: GlobalPre
 	// Runtime safety: nested legacy values may arrive through config-shaped overrides.
 	if ((config.orchestrator.orchestrator as Record<string, any>).spawnMode === "tmux") {
 		config.orchestrator.orchestrator.spawnMode = "subprocess";
-		console.error(`[taskplane] Auto-migrated runtime global preference: orchestrator.orchestrator.spawnMode "tmux" → "subprocess"`);
+		console.error(
+			`[taskplane] Auto-migrated runtime global preference: orchestrator.orchestrator.spawnMode "tmux" → "subprocess"`,
+		);
 	}
 	if ((config.taskRunner.worker as Record<string, any>).spawnMode === "tmux") {
 		config.taskRunner.worker.spawnMode = "subprocess";
-		console.error(`[taskplane] Auto-migrated runtime global preference: taskRunner.worker.spawnMode "tmux" → "subprocess"`);
+		console.error(
+			`[taskplane] Auto-migrated runtime global preference: taskRunner.worker.spawnMode "tmux" → "subprocess"`,
+		);
 	}
 
 	return config;
@@ -891,11 +905,7 @@ export function hasConfigFiles(root: string): boolean {
 	// coordination file, not a project config). Without this distinction,
 	// workspace root's .pi/taskplane-workspace.yaml causes resolveConfigRoot
 	// to short-circuit before checking the pointer-resolved config root (#424).
-	const files = [
-		PROJECT_CONFIG_FILENAME,
-		"task-runner.yaml",
-		"task-orchestrator.yaml",
-	];
+	const files = [PROJECT_CONFIG_FILENAME, "task-runner.yaml", "task-orchestrator.yaml"];
 	for (const f of files) {
 		if (existsSync(join(root, ".pi", f)) || existsSync(join(root, f))) return true;
 	}
@@ -937,7 +947,7 @@ export function resolveConfigRoot(cwd: string, pointerConfigRoot?: string): stri
 	return cwd;
 }
 
-function mergeProjectOverrides(config: TaskplaneConfig, overrides: Partial<TaskplaneConfig>): void {
+function mergeProjectOverrides(config: TaskplaneConfig, overrides: DeepPartial<TaskplaneConfig>): void {
 	if (overrides.taskRunner) {
 		deepMerge(config.taskRunner as Record<string, any>, overrides.taskRunner as Record<string, any>);
 	}
@@ -952,7 +962,7 @@ function mergeProjectOverrides(config: TaskplaneConfig, overrides: Partial<Taskp
 	}
 }
 
-function migrateProjectOverrides(overrides: Partial<TaskplaneConfig>, configRoot: string): boolean {
+function migrateProjectOverrides(overrides: DeepPartial<TaskplaneConfig>, configRoot: string): boolean {
 	if (_projectMigrationDone) return false;
 
 	let migrated = false;
@@ -1005,7 +1015,9 @@ function migrateProjectOverrides(overrides: Partial<TaskplaneConfig>, configRoot
 				console.error(`[taskplane] Config file updated: ${jsonPath}`);
 			}
 		} catch (err) {
-			console.error(`[taskplane] Warning: could not persist config migration to disk: ${err instanceof Error ? err.message : err}`);
+			console.error(
+				`[taskplane] Warning: could not persist config migration to disk: ${err instanceof Error ? err.message : err}`,
+			);
 		}
 	}
 
@@ -1013,7 +1025,7 @@ function migrateProjectOverrides(overrides: Partial<TaskplaneConfig>, configRoot
 	return migrated;
 }
 
-export function loadProjectOverrides(configRoot: string): Partial<TaskplaneConfig> {
+export function loadProjectOverrides(configRoot: string): DeepPartial<TaskplaneConfig> {
 	const jsonOverrides = loadJsonConfig(configRoot);
 	if (jsonOverrides !== null) {
 		return jsonOverrides;
@@ -1023,7 +1035,7 @@ export function loadProjectOverrides(configRoot: string): Partial<TaskplaneConfi
 	const orchestrator = loadOrchestratorYaml(configRoot);
 	const workspace = loadWorkspaceYaml(configRoot);
 
-	const overrides: Partial<TaskplaneConfig> = {};
+	const overrides: DeepPartial<TaskplaneConfig> = {};
 	if (Object.keys(taskRunner).length > 0) overrides.taskRunner = taskRunner;
 	if (Object.keys(orchestrator).length > 0) overrides.orchestrator = orchestrator;
 	if (workspace) overrides.workspace = workspace;
@@ -1076,7 +1088,6 @@ export function loadLayer1Config(cwd: string, pointerConfigRoot?: string): Taskp
 	normalizeInheritanceAliases(config);
 	return config;
 }
-
 
 // ── Backward-Compatible Adapters ─────────────────────────────────────
 

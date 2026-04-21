@@ -21,22 +21,13 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 // Read extension.ts source for structural verification
-const extensionSource = readFileSync(
-	join(__dirname, "..", "taskplane", "extension.ts"),
-	"utf-8",
-);
+const extensionSource = readFileSync(join(__dirname, "..", "taskplane", "extension.ts"), "utf-8");
 
 // Read dashboard server source for telemetry verification
-const serverSource = readFileSync(
-	join(__dirname, "..", "..", "dashboard", "server.cjs"),
-	"utf-8",
-);
+const serverSource = readFileSync(join(__dirname, "..", "..", "dashboard", "server.cjs"), "utf-8");
 
 // Read dashboard client source for UI verification
-const appSource = readFileSync(
-	join(__dirname, "..", "..", "dashboard", "public", "app.js"),
-	"utf-8",
-);
+const appSource = readFileSync(join(__dirname, "..", "..", "dashboard", "public", "app.js"), "utf-8");
 
 /**
  * Helper to extract a tool registration block from the source.

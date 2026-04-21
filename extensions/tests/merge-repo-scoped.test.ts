@@ -139,8 +139,8 @@ function runAllTests(): void {
 		assert(groups[1].lanes.length === 2, "multi-repo: frontend group has 2 lanes");
 
 		// Lane numbers within each group
-		const apiLanes = groups[0].lanes.map(l => l.laneNumber).sort();
-		const frontendLanes = groups[1].lanes.map(l => l.laneNumber).sort();
+		const apiLanes = groups[0].lanes.map((l) => l.laneNumber).sort();
+		const frontendLanes = groups[1].lanes.map((l) => l.laneNumber).sort();
 		assert(apiLanes[0] === 2 && apiLanes[1] === 4, "multi-repo: api group contains lanes 2, 4");
 		assert(frontendLanes[0] === 1 && frontendLanes[1] === 3, "multi-repo: frontend group contains lanes 1, 3");
 	}
@@ -148,11 +148,7 @@ function runAllTests(): void {
 	// ─── 2. groupLanesByRepo: mono-repo (no repoId) → single group ──
 	console.log("\n── 2. groupLanesByRepo: mono-repo no-regression ──");
 	{
-		const lanes: AllocatedLane[] = [
-			makeLane(1, ["TP-020"]),
-			makeLane(2, ["TP-021"]),
-			makeLane(3, ["TP-022"]),
-		];
+		const lanes: AllocatedLane[] = [makeLane(1, ["TP-020"]), makeLane(2, ["TP-021"]), makeLane(3, ["TP-022"])];
 
 		const groups = groupLanesByRepo(lanes);
 
@@ -165,9 +161,9 @@ function runAllTests(): void {
 	console.log("\n── 3. groupLanesByRepo: mixed undefined + repoId ──");
 	{
 		const lanes: AllocatedLane[] = [
-			makeLane(1, ["TP-030"]),                           // undefined repoId
+			makeLane(1, ["TP-030"]), // undefined repoId
 			makeLane(2, ["TP-031"], { repoId: "backend" }),
-			makeLane(3, ["TP-032"]),                           // undefined repoId
+			makeLane(3, ["TP-032"]), // undefined repoId
 		];
 
 		const groups = groupLanesByRepo(lanes);
@@ -223,11 +219,7 @@ function runAllTests(): void {
 	// ─── 7. determineMergeOrder: sequential within group ─────────────
 	console.log("\n── 7. determineMergeOrder: sequential ──");
 	{
-		const lanes: AllocatedLane[] = [
-			makeLane(3, ["TP-060"]),
-			makeLane(1, ["TP-061"]),
-			makeLane(2, ["TP-062"]),
-		];
+		const lanes: AllocatedLane[] = [makeLane(3, ["TP-060"]), makeLane(1, ["TP-061"]), makeLane(2, ["TP-062"])];
 
 		const ordered = determineMergeOrder(lanes, "sequential");
 
@@ -244,21 +236,23 @@ function runAllTests(): void {
 			makeLane(1, ["TP-071"], { repoId: "a-repo" }),
 			makeLane(3, ["TP-072"], { repoId: "z-repo" }),
 			makeLane(2, ["TP-073"], { repoId: "a-repo" }),
-			makeLane(4, ["TP-074"]),  // undefined
+			makeLane(4, ["TP-074"]), // undefined
 		];
 
 		// Run grouping multiple times
 		const results = [];
 		for (let i = 0; i < 3; i++) {
 			const groups = groupLanesByRepo(lanes);
-			const summary = groups.map(g =>
-				`${g.repoId ?? ""}:[${g.lanes.map(l => l.laneNumber).join(",")}]`
-			).join("|");
+			const summary = groups
+				.map((g) => `${g.repoId ?? ""}:[${g.lanes.map((l) => l.laneNumber).join(",")}]`)
+				.join("|");
 			results.push(summary);
 		}
 
-		assert(results[0] === results[1] && results[1] === results[2],
-			"deterministic: groupLanesByRepo produces identical output across 3 runs");
+		assert(
+			results[0] === results[1] && results[1] === results[2],
+			"deterministic: groupLanesByRepo produces identical output across 3 runs",
+		);
 
 		// Verify the exact expected order
 		const groups = groupLanesByRepo(lanes);
@@ -285,9 +279,9 @@ function runAllTests(): void {
 			repoStatuses: Array<"succeeded" | "failed" | "partial">,
 		): "succeeded" | "failed" | "partial" {
 			const anyLaneSucceeded = laneResults.some(
-				r => r.resultStatus === "SUCCESS" || r.resultStatus === "CONFLICT_RESOLVED",
+				(r) => r.resultStatus === "SUCCESS" || r.resultStatus === "CONFLICT_RESOLVED",
 			);
-			const anyRepoFailed = repoStatuses.some(s => s !== "succeeded");
+			const anyRepoFailed = repoStatuses.some((s) => s !== "succeeded");
 			if (!anyRepoFailed) return "succeeded";
 			if (anyLaneSucceeded) return "partial";
 			return "failed";
@@ -296,7 +290,10 @@ function runAllTests(): void {
 		// Case A: All lanes succeed → succeeded
 		assert(
 			computeAggregateStatus(
-				[{ resultStatus: "SUCCESS", error: null }, { resultStatus: "SUCCESS", error: null }],
+				[
+					{ resultStatus: "SUCCESS", error: null },
+					{ resultStatus: "SUCCESS", error: null },
+				],
 				["succeeded", "succeeded"],
 			) === "succeeded",
 			"rollup: all SUCCESS → succeeded",
@@ -305,7 +302,10 @@ function runAllTests(): void {
 		// Case B: Some lanes succeed, some fail → partial
 		assert(
 			computeAggregateStatus(
-				[{ resultStatus: "SUCCESS", error: null }, { resultStatus: "CONFLICT_UNRESOLVED", error: null }],
+				[
+					{ resultStatus: "SUCCESS", error: null },
+					{ resultStatus: "CONFLICT_UNRESOLVED", error: null },
+				],
 				["partial"],
 			) === "partial",
 			"rollup: mixed SUCCESS + failure → partial",
@@ -314,7 +314,10 @@ function runAllTests(): void {
 		// Case C: All lanes fail → failed
 		assert(
 			computeAggregateStatus(
-				[{ resultStatus: "CONFLICT_UNRESOLVED", error: null }, { resultStatus: "BUILD_FAILURE", error: null }],
+				[
+					{ resultStatus: "CONFLICT_UNRESOLVED", error: null },
+					{ resultStatus: "BUILD_FAILURE", error: null },
+				],
 				["failed"],
 			) === "failed",
 			"rollup: all failures → failed",
@@ -327,10 +330,10 @@ function runAllTests(): void {
 		assert(
 			computeAggregateStatus(
 				[
-					{ resultStatus: "SUCCESS", error: null },                    // repo-a lane 1
-					{ resultStatus: "CONFLICT_UNRESOLVED", error: null },        // repo-a lane 2 (failure)
-					{ resultStatus: "CONFLICT_RESOLVED", error: null },          // repo-b lane 1
-					{ resultStatus: "BUILD_FAILURE", error: null },              // repo-b lane 2 (failure)
+					{ resultStatus: "SUCCESS", error: null }, // repo-a lane 1
+					{ resultStatus: "CONFLICT_UNRESOLVED", error: null }, // repo-a lane 2 (failure)
+					{ resultStatus: "CONFLICT_RESOLVED", error: null }, // repo-b lane 1
+					{ resultStatus: "BUILD_FAILURE", error: null }, // repo-b lane 2 (failure)
 				],
 				["partial", "partial"],
 			) === "partial",
@@ -338,24 +341,21 @@ function runAllTests(): void {
 		);
 
 		// Case E: No lanes at all (vacuous) → succeeded
-		assert(
-			computeAggregateStatus([], []) === "succeeded",
-			"rollup: no lanes → succeeded (vacuous)",
-		);
+		assert(computeAggregateStatus([], []) === "succeeded", "rollup: no lanes → succeeded (vacuous)");
 
 		// Case F: Error lanes (no result, only error) → failed
 		assert(
-			computeAggregateStatus(
-				[{ resultStatus: null, error: "spawn failed" }],
-				["failed"],
-			) === "failed",
+			computeAggregateStatus([{ resultStatus: null, error: "spawn failed" }], ["failed"]) === "failed",
 			"rollup: error lane without result → failed",
 		);
 
 		// Case G: Mix of success + error → partial
 		assert(
 			computeAggregateStatus(
-				[{ resultStatus: "SUCCESS", error: null }, { resultStatus: null, error: "timeout" }],
+				[
+					{ resultStatus: "SUCCESS", error: null },
+					{ resultStatus: null, error: "timeout" },
+				],
 				["partial"],
 			) === "partial",
 			"rollup: success + error → partial",
@@ -399,8 +399,8 @@ function runAllTests(): void {
 		assert(
 			computeAggregateStatus(
 				[
-					{ resultStatus: "SUCCESS", error: null },              // repo B lane 1
-					{ resultStatus: "BUILD_FAILURE", error: null },        // repo B lane 2
+					{ resultStatus: "SUCCESS", error: null }, // repo B lane 1
+					{ resultStatus: "BUILD_FAILURE", error: null }, // repo B lane 2
 				],
 				["failed", "partial"], // repo A setup fail, repo B partial
 			) === "partial",
@@ -441,14 +441,38 @@ function runAllTests(): void {
 			status: "partial",
 			laneResults: [
 				{
-					laneNumber: 1, laneId: "api/lane-1", sourceBranch: "task/lane-1",
-					targetBranch: "main", result: { status: "SUCCESS", source_branch: "task/lane-1", target_branch: "main", merge_commit: "abc1234", conflicts: [], verification: { ran: true, passed: true, output: "" } },
-					error: null, durationMs: 5000, repoId: "api",
+					laneNumber: 1,
+					laneId: "api/lane-1",
+					sourceBranch: "task/lane-1",
+					targetBranch: "main",
+					result: {
+						status: "SUCCESS",
+						source_branch: "task/lane-1",
+						target_branch: "main",
+						merge_commit: "abc1234",
+						conflicts: [],
+						verification: { ran: true, passed: true, output: "" },
+					},
+					error: null,
+					durationMs: 5000,
+					repoId: "api",
 				},
 				{
-					laneNumber: 2, laneId: "frontend/lane-2", sourceBranch: "task/lane-2",
-					targetBranch: "main", result: { status: "CONFLICT_UNRESOLVED", source_branch: "task/lane-2", target_branch: "main", merge_commit: "", conflicts: [{ file: "index.ts", type: "content", resolved: false }], verification: { ran: false, passed: false, output: "" } },
-					error: null, durationMs: 3000, repoId: "frontend",
+					laneNumber: 2,
+					laneId: "frontend/lane-2",
+					sourceBranch: "task/lane-2",
+					targetBranch: "main",
+					result: {
+						status: "CONFLICT_UNRESOLVED",
+						source_branch: "task/lane-2",
+						target_branch: "main",
+						merge_commit: "",
+						conflicts: [{ file: "index.ts", type: "content", resolved: false }],
+						verification: { ran: false, passed: false, output: "" },
+					},
+					error: null,
+					durationMs: 3000,
+					repoId: "frontend",
 				},
 			],
 			failedLane: 2,
@@ -458,22 +482,50 @@ function runAllTests(): void {
 				{
 					repoId: "api",
 					status: "succeeded",
-					laneResults: [{
-						laneNumber: 1, laneId: "api/lane-1", sourceBranch: "task/lane-1",
-						targetBranch: "main", result: { status: "SUCCESS", source_branch: "task/lane-1", target_branch: "main", merge_commit: "abc1234", conflicts: [], verification: { ran: true, passed: true, output: "" } },
-						error: null, durationMs: 5000, repoId: "api",
-					}],
+					laneResults: [
+						{
+							laneNumber: 1,
+							laneId: "api/lane-1",
+							sourceBranch: "task/lane-1",
+							targetBranch: "main",
+							result: {
+								status: "SUCCESS",
+								source_branch: "task/lane-1",
+								target_branch: "main",
+								merge_commit: "abc1234",
+								conflicts: [],
+								verification: { ran: true, passed: true, output: "" },
+							},
+							error: null,
+							durationMs: 5000,
+							repoId: "api",
+						},
+					],
 					failedLane: null,
 					failureReason: null,
 				},
 				{
 					repoId: "frontend",
 					status: "failed",
-					laneResults: [{
-						laneNumber: 2, laneId: "frontend/lane-2", sourceBranch: "task/lane-2",
-						targetBranch: "main", result: { status: "CONFLICT_UNRESOLVED", source_branch: "task/lane-2", target_branch: "main", merge_commit: "", conflicts: [{ file: "index.ts", type: "content", resolved: false }], verification: { ran: false, passed: false, output: "" } },
-						error: null, durationMs: 3000, repoId: "frontend",
-					}],
+					laneResults: [
+						{
+							laneNumber: 2,
+							laneId: "frontend/lane-2",
+							sourceBranch: "task/lane-2",
+							targetBranch: "main",
+							result: {
+								status: "CONFLICT_UNRESOLVED",
+								source_branch: "task/lane-2",
+								target_branch: "main",
+								merge_commit: "",
+								conflicts: [{ file: "index.ts", type: "content", resolved: false }],
+								verification: { ran: false, passed: false, output: "" },
+							},
+							error: null,
+							durationMs: 3000,
+							repoId: "frontend",
+						},
+					],
 					failedLane: 2,
 					failureReason: "Unresolved merge conflicts in lane 2: index.ts",
 				},
@@ -500,15 +552,26 @@ function runAllTests(): void {
 			status: "partial",
 			laneResults: [
 				{
-					laneNumber: 1, laneId: "lane-1", sourceBranch: "task/lane-1",
-					targetBranch: "main", result: { status: "SUCCESS", source_branch: "task/lane-1", target_branch: "main", merge_commit: "abc", conflicts: [], verification: { ran: true, passed: true, output: "" } },
-					error: null, durationMs: 5000,
+					laneNumber: 1,
+					laneId: "lane-1",
+					sourceBranch: "task/lane-1",
+					targetBranch: "main",
+					result: {
+						status: "SUCCESS",
+						source_branch: "task/lane-1",
+						target_branch: "main",
+						merge_commit: "abc",
+						conflicts: [],
+						verification: { ran: true, passed: true, output: "" },
+					},
+					error: null,
+					durationMs: 5000,
 				},
 			],
 			failedLane: 2,
 			failureReason: "some error",
 			totalDurationMs: 5000,
-			repoResults: [],  // Empty = mono-repo mode
+			repoResults: [], // Empty = mono-repo mode
 		};
 
 		const summary = formatRepoMergeSummary(mergeResult);
@@ -545,12 +608,18 @@ function runAllTests(): void {
 			totalDurationMs: 1000,
 			repoResults: [
 				{
-					repoId: "api", status: "partial",
-					laneResults: [], failedLane: 1, failureReason: "err1",
+					repoId: "api",
+					status: "partial",
+					laneResults: [],
+					failedLane: 1,
+					failureReason: "err1",
 				},
 				{
-					repoId: "web", status: "partial",
-					laneResults: [], failedLane: 2, failureReason: "err2",
+					repoId: "web",
+					status: "partial",
+					laneResults: [],
+					failedLane: 2,
+					failureReason: "err2",
 				},
 			],
 		};
@@ -571,8 +640,11 @@ function runAllTests(): void {
 			totalDurationMs: 1000,
 			repoResults: [
 				{
-					repoId: "api", status: "partial",
-					laneResults: [], failedLane: 2, failureReason: "err",
+					repoId: "api",
+					status: "partial",
+					laneResults: [],
+					failedLane: 2,
+					failureReason: "err",
 				},
 			],
 		};
@@ -594,31 +666,79 @@ function runAllTests(): void {
 			totalDurationMs: 1000,
 			repoResults: [
 				{
-					repoId: "alpha", status: "succeeded",
-					laneResults: [{
-						laneNumber: 1, laneId: "alpha/lane-1", sourceBranch: "b1", targetBranch: "main",
-						result: { status: "SUCCESS", source_branch: "b1", target_branch: "main", merge_commit: "a", conflicts: [], verification: { ran: true, passed: true, output: "" } },
-						error: null, durationMs: 1000, repoId: "alpha",
-					}],
-					failedLane: null, failureReason: null,
+					repoId: "alpha",
+					status: "succeeded",
+					laneResults: [
+						{
+							laneNumber: 1,
+							laneId: "alpha/lane-1",
+							sourceBranch: "b1",
+							targetBranch: "main",
+							result: {
+								status: "SUCCESS",
+								source_branch: "b1",
+								target_branch: "main",
+								merge_commit: "a",
+								conflicts: [],
+								verification: { ran: true, passed: true, output: "" },
+							},
+							error: null,
+							durationMs: 1000,
+							repoId: "alpha",
+						},
+					],
+					failedLane: null,
+					failureReason: null,
 				},
 				{
-					repoId: "beta", status: "failed",
-					laneResults: [{
-						laneNumber: 2, laneId: "beta/lane-2", sourceBranch: "b2", targetBranch: "main",
-						result: { status: "BUILD_FAILURE", source_branch: "b2", target_branch: "main", merge_commit: "", conflicts: [], verification: { ran: true, passed: false, output: "tests failed" } },
-						error: null, durationMs: 2000, repoId: "beta",
-					}],
-					failedLane: 2, failureReason: "build fail",
+					repoId: "beta",
+					status: "failed",
+					laneResults: [
+						{
+							laneNumber: 2,
+							laneId: "beta/lane-2",
+							sourceBranch: "b2",
+							targetBranch: "main",
+							result: {
+								status: "BUILD_FAILURE",
+								source_branch: "b2",
+								target_branch: "main",
+								merge_commit: "",
+								conflicts: [],
+								verification: { ran: true, passed: false, output: "tests failed" },
+							},
+							error: null,
+							durationMs: 2000,
+							repoId: "beta",
+						},
+					],
+					failedLane: 2,
+					failureReason: "build fail",
 				},
 				{
-					repoId: "gamma", status: "succeeded",
-					laneResults: [{
-						laneNumber: 3, laneId: "gamma/lane-3", sourceBranch: "b3", targetBranch: "main",
-						result: { status: "CONFLICT_RESOLVED", source_branch: "b3", target_branch: "main", merge_commit: "g", conflicts: [{ file: "x.ts", type: "content", resolved: true }], verification: { ran: true, passed: true, output: "" } },
-						error: null, durationMs: 1500, repoId: "gamma",
-					}],
-					failedLane: null, failureReason: null,
+					repoId: "gamma",
+					status: "succeeded",
+					laneResults: [
+						{
+							laneNumber: 3,
+							laneId: "gamma/lane-3",
+							sourceBranch: "b3",
+							targetBranch: "main",
+							result: {
+								status: "CONFLICT_RESOLVED",
+								source_branch: "b3",
+								target_branch: "main",
+								merge_commit: "g",
+								conflicts: [{ file: "x.ts", type: "content", resolved: true }],
+								verification: { ran: true, passed: true, output: "" },
+							},
+							error: null,
+							durationMs: 1500,
+							repoId: "gamma",
+						},
+					],
+					failedLane: null,
+					failureReason: null,
 				},
 			],
 		};
@@ -665,12 +785,18 @@ function runAllTests(): void {
 			totalDurationMs: 1000,
 			repoResults: [
 				{
-					repoId: "api", status: "partial",
-					laneResults: [], failedLane: 1, failureReason: "mixed lanes",
+					repoId: "api",
+					status: "partial",
+					laneResults: [],
+					failedLane: 1,
+					failureReason: "mixed lanes",
 				},
 				{
-					repoId: "web", status: "partial",
-					laneResults: [], failedLane: 3, failureReason: "mixed lanes",
+					repoId: "web",
+					status: "partial",
+					laneResults: [],
+					failedLane: 3,
+					failureReason: "mixed lanes",
 				},
 			],
 		};
@@ -687,13 +813,21 @@ function runAllTests(): void {
 			status: "failed",
 			laneResults: [
 				{
-					laneNumber: 3, laneId: "api/lane-3", sourceBranch: "task/lane-3",
-					targetBranch: "main", result: {
-						status: "CONFLICT_UNRESOLVED", source_branch: "task/lane-3", target_branch: "main",
-						merge_commit: "", conflicts: [{ file: "index.ts", type: "content", resolved: false }],
+					laneNumber: 3,
+					laneId: "api/lane-3",
+					sourceBranch: "task/lane-3",
+					targetBranch: "main",
+					result: {
+						status: "CONFLICT_UNRESOLVED",
+						source_branch: "task/lane-3",
+						target_branch: "main",
+						merge_commit: "",
+						conflicts: [{ file: "index.ts", type: "content", resolved: false }],
 						verification: { ran: false, passed: false, output: "" },
 					},
-					error: null, durationMs: 5000, repoId: "api",
+					error: null,
+					durationMs: 5000,
+					repoId: "api",
 				},
 			],
 			failedLane: 3,
@@ -705,7 +839,10 @@ function runAllTests(): void {
 
 		assert(result.policy === "pause", "pause-policy: policy is 'pause'");
 		assert(result.targetPhase === "paused", "pause-policy: targetPhase is 'paused'");
-		assert(result.persistTrigger === "merge-failure-pause", "pause-policy: persistTrigger is 'merge-failure-pause'");
+		assert(
+			result.persistTrigger === "merge-failure-pause",
+			"pause-policy: persistTrigger is 'merge-failure-pause'",
+		);
 		assert(result.notifyLevel === "error", "pause-policy: notifyLevel is 'error'");
 		assert(result.failedLaneIds === "lane-3", "pause-policy: failedLaneIds is 'lane-3'");
 		assert(result.notifyMessage.includes("⏸️"), "pause-policy: notify has pause emoji");
@@ -727,22 +864,36 @@ function runAllTests(): void {
 			status: "partial",
 			laneResults: [
 				{
-					laneNumber: 1, laneId: "lane-1", sourceBranch: "task/lane-1",
-					targetBranch: "main", result: {
-						status: "SUCCESS", source_branch: "task/lane-1", target_branch: "main",
-						merge_commit: "abc1234", conflicts: [],
+					laneNumber: 1,
+					laneId: "lane-1",
+					sourceBranch: "task/lane-1",
+					targetBranch: "main",
+					result: {
+						status: "SUCCESS",
+						source_branch: "task/lane-1",
+						target_branch: "main",
+						merge_commit: "abc1234",
+						conflicts: [],
 						verification: { ran: true, passed: true, output: "" },
 					},
-					error: null, durationMs: 5000,
+					error: null,
+					durationMs: 5000,
 				},
 				{
-					laneNumber: 2, laneId: "lane-2", sourceBranch: "task/lane-2",
-					targetBranch: "main", result: {
-						status: "BUILD_FAILURE", source_branch: "task/lane-2", target_branch: "main",
-						merge_commit: "", conflicts: [],
+					laneNumber: 2,
+					laneId: "lane-2",
+					sourceBranch: "task/lane-2",
+					targetBranch: "main",
+					result: {
+						status: "BUILD_FAILURE",
+						source_branch: "task/lane-2",
+						target_branch: "main",
+						merge_commit: "",
+						conflicts: [],
 						verification: { ran: true, passed: false, output: "tests failed" },
 					},
-					error: null, durationMs: 3000,
+					error: null,
+					durationMs: 3000,
 				},
 			],
 			failedLane: 2,
@@ -754,7 +905,10 @@ function runAllTests(): void {
 
 		assert(result.policy === "abort", "abort-policy: policy is 'abort'");
 		assert(result.targetPhase === "stopped", "abort-policy: targetPhase is 'stopped'");
-		assert(result.persistTrigger === "merge-failure-abort", "abort-policy: persistTrigger is 'merge-failure-abort'");
+		assert(
+			result.persistTrigger === "merge-failure-abort",
+			"abort-policy: persistTrigger is 'merge-failure-abort'",
+		);
 		assert(result.notifyMessage.includes("⛔"), "abort-policy: notify has stop emoji");
 		assert(result.notifyMessage.includes("lane-2"), "abort-policy: notify includes lane ID");
 		assert(result.notifyMessage.includes("wave 1"), "abort-policy: notify includes wave number");
@@ -794,17 +948,29 @@ function runAllTests(): void {
 			status: "failed",
 			laneResults: [
 				{
-					laneNumber: 1, laneId: "lane-1", sourceBranch: "b1", targetBranch: "main",
-					result: null, error: "spawn failed", durationMs: 100,
+					laneNumber: 1,
+					laneId: "lane-1",
+					sourceBranch: "b1",
+					targetBranch: "main",
+					result: null,
+					error: "spawn failed",
+					durationMs: 100,
 				},
 				{
-					laneNumber: 4, laneId: "lane-4", sourceBranch: "b4", targetBranch: "main",
+					laneNumber: 4,
+					laneId: "lane-4",
+					sourceBranch: "b4",
+					targetBranch: "main",
 					result: {
-						status: "BUILD_FAILURE", source_branch: "b4", target_branch: "main",
-						merge_commit: "", conflicts: [],
+						status: "BUILD_FAILURE",
+						source_branch: "b4",
+						target_branch: "main",
+						merge_commit: "",
+						conflicts: [],
 						verification: { ran: true, passed: false, output: "err" },
 					},
-					error: null, durationMs: 200,
+					error: null,
+					durationMs: 200,
 				},
 			],
 			failedLane: 1,
@@ -829,13 +995,21 @@ function runAllTests(): void {
 			status: "partial",
 			laneResults: [
 				{
-					laneNumber: 5, laneId: "api/lane-5", sourceBranch: "task/lane-5",
-					targetBranch: "develop", result: {
-						status: "CONFLICT_UNRESOLVED", source_branch: "task/lane-5", target_branch: "develop",
-						merge_commit: "", conflicts: [{ file: "a.ts", type: "content", resolved: false }],
+					laneNumber: 5,
+					laneId: "api/lane-5",
+					sourceBranch: "task/lane-5",
+					targetBranch: "develop",
+					result: {
+						status: "CONFLICT_UNRESOLVED",
+						source_branch: "task/lane-5",
+						target_branch: "develop",
+						merge_commit: "",
+						conflicts: [{ file: "a.ts", type: "content", resolved: false }],
 						verification: { ran: false, passed: false, output: "" },
 					},
-					error: null, durationMs: 1000, repoId: "api",
+					error: null,
+					durationMs: 1000,
+					repoId: "api",
 				},
 			],
 			failedLane: 5,
@@ -843,12 +1017,18 @@ function runAllTests(): void {
 			totalDurationMs: 1000,
 			repoResults: [
 				{
-					repoId: "api", status: "failed",
-					laneResults: [], failedLane: 5, failureReason: "Unresolved merge conflicts",
+					repoId: "api",
+					status: "failed",
+					laneResults: [],
+					failedLane: 5,
+					failureReason: "Unresolved merge conflicts",
 				},
 				{
-					repoId: "web", status: "succeeded",
-					laneResults: [], failedLane: null, failureReason: null,
+					repoId: "web",
+					status: "succeeded",
+					laneResults: [],
+					failedLane: null,
+					failureReason: null,
 				},
 			],
 		};
@@ -866,7 +1046,10 @@ function runAllTests(): void {
 		assert(engineResult.notifyMessage === resumeResult.notifyMessage, "parity: same notifyMessage");
 		assert(engineResult.persistTrigger === resumeResult.persistTrigger, "parity: same persistTrigger");
 		assert(engineResult.failedLaneIds === resumeResult.failedLaneIds, "parity: same failedLaneIds");
-		assert(JSON.stringify(engineResult.logDetails) === JSON.stringify(resumeResult.logDetails), "parity: same logDetails");
+		assert(
+			JSON.stringify(engineResult.logDetails) === JSON.stringify(resumeResult.logDetails),
+			"parity: same logDetails",
+		);
 
 		// Also check abort policy produces different result
 		const abortResult = computeMergeFailurePolicy(mergeResult, 1, abortConfig);
@@ -907,14 +1090,38 @@ function runAllTests(): void {
 			status: "partial",
 			laneResults: [
 				{
-					laneNumber: 1, laneId: "api/lane-1", sourceBranch: "b1", targetBranch: "main",
-					result: { status: "SUCCESS", source_branch: "b1", target_branch: "main", merge_commit: "a", conflicts: [], verification: { ran: true, passed: true, output: "" } },
-					error: null, durationMs: 100, repoId: "api",
+					laneNumber: 1,
+					laneId: "api/lane-1",
+					sourceBranch: "b1",
+					targetBranch: "main",
+					result: {
+						status: "SUCCESS",
+						source_branch: "b1",
+						target_branch: "main",
+						merge_commit: "a",
+						conflicts: [],
+						verification: { ran: true, passed: true, output: "" },
+					},
+					error: null,
+					durationMs: 100,
+					repoId: "api",
 				},
 				{
-					laneNumber: 2, laneId: "web/lane-2", sourceBranch: "b2", targetBranch: "main",
-					result: { status: "CONFLICT_UNRESOLVED", source_branch: "b2", target_branch: "main", merge_commit: "", conflicts: [{ file: "x.ts", type: "content", resolved: false }], verification: { ran: false, passed: false, output: "" } },
-					error: null, durationMs: 200, repoId: "web",
+					laneNumber: 2,
+					laneId: "web/lane-2",
+					sourceBranch: "b2",
+					targetBranch: "main",
+					result: {
+						status: "CONFLICT_UNRESOLVED",
+						source_branch: "b2",
+						target_branch: "main",
+						merge_commit: "",
+						conflicts: [{ file: "x.ts", type: "content", resolved: false }],
+						verification: { ran: false, passed: false, output: "" },
+					},
+					error: null,
+					durationMs: 200,
+					repoId: "web",
 				},
 			],
 			failedLane: 2,
@@ -931,12 +1138,20 @@ function runAllTests(): void {
 			computeMergeFailurePolicy(mergeResult, 0, config),
 		];
 
-		assert(results[0].failedLaneIds === results[1].failedLaneIds && results[1].failedLaneIds === results[2].failedLaneIds,
-			"deterministic: failedLaneIds identical across 3 calls");
-		assert(results[0].notifyMessage === results[1].notifyMessage && results[1].notifyMessage === results[2].notifyMessage,
-			"deterministic: notifyMessage identical across 3 calls");
-		assert(results[0].errorMessage === results[1].errorMessage && results[1].errorMessage === results[2].errorMessage,
-			"deterministic: errorMessage identical across 3 calls");
+		assert(
+			results[0].failedLaneIds === results[1].failedLaneIds &&
+				results[1].failedLaneIds === results[2].failedLaneIds,
+			"deterministic: failedLaneIds identical across 3 calls",
+		);
+		assert(
+			results[0].notifyMessage === results[1].notifyMessage &&
+				results[1].notifyMessage === results[2].notifyMessage,
+			"deterministic: notifyMessage identical across 3 calls",
+		);
+		assert(
+			results[0].errorMessage === results[1].errorMessage && results[1].errorMessage === results[2].errorMessage,
+			"deterministic: errorMessage identical across 3 calls",
+		);
 	}
 
 	// ─── 26. computeMergeFailurePolicy: repo-level fallback for setup failures ──
@@ -954,12 +1169,18 @@ function runAllTests(): void {
 			totalDurationMs: 50,
 			repoResults: [
 				{
-					repoId: "backend", status: "failed",
-					laneResults: [], failedLane: null, failureReason: "Merge failed (setup error)",
+					repoId: "backend",
+					status: "failed",
+					laneResults: [],
+					failedLane: null,
+					failureReason: "Merge failed (setup error)",
 				},
 				{
-					repoId: "frontend", status: "succeeded",
-					laneResults: [], failedLane: null, failureReason: null,
+					repoId: "frontend",
+					status: "succeeded",
+					laneResults: [],
+					failedLane: null,
+					failureReason: null,
 				},
 			],
 		};
@@ -985,12 +1206,18 @@ function runAllTests(): void {
 			totalDurationMs: 50,
 			repoResults: [
 				{
-					repoId: "api", status: "failed",
-					laneResults: [], failedLane: null, failureReason: "setup error",
+					repoId: "api",
+					status: "failed",
+					laneResults: [],
+					failedLane: null,
+					failureReason: "setup error",
 				},
 				{
-					repoId: "web", status: "failed",
-					laneResults: [], failedLane: null, failureReason: "setup error",
+					repoId: "web",
+					status: "failed",
+					laneResults: [],
+					failedLane: null,
+					failureReason: "setup error",
 				},
 			],
 		};
@@ -1011,13 +1238,21 @@ function runAllTests(): void {
 			status: "partial",
 			laneResults: [
 				{
-					laneNumber: 3, laneId: "web/lane-3", sourceBranch: "b3", targetBranch: "main",
+					laneNumber: 3,
+					laneId: "web/lane-3",
+					sourceBranch: "b3",
+					targetBranch: "main",
 					result: {
-						status: "CONFLICT_UNRESOLVED", source_branch: "b3", target_branch: "main",
-						merge_commit: "", conflicts: [{ file: "y.ts", type: "content", resolved: false }],
+						status: "CONFLICT_UNRESOLVED",
+						source_branch: "b3",
+						target_branch: "main",
+						merge_commit: "",
+						conflicts: [{ file: "y.ts", type: "content", resolved: false }],
 						verification: { ran: false, passed: false, output: "" },
 					},
-					error: null, durationMs: 200, repoId: "web",
+					error: null,
+					durationMs: 200,
+					repoId: "web",
 				},
 			],
 			failedLane: 3,
@@ -1025,12 +1260,18 @@ function runAllTests(): void {
 			totalDurationMs: 200,
 			repoResults: [
 				{
-					repoId: "api", status: "succeeded",
-					laneResults: [], failedLane: null, failureReason: null,
+					repoId: "api",
+					status: "succeeded",
+					laneResults: [],
+					failedLane: null,
+					failureReason: null,
 				},
 				{
-					repoId: "web", status: "failed",
-					laneResults: [], failedLane: 3, failureReason: "conflicts",
+					repoId: "web",
+					status: "failed",
+					laneResults: [],
+					failedLane: 3,
+					failureReason: "conflicts",
 				},
 			],
 		};
@@ -1062,8 +1303,14 @@ function runAllTests(): void {
 
 		// Both policies produce a definite targetPhase that engine/resume use to trigger
 		// preserveWorktreesForResume = true and skip final cleanup.
-		assert(pauseResult.targetPhase === "paused", "preserve-contract: pause → paused (triggers worktree preservation)");
-		assert(abortResult.targetPhase === "stopped", "preserve-contract: abort → stopped (triggers worktree preservation)");
+		assert(
+			pauseResult.targetPhase === "paused",
+			"preserve-contract: pause → paused (triggers worktree preservation)",
+		);
+		assert(
+			abortResult.targetPhase === "stopped",
+			"preserve-contract: abort → stopped (triggers worktree preservation)",
+		);
 
 		// Both persist triggers are recognized by persistRuntimeState()
 		assert(pauseResult.persistTrigger === "merge-failure-pause", "preserve-contract: pause persistTrigger");

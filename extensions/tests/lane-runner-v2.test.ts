@@ -306,7 +306,7 @@ describe("8.x: Multi-segment .DONE timing (TP-145)", () => {
 		// It checks segmentId is non-null, segmentIds has multiple entries, and current is not last
 		expect(laneRunnerSrc).toContain("segmentId != null");
 		expect(laneRunnerSrc).toContain("unit.task.segmentIds.length > 1");
-		expect(laneRunnerSrc).toContain('unit.task.segmentIds[unit.task.segmentIds.length - 1] !== segmentId');
+		expect(laneRunnerSrc).toContain("unit.task.segmentIds[unit.task.segmentIds.length - 1] !== segmentId");
 	});
 
 	it("8.2: non-final segment returns succeeded without creating .DONE", () => {
@@ -315,7 +315,7 @@ describe("8.x: Multi-segment .DONE timing (TP-145)", () => {
 		// The return for non-final segment passes doneFileFound=false
 		const nonFinalBlock = laneRunnerSrc.slice(
 			laneRunnerSrc.indexOf("isNonFinalSegment"),
-			laneRunnerSrc.indexOf("// Create .DONE if not already present")
+			laneRunnerSrc.indexOf("// Create .DONE if not already present"),
 		);
 		expect(nonFinalBlock).toContain('"succeeded"');
 		expect(nonFinalBlock).toContain("false");
@@ -323,12 +323,10 @@ describe("8.x: Multi-segment .DONE timing (TP-145)", () => {
 
 	it("8.3: final segment and single-segment tasks still create .DONE", () => {
 		// The .DONE creation code is preserved after the non-final guard
-		const afterGuard = laneRunnerSrc.slice(
-			laneRunnerSrc.indexOf("// Create .DONE if not already present")
-		);
+		const afterGuard = laneRunnerSrc.slice(laneRunnerSrc.indexOf("// Create .DONE if not already present"));
 		expect(afterGuard).toContain("writeFileSync(donePath");
 		expect(afterGuard).toContain('"✅ Complete"');
-		expect(afterGuard).toContain('.DONE created');
+		expect(afterGuard).toContain(".DONE created");
 	});
 
 	it("8.4: single-segment task (segmentId null) is unaffected", () => {

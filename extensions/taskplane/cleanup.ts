@@ -116,10 +116,11 @@ export function cleanupPostIntegrate(stateRoot: string, batchId: string): PostIn
 		try {
 			const entries = readdirSync(piDir);
 			for (const entry of entries) {
-				if (entry.includes(batchId) && (
-					(entry.startsWith("merge-result-") && entry.endsWith(".json")) ||
-					(entry.startsWith("merge-request-") && entry.endsWith(".txt"))
-				)) {
+				if (
+					entry.includes(batchId) &&
+					((entry.startsWith("merge-result-") && entry.endsWith(".json")) ||
+						(entry.startsWith("merge-request-") && entry.endsWith(".txt")))
+				) {
 					try {
 						unlinkSync(join(piDir, entry));
 						result.mergeFilesDeleted++;
@@ -151,7 +152,9 @@ export function cleanupPostIntegrate(stateRoot: string, batchId: string): PostIn
 			rmSync(snapshotBatchDir, { recursive: true, force: true });
 			result.snapshotDirsDeleted = 1;
 		} catch (err: unknown) {
-			result.warnings.push(`Failed to delete context-snapshots directory ${snapshotBatchDir}: ${(err as Error).message}`);
+			result.warnings.push(
+				`Failed to delete context-snapshots directory ${snapshotBatchDir}: ${(err as Error).message}`,
+			);
 		}
 	}
 
@@ -163,7 +166,12 @@ export function cleanupPostIntegrate(stateRoot: string, batchId: string): PostIn
  */
 export function formatPostIntegrateCleanup(result: PostIntegrateCleanupResult): string {
 	const parts: string[] = [];
-	const totalDeleted = result.telemetryFilesDeleted + result.mergeFilesDeleted + result.promptFilesDeleted + result.mailboxDirsDeleted + result.snapshotDirsDeleted;
+	const totalDeleted =
+		result.telemetryFilesDeleted +
+		result.mergeFilesDeleted +
+		result.promptFilesDeleted +
+		result.mailboxDirsDeleted +
+		result.snapshotDirsDeleted;
 
 	if (totalDeleted > 0) {
 		const segments: string[] = [];
@@ -287,27 +295,27 @@ export function sweepStaleArtifacts(
 	};
 
 	// Sweep telemetry files
-	sweepDir(join(stateRoot, ".pi", "telemetry"), (name) =>
-		name.endsWith(".jsonl") ||
-		name.endsWith("-exit.json") ||
-		(name.startsWith("lane-prompt-") && name.endsWith(".txt")),
+	sweepDir(
+		join(stateRoot, ".pi", "telemetry"),
+		(name) =>
+			name.endsWith(".jsonl") ||
+			name.endsWith("-exit.json") ||
+			(name.startsWith("lane-prompt-") && name.endsWith(".txt")),
 	);
 
 	// Sweep merge result/request files
-	sweepDir(join(stateRoot, ".pi"), (name) =>
-		(name.startsWith("merge-result-") && name.endsWith(".json")) ||
-		(name.startsWith("merge-request-") && name.endsWith(".txt")),
+	sweepDir(
+		join(stateRoot, ".pi"),
+		(name) =>
+			(name.startsWith("merge-result-") && name.endsWith(".json")) ||
+			(name.startsWith("merge-request-") && name.endsWith(".txt")),
 	);
 
 	// Sweep stale worker conversation logs (.pi/worker-conversation-*.jsonl)
-	sweepDir(join(stateRoot, ".pi"), (name) =>
-		name.startsWith("worker-conversation-") && name.endsWith(".jsonl"),
-	);
+	sweepDir(join(stateRoot, ".pi"), (name) => name.startsWith("worker-conversation-") && name.endsWith(".jsonl"));
 
 	// Sweep stale lane state files (.pi/lane-state-*.json)
-	sweepDir(join(stateRoot, ".pi"), (name) =>
-		name.startsWith("lane-state-") && name.endsWith(".json"),
-	);
+	sweepDir(join(stateRoot, ".pi"), (name) => name.startsWith("lane-state-") && name.endsWith(".json"));
 
 	// Sweep stale batch directories under a parent (mailbox, context-snapshots, verification)
 	const sweepBatchDirs = (parentDir: string, label: string): void => {
@@ -474,10 +482,7 @@ export interface SizeCapResult {
  * @param capBytes - Maximum allowed total size in bytes (default: 500MB)
  * @returns Size cap enforcement result
  */
-export function enforceTelemetrySizeCap(
-	stateRoot: string,
-	capBytes: number = TELEMETRY_SIZE_CAP_BYTES,
-): SizeCapResult {
+export function enforceTelemetrySizeCap(stateRoot: string, capBytes: number = TELEMETRY_SIZE_CAP_BYTES): SizeCapResult {
 	const result: SizeCapResult = {
 		filesDeleted: 0,
 		bytesFreed: 0,
@@ -579,10 +584,7 @@ export interface PriorBatchCleanupResult {
  * @param currentBatchId - The batch ID that is currently starting (will NOT be deleted)
  * @returns Cleanup result
  */
-export function cleanupPriorBatchArtifacts(
-	stateRoot: string,
-	currentBatchId: string,
-): PriorBatchCleanupResult {
+export function cleanupPriorBatchArtifacts(stateRoot: string, currentBatchId: string): PriorBatchCleanupResult {
 	const result: PriorBatchCleanupResult = {
 		itemsDeleted: 0,
 		warnings: [],
@@ -621,27 +623,27 @@ export function cleanupPriorBatchArtifacts(
 	};
 
 	// Clean telemetry files from prior batches
-	cleanDir(join(piDir, "telemetry"), (name) =>
-		name.endsWith(".jsonl") ||
-		name.endsWith("-exit.json") ||
-		(name.startsWith("lane-prompt-") && name.endsWith(".txt")),
+	cleanDir(
+		join(piDir, "telemetry"),
+		(name) =>
+			name.endsWith(".jsonl") ||
+			name.endsWith("-exit.json") ||
+			(name.startsWith("lane-prompt-") && name.endsWith(".txt")),
 	);
 
 	// Clean merge result/request files from prior batches
-	cleanDir(piDir, (name) =>
-		(name.startsWith("merge-result-") && name.endsWith(".json")) ||
-		(name.startsWith("merge-request-") && name.endsWith(".txt")),
+	cleanDir(
+		piDir,
+		(name) =>
+			(name.startsWith("merge-result-") && name.endsWith(".json")) ||
+			(name.startsWith("merge-request-") && name.endsWith(".txt")),
 	);
 
 	// Clean worker conversation logs from prior batches
-	cleanDir(piDir, (name) =>
-		name.startsWith("worker-conversation-") && name.endsWith(".jsonl"),
-	);
+	cleanDir(piDir, (name) => name.startsWith("worker-conversation-") && name.endsWith(".jsonl"));
 
 	// Clean lane state files from prior batches
-	cleanDir(piDir, (name) =>
-		name.startsWith("lane-state-") && name.endsWith(".json"),
-	);
+	cleanDir(piDir, (name) => name.startsWith("lane-state-") && name.endsWith(".json"));
 
 	// Clean batch-scoped directories (mailbox, context-snapshots)
 	const cleanBatchDirs = (parentDir: string): void => {
@@ -706,10 +708,7 @@ export interface PreflightCleanupResult {
  * @param deps - Sweep dependencies (active batch check)
  * @returns Combined cleanup result
  */
-export function runPreflightCleanup(
-	stateRoot: string,
-	deps: SweepDeps,
-): PreflightCleanupResult {
+export function runPreflightCleanup(stateRoot: string, deps: SweepDeps): PreflightCleanupResult {
 	const sweep = sweepStaleArtifacts(stateRoot, deps);
 	const rotation = rotateSupervisorLogs(stateRoot);
 	return { sweep, rotation };

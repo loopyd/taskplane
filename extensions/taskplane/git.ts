@@ -4,7 +4,6 @@
  */
 import { execFileSync } from "child_process";
 
-
 // ── Branch Helpers ───────────────────────────────────────────────────
 
 /**
@@ -32,10 +31,7 @@ export function getCurrentBranch(cwd?: string): string | null {
  * @param cwd  - Working directory to run the command in (defaults to process.cwd())
  * @returns    - { ok, stdout, stderr }
  */
-export function runGit(
-	args: string[],
-	cwd?: string,
-): { ok: boolean; stdout: string; stderr: string } {
+export function runGit(args: string[], cwd?: string): { ok: boolean; stdout: string; stderr: string } {
 	try {
 		const stdout = execFileSync("git", args, {
 			encoding: "utf-8",
@@ -87,4 +83,3 @@ export function runGitWithEnv(
 		};
 	}
 }
-

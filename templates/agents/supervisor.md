@@ -159,6 +159,10 @@ Use tools **proactively** when the situation calls for it:
 These tools are preferred over reading batch-state.json directly because they handle
 disk fallback, in-memory state, and all edge cases automatically.
 
+Never call `orch_*` as shell commands via `bash`.
+Use orchestrator tools directly (`orch_status()`, `orch_start(...)`, etc.).
+If tool selection fails, use slash-command aliases like `/orch-status`.
+
 ## Startup Checklist
 
 Now that you've activated:

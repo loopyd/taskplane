@@ -133,14 +133,14 @@ describe("2.x: Edge cases", () => {
 	});
 
 	it("2.5: Three-step task — only Step 1 is NOT low-risk", () => {
-		expect(isLowRiskStep(0, 3)).toBe(true);  // first
+		expect(isLowRiskStep(0, 3)).toBe(true); // first
 		expect(isLowRiskStep(1, 3)).toBe(false); // middle
-		expect(isLowRiskStep(2, 3)).toBe(true);  // last
+		expect(isLowRiskStep(2, 3)).toBe(true); // last
 	});
 
 	it("2.6: Large task (10 steps) — only first and last are low-risk", () => {
-		expect(isLowRiskStep(0, 10)).toBe(true);   // first
-		expect(isLowRiskStep(9, 10)).toBe(true);   // last
+		expect(isLowRiskStep(0, 10)).toBe(true); // first
+		expect(isLowRiskStep(9, 10)).toBe(true); // last
 		// All middle steps
 		for (let i = 1; i < 9; i++) {
 			expect(isLowRiskStep(i, 10)).toBe(false);

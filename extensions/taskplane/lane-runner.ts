@@ -33,12 +33,9 @@ import {
 } from "./task-executor-core.ts";
 
 import { spawnAgent, type AgentHostOptions, type AgentHostResult } from "./agent-host.ts";
-import { loadPiSettingsPackages, filterExcludedExtensions } from "./settings-loader.ts";
+import { resolvePiSettingsPackages } from "./settings-loader.ts";
 
-import {
-	appendAgentEvent,
-	writeLaneSnapshot,
-} from "./process-registry.ts";
+import { appendAgentEvent, writeLaneSnapshot } from "./process-registry.ts";
 
 import {
 	readOutbox,
@@ -81,13 +78,10 @@ const LANE_RUNNER_DIR = dirname(fileURLToPath(import.meta.url));
  * @returns Set of step numbers that have at least one segment for this repoId
  * @since TP-174
  */
-export function getStepsForRepoId(
-	stepSegmentMap: StepSegmentMapping[],
-	repoId: string,
-): Set<number> {
+export function getStepsForRepoId(stepSegmentMap: StepSegmentMapping[], repoId: string): Set<number> {
 	const stepNumbers = new Set<number>();
 	for (const step of stepSegmentMap) {
-		if (step.segments.some(seg => seg.repoId === repoId)) {
+		if (step.segments.some((seg) => seg.repoId === repoId)) {
 			stepNumbers.add(step.stepNumber);
 		}
 	}
@@ -124,7 +118,10 @@ export function getSegmentCheckboxes(
 	const stepContent = nextStepMatch !== -1 ? afterStep.slice(0, nextStepMatch) : afterStep;
 
 	// Find the segment header within this step
-	const segHeaderPattern = new RegExp(`^####\\s+Segment:\\s*${repoId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*$`, "m");
+	const segHeaderPattern = new RegExp(
+		`^####\\s+Segment:\\s*${repoId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*$`,
+		"m",
+	);
 	const segMatch = stepContent.match(segHeaderPattern);
 	if (!segMatch || segMatch.index === undefined) return null;
 
@@ -160,11 +157,7 @@ export function getSegmentCheckboxes(
  * @returns true when all checkboxes in the segment block are checked
  * @since TP-174
  */
-export function isSegmentComplete(
-	statusContent: string,
-	stepNumber: number,
-	repoId: string,
-): boolean {
+export function isSegmentComplete(statusContent: string, stepNumber: number, repoId: string): boolean {
 	const result = getSegmentCheckboxes(statusContent, stepNumber, repoId);
 	if (!result) return false;
 	if (result.total === 0) return false;
@@ -311,12 +304,17 @@ export async function executeTaskV2(
 	// This closes the race window where the monitor sees .DONE before lane-runner
 	// can suppress it at segment end. For non-final segments, .DONE must not exist
 	// at any point during execution.
-	const isNonFinalAtStart = segmentId != null
-		&& Array.isArray(unit.task.segmentIds)
-		&& unit.task.segmentIds.length > 1
-		&& unit.task.segmentIds[unit.task.segmentIds.length - 1] !== segmentId;
+	const isNonFinalAtStart =
+		segmentId != null &&
+		Array.isArray(unit.task.segmentIds) &&
+		unit.task.segmentIds.length > 1 &&
+		unit.task.segmentIds[unit.task.segmentIds.length - 1] !== segmentId;
 	if (isNonFinalAtStart && existsSync(donePath)) {
-		try { unlinkSync(donePath); } catch { /* best effort */ }
+		try {
+			unlinkSync(donePath);
+		} catch {
+			/* best effort */
+		}
 		logExecution(statusPath, "Segment start", `Removed stale .DONE before non-final segment ${segmentId}`);
 	}
 
@@ -331,20 +329,35 @@ export async function executeTaskV2(
 	// TP-174: Build segment context once for emitSnapshot calls.
 	// Available outside the loop so it can be passed to makeResult too.
 	const snapshotSegmentCtx: { stepSegmentMap: StepSegmentMapping[]; repoId: string } | null =
-		(segmentId && unit.task.stepSegmentMap && config.repoId)
+		segmentId && unit.task.stepSegmentMap && config.repoId
 			? (() => {
-				const repoSteps = getStepsForRepoId(unit.task.stepSegmentMap!, config.repoId);
-				return repoSteps.size > 0
-					? { stepSegmentMap: unit.task.stepSegmentMap!, repoId: config.repoId }
-					: null;
-			})()
+					const repoSteps = getStepsForRepoId(unit.task.stepSegmentMap!, config.repoId);
+					return repoSteps.size > 0
+						? { stepSegmentMap: unit.task.stepSegmentMap!, repoId: config.repoId }
+						: null;
+				})()
 			: null;
 
 	for (let iter = 0; iter < config.maxIterations; iter++) {
 		if (pauseSignal.paused) {
 			logExecution(statusPath, "Paused", `User paused at iteration ${totalIterations}`);
-			return makeResult(taskId, segmentId, workerAgentId, "skipped", startTime,
-				"Paused by user", false, totalIterations, cumulativeCostUsd, cumulativeTokens, config, statusPath, reviewerStatePath, undefined, snapshotSegmentCtx);
+			return makeResult(
+				taskId,
+				segmentId,
+				workerAgentId,
+				"skipped",
+				startTime,
+				"Paused by user",
+				false,
+				totalIterations,
+				cumulativeCostUsd,
+				cumulativeTokens,
+				config,
+				statusPath,
+				reviewerStatePath,
+				undefined,
+				snapshotSegmentCtx,
+			);
 		}
 
 		// Determine remaining steps
@@ -355,27 +368,24 @@ export async function executeTaskV2(
 		// Use config.repoId (structured identity) instead of parsing opaque segmentId.
 		const stepSegmentMap = unit.task.stepSegmentMap;
 		const currentRepoId = segmentId ? config.repoId : null;
-		const rawRepoStepNumbers = (stepSegmentMap && currentRepoId)
-			? getStepsForRepoId(stepSegmentMap, currentRepoId)
-			: null;
+		const rawRepoStepNumbers =
+			stepSegmentMap && currentRepoId ? getStepsForRepoId(stepSegmentMap, currentRepoId) : null;
 		// TP-174 legacy fallback: If no steps have segments for this repoId
 		// (multi-segment task without explicit markers, where all checkboxes
 		// are assigned to the fallback/packet repo), disable segment filtering.
-		const repoStepNumbers = (rawRepoStepNumbers && rawRepoStepNumbers.size > 0)
-			? rawRepoStepNumbers
-			: null;
+		const repoStepNumbers = rawRepoStepNumbers && rawRepoStepNumbers.size > 0 ? rawRepoStepNumbers : null;
 
 		// TP-174: Read STATUS.md content once for segment-scoped checks
 		const iterStatusContent = readFileSync(statusPath, "utf-8");
 
-		const remainingSteps = parsed.steps.filter(step => {
+		const remainingSteps = parsed.steps.filter((step) => {
 			// TP-174: When segment-scoped, only show steps that have work for this repoId
 			if (repoStepNumbers && !repoStepNumbers.has(step.number)) return false;
 			// TP-174: Use segment-scoped completion check in segment mode
 			if (repoStepNumbers && currentRepoId) {
 				return !isSegmentComplete(iterStatusContent, step.number, currentRepoId);
 			}
-			const ss = currentStatus.steps.find(s => s.number === step.number);
+			const ss = currentStatus.steps.find((s) => s.number === step.number);
 			return !isStepComplete(ss);
 		});
 
@@ -387,7 +397,7 @@ export async function executeTaskV2(
 
 		// Mark first incomplete step as in-progress
 		const firstStep = remainingSteps[0];
-		const firstStepStatus = currentStatus.steps.find(s => s.number === firstStep.number);
+		const firstStepStatus = currentStatus.steps.find((s) => s.number === firstStep.number);
 		if (firstStepStatus?.status !== "in-progress") {
 			updateStepStatus(statusPath, firstStep.number, "in-progress");
 			logExecution(statusPath, `Step ${firstStep.number} started`, firstStep.name);
@@ -406,13 +416,23 @@ export async function executeTaskV2(
 
 		// ── Build worker prompt ─────────────────────────────────────
 		const wrapUpFile = join(taskFolder, ".task-wrap-up");
-		if (existsSync(wrapUpFile)) try { unlinkSync(wrapUpFile); } catch { /* ignore */ }
+		if (existsSync(wrapUpFile))
+			try {
+				unlinkSync(wrapUpFile);
+			} catch {
+				/* ignore */
+			}
 
 		// TP-174/TP-501: Compute segment scope mode BEFORE building prompt.
-		const isSegmentScoped = !!(stepSegmentMap && currentRepoId && repoStepNumbers
-			&& remainingSteps.length > 0
-			&& stepSegmentMap.find(s => s.stepNumber === remainingSteps[0].number)
-				?.segments.find(seg => seg.repoId === currentRepoId));
+		const isSegmentScoped = !!(
+			stepSegmentMap &&
+			currentRepoId &&
+			repoStepNumbers &&
+			remainingSteps.length > 0 &&
+			stepSegmentMap
+				.find((s) => s.stepNumber === remainingSteps[0].number)
+				?.segments.find((seg) => seg.repoId === currentRepoId)
+		);
 
 		const promptLines = [
 			`Read your task instructions at: ${promptPath}`,
@@ -429,9 +449,7 @@ export async function executeTaskV2(
 			`- Lane repo ID: ${config.repoId}`,
 			// Only show segment ID when segment-scoped. For FULL_TASK, omit to avoid
 			// workers incorrectly self-scoping based on segment metadata.
-			...(isSegmentScoped
-				? [`- Active segment ID: ${segmentId}`]
-				: []),
+			...(isSegmentScoped ? [`- Active segment ID: ${segmentId}`] : []),
 			``,
 			`Packet home context:`,
 			`- Packet home repo ID: ${unit.packetHomeRepoId}`,
@@ -449,9 +467,10 @@ export async function executeTaskV2(
 		// Only show segment DAG in segment-scoped mode
 		const segmentDag = isSegmentScoped ? unit.task.explicitSegmentDag : null;
 		if (segmentDag && segmentDag.repoIds.length > 0) {
-			const edgeSummary = segmentDag.edges.length > 0
-				? segmentDag.edges.map(edge => `${edge.fromRepoId}->${edge.toRepoId}`).join(", ")
-				: "(no explicit edges)";
+			const edgeSummary =
+				segmentDag.edges.length > 0
+					? segmentDag.edges.map((edge) => `${edge.fromRepoId}->${edge.toRepoId}`).join(", ")
+					: "(no explicit edges)";
 			promptLines.push(
 				``,
 				`Segment DAG context (from PROMPT metadata):`,
@@ -466,18 +485,19 @@ export async function executeTaskV2(
 		// TP-174: Segment-scoped prompt — show only this segment's checkboxes
 		if (stepSegmentMap && currentRepoId && repoStepNumbers && remainingSteps.length > 0) {
 			const currentStepNum = remainingSteps[0].number;
-			const currentStepMapping = stepSegmentMap.find(s => s.stepNumber === currentStepNum);
-			const mySegment = currentStepMapping?.segments.find(seg => seg.repoId === currentRepoId);
+			const currentStepMapping = stepSegmentMap.find((s) => s.stepNumber === currentStepNum);
+			const mySegment = currentStepMapping?.segments.find((seg) => seg.repoId === currentRepoId);
 
 			// Only inject segment-scoped prompt when the current step has an explicit
 			// segment for this repoId. If mySegment is missing (legacy task without
 			// markers, or step has no work for this repo), skip and preserve legacy behavior.
 			if (currentStepMapping && mySegment) {
-				const otherSegments = currentStepMapping.segments.filter(seg => seg.repoId !== currentRepoId);
+				const otherSegments = currentStepMapping.segments.filter((seg) => seg.repoId !== currentRepoId);
 
 				// Count total segments for this repo across all steps
 				const totalStepsForRepo = repoStepNumbers ? repoStepNumbers.size : 0;
-				const segmentIndexInStep = currentStepMapping.segments.findIndex(seg => seg.repoId === currentRepoId) + 1;
+				const segmentIndexInStep =
+					currentStepMapping.segments.findIndex((seg) => seg.repoId === currentRepoId) + 1;
 				const totalSegmentsInStep = currentStepMapping.segments.length;
 
 				promptLines.push(
@@ -499,19 +519,23 @@ export async function executeTaskV2(
 					promptLines.push(``);
 					promptLines.push(`Other segments in this step (NOT yours — do not attempt):`);
 					for (const seg of otherSegments) {
-						promptLines.push(`  - ${seg.repoId}: ${seg.checkboxes.length} checkbox(es) (will run in a separate segment)`);
+						promptLines.push(
+							`  - ${seg.repoId}: ${seg.checkboxes.length} checkbox(es) (will run in a separate segment)`,
+						);
 					}
 				}
 
 				// List completed steps for this repo
-				const completedForRepo = parsed.steps.filter(step => {
+				const completedForRepo = parsed.steps.filter((step) => {
 					if (!repoStepNumbers || !repoStepNumbers.has(step.number)) return false;
-					const ss = currentStatus.steps.find(s => s.number === step.number);
+					const ss = currentStatus.steps.find((s) => s.number === step.number);
 					return isStepComplete(ss);
 				});
 				if (completedForRepo.length > 0) {
 					promptLines.push(``);
-					promptLines.push(`Prior steps completed: ${completedForRepo.map(s => `Step ${s.number} (${s.name})`).join(", ")}`);
+					promptLines.push(
+						`Prior steps completed: ${completedForRepo.map((s) => `Step ${s.number} (${s.name})`).join(", ")}`,
+					);
 				}
 
 				promptLines.push(
@@ -523,13 +547,13 @@ export async function executeTaskV2(
 		}
 
 		if (totalIterations > 1 && remainingSteps.length > 0) {
-			const remainingSet = new Set(remainingSteps.map(s => s.number));
-			const completedSteps = parsed.steps.filter(s => !remainingSet.has(s.number));
+			const remainingSet = new Set(remainingSteps.map((s) => s.number));
+			const completedSteps = parsed.steps.filter((s) => !remainingSet.has(s.number));
 			promptLines.push(
 				``,
 				`IMPORTANT: You exited previously without completing all steps.`,
-				`Completed (do not redo): ${completedSteps.map(s => `Step ${s.number}: ${s.name}`).join(", ") || "(none)"}`,
-				`Remaining (focus here): ${remainingSteps.map(s => `Step ${s.number}: ${s.name}`).join(", ")}`,
+				`Completed (do not redo): ${completedSteps.map((s) => `Step ${s.number}: ${s.name}`).join(", ") || "(none)"}`,
+				`Remaining (focus here): ${remainingSteps.map((s) => `Step ${s.number}: ${s.name}`).join(", ")}`,
 			);
 
 			// If the worker exited without checking any boxes, add a corrective directive
@@ -554,15 +578,19 @@ export async function executeTaskV2(
 		const mailboxDir = join(config.stateRoot, ".pi", "mailbox", config.batchId, workerAgentId);
 		mkdirSync(join(mailboxDir, "inbox"), { recursive: true });
 
+		const outboxDir = join(config.stateRoot, ".pi", "mailbox", config.batchId, workerAgentId, "outbox");
+		mkdirSync(outboxDir, { recursive: true });
+
 		const steeringPendingPath = join(taskFolder, ".steering-pending");
 
-		// TP-106: Bridge extension wiring for agent-side reply/escalate tools
-		const outboxDir = join(config.stateRoot, ".pi", "mailbox", config.batchId, workerAgentId, "outbox");
+		// Forward project extensions from .pi/settings.json with deterministic
+		// local resolution and worker-specific exclusion filtering.
 		const bridgeExtensionPath = join(LANE_RUNNER_DIR, "agent-bridge-extension.ts");
-
-		// TP-180: Forward user-installed extensions to worker agent
-		const allPackages = loadPiSettingsPackages(config.stateRoot);
-		const workerPackages = filterExcludedExtensions(allPackages, config.workerExcludeExtensions ?? []);
+		const workerExtensions = resolvePiSettingsPackages(
+			config.stateRoot,
+			config.workerExcludeExtensions ?? [],
+		).filter((pkg) => !pkg.includes("taskplane"));
+		const extensions = [bridgeExtensionPath, ...workerExtensions];
 
 		const hostOpts: AgentHostOptions = {
 			agentId: workerAgentId,
@@ -573,9 +601,10 @@ export async function executeTaskV2(
 			repoId: config.repoId,
 			cwd: unit.worktreePath,
 			prompt: promptLines.join("\n"),
-			systemPrompt: (isSegmentScoped && config.workerSegmentPrompt
-				? config.workerSystemPrompt + "\n\n---\n\n" + config.workerSegmentPrompt
-				: config.workerSystemPrompt) || undefined,
+			systemPrompt:
+				(isSegmentScoped && config.workerSegmentPrompt
+					? config.workerSystemPrompt + "\n\n---\n\n" + config.workerSegmentPrompt
+					: config.workerSystemPrompt) || undefined,
 			model: config.workerModel || undefined,
 			tools: config.workerTools || "read,write,edit,bash,grep,find,ls",
 			thinking: config.workerThinking || undefined,
@@ -586,7 +615,7 @@ export async function executeTaskV2(
 			timeoutMs: config.maxWorkerMinutes * 60_000,
 			stateRoot: config.stateRoot,
 			packet: unit.packet,
-			extensions: [bridgeExtensionPath, ...workerPackages],
+			extensions,
 			env: {
 				TASKPLANE_OUTBOX_DIR: outboxDir,
 				TASKPLANE_AGENT_ID: workerAgentId,
@@ -616,147 +645,173 @@ export async function executeTaskV2(
 			// exits without making visible progress (no checkboxes, no blocker logged).
 			onPrematureExit: config.onSupervisorAlert
 				? async (assistantMessage: string): Promise<string | null> => {
-					// Check if the worker made visible progress during this turn:
-					// 1. Checkbox progress (more items checked)
-					// 2. Blocker logged (non-empty Blockers section)
-					try {
-						const statusContent = readFileSync(statusPath, "utf-8");
-						// TP-174: Use same scope as prevTotalChecked (segment or global)
-						let midTotalChecked: number;
-						if (repoStepNumbers && currentRepoId) {
-							const segCbs = getSegmentCheckboxes(statusContent, firstStep.number, currentRepoId);
-							midTotalChecked = segCbs ? segCbs.checked : 0;
-						} else {
-							const midStatus = parseStatusMd(statusContent);
-							midTotalChecked = midStatus.steps.reduce((sum, s) => sum + s.totalChecked, 0);
-						}
-						if (midTotalChecked > prevTotalChecked) {
-							// Worker checked off checkboxes — let it exit normally
-							return null;
-						}
-						// Check for blocker entries: extract Blockers section and see if non-empty
-						const blockerMatch = statusContent.match(/## Blockers\s*\n([\s\S]*?)(?:\n---|-$)/i);
-						if (blockerMatch) {
-							const blockerContent = blockerMatch[1].trim();
-							// If blockers section has real content (not just "*None*" or empty)
-							if (blockerContent && blockerContent !== "*None*") {
-								// Worker logged a blocker — let it exit normally
+						// Check if the worker made visible progress during this turn:
+						// 1. Checkbox progress (more items checked)
+						// 2. Blocker logged (non-empty Blockers section)
+						try {
+							const statusContent = readFileSync(statusPath, "utf-8");
+							// TP-174: Use same scope as prevTotalChecked (segment or global)
+							let midTotalChecked: number;
+							if (repoStepNumbers && currentRepoId) {
+								const segCbs = getSegmentCheckboxes(statusContent, firstStep.number, currentRepoId);
+								midTotalChecked = segCbs ? segCbs.checked : 0;
+							} else {
+								const midStatus = parseStatusMd(statusContent);
+								midTotalChecked = midStatus.steps.reduce((sum, s) => sum + s.totalChecked, 0);
+							}
+							if (midTotalChecked > prevTotalChecked) {
+								// Worker checked off checkboxes — let it exit normally
 								return null;
 							}
-						}
-					} catch { /* If we can't read STATUS.md, proceed with escalation */ }
-
-					// No visible progress — compose escalation message
-					const truncatedMsg = assistantMessage.slice(0, 500);
-					const uncheckedItems: string[] = [];
-					try {
-						const statusContent = readFileSync(statusPath, "utf-8");
-						// TP-174: When segment-scoped, report only this segment's unchecked items
-						if (repoStepNumbers && currentRepoId) {
-							const segCbs = getSegmentCheckboxes(statusContent, firstStep.number, currentRepoId);
-							if (segCbs) {
-								for (const text of segCbs.uncheckedTexts.slice(0, 5)) {
-									uncheckedItems.push(text);
+							// Check for blocker entries: extract Blockers section and see if non-empty
+							const blockerMatch = statusContent.match(/## Blockers\s*\n([\s\S]*?)(?:\n---|-$)/i);
+							if (blockerMatch) {
+								const blockerContent = blockerMatch[1].trim();
+								// If blockers section has real content (not just "*None*" or empty)
+								if (blockerContent && blockerContent !== "*None*") {
+									// Worker logged a blocker — let it exit normally
+									return null;
 								}
 							}
-						} else {
-							const uncheckedMatches = statusContent.match(/^- \[ \] .+$/gm);
-							if (uncheckedMatches) {
-								for (const item of uncheckedMatches.slice(0, 5)) {
-									uncheckedItems.push(item.replace(/^- \[ \] /, "").trim());
-								}
-							}
+						} catch {
+							/* If we can't read STATUS.md, proceed with escalation */
 						}
-					} catch { /* best effort */ }
 
-					const currentStepInfo = remainingSteps.length > 0
-						? `Step ${remainingSteps[0].number}: ${remainingSteps[0].name}`
-						: "Unknown";
-
-					// Fire supervisor alert
-					try {
-						config.onSupervisorAlert!({
-							category: "worker-exit-intercept",
-							summary:
-								`🔄 Worker on lane ${config.laneNumber} wants to exit with no progress.\n` +
-								`  Task: ${taskId}\n` +
-								`  Current step: ${currentStepInfo}\n` +
-								`  Iteration: ${totalIterations}, No-progress count: ${noProgressCount + 1}\n` +
-								`  Unchecked items: ${uncheckedItems.length > 0 ? uncheckedItems.join("; ") : "(none found)"}\n` +
-								`  Worker said: "${truncatedMsg}"\n` +
-								`\nSend a steering message to ${workerAgentId} with targeted instructions,` +
-								` or reply "skip" / "let it fail" to close the session.`,
-							context: {
-								taskId,
-								laneId: `lane-${config.laneNumber}`,
-								laneNumber: config.laneNumber,
-								agentId: workerAgentId,
-								exitReason: `worker_exit_no_progress: ${truncatedMsg.slice(0, 200)}`,
-							},
-						});
-					} catch { /* best effort — don't block on alert failure */ }
-
-					// Poll worker mailbox inbox for supervisor reply (60s timeout)
-					const SUPERVISOR_REPLY_TIMEOUT_MS = 60_000;
-					const POLL_INTERVAL_MS = 2_000;
-					const escalationTimestamp = Date.now();
-					const inboxDir = sessionInboxDir(config.stateRoot, config.batchId, workerAgentId);
-
-					const supervisorReply = await new Promise<string | null>((resolve) => {
-						const deadline = Date.now() + SUPERVISOR_REPLY_TIMEOUT_MS;
-						const poll = () => {
-							if (Date.now() >= deadline) {
-								resolve(null); // Timeout — fall back to corrective re-spawn
-								return;
-							}
-							try {
-								const messages = readInbox(inboxDir, config.batchId);
-								// Only accept messages newer than escalation timestamp
-								for (const { filename, message } of messages) {
-									if (message.timestamp >= escalationTimestamp && message.from === "supervisor") {
-										// Consume the message
-										const ackDir = join(dirname(inboxDir), "ack");
-										try { ackMessage(inboxDir, filename); } catch { /* best effort */ }
-										resolve(message.content);
-										return;
+						// No visible progress — compose escalation message
+						const truncatedMsg = assistantMessage.slice(0, 500);
+						const uncheckedItems: string[] = [];
+						try {
+							const statusContent = readFileSync(statusPath, "utf-8");
+							// TP-174: When segment-scoped, report only this segment's unchecked items
+							if (repoStepNumbers && currentRepoId) {
+								const segCbs = getSegmentCheckboxes(statusContent, firstStep.number, currentRepoId);
+								if (segCbs) {
+									for (const text of segCbs.uncheckedTexts.slice(0, 5)) {
+										uncheckedItems.push(text);
 									}
 								}
-							} catch { /* inbox not ready yet */ }
-							setTimeout(poll, POLL_INTERVAL_MS);
-						};
-						poll();
-					});
+							} else {
+								const uncheckedMatches = statusContent.match(/^- \[ \] .+$/gm);
+								if (uncheckedMatches) {
+									for (const item of uncheckedMatches.slice(0, 5)) {
+										uncheckedItems.push(item.replace(/^- \[ \] /, "").trim());
+									}
+								}
+							}
+						} catch {
+							/* best effort */
+						}
 
-					if (!supervisorReply) {
-						// Timeout — let the session close, corrective re-spawn will handle it
-						logExecution(statusPath, "Exit intercept timeout",
-							`Supervisor did not respond within ${SUPERVISOR_REPLY_TIMEOUT_MS / 1000}s — closing session`);
-						return null;
+						const currentStepInfo =
+							remainingSteps.length > 0
+								? `Step ${remainingSteps[0].number}: ${remainingSteps[0].name}`
+								: "Unknown";
+
+						// Fire supervisor alert
+						try {
+							config.onSupervisorAlert!({
+								category: "worker-exit-intercept",
+								summary:
+									`🔄 Worker on lane ${config.laneNumber} wants to exit with no progress.\n` +
+									`  Task: ${taskId}\n` +
+									`  Current step: ${currentStepInfo}\n` +
+									`  Iteration: ${totalIterations}, No-progress count: ${noProgressCount + 1}\n` +
+									`  Unchecked items: ${uncheckedItems.length > 0 ? uncheckedItems.join("; ") : "(none found)"}\n` +
+									`  Worker said: "${truncatedMsg}"\n` +
+									`\nSend a steering message to ${workerAgentId} with targeted instructions,` +
+									` or reply "skip" / "let it fail" to close the session.`,
+								context: {
+									taskId,
+									laneId: `lane-${config.laneNumber}`,
+									laneNumber: config.laneNumber,
+									agentId: workerAgentId,
+									exitReason: `worker_exit_no_progress: ${truncatedMsg.slice(0, 200)}`,
+								},
+							});
+						} catch {
+							/* best effort — don't block on alert failure */
+						}
+
+						// Poll worker mailbox inbox for supervisor reply (60s timeout)
+						const SUPERVISOR_REPLY_TIMEOUT_MS = 60_000;
+						const POLL_INTERVAL_MS = 2_000;
+						const escalationTimestamp = Date.now();
+						const inboxDir = sessionInboxDir(config.stateRoot, config.batchId, workerAgentId);
+
+						const supervisorReply = await new Promise<string | null>((resolve) => {
+							const deadline = Date.now() + SUPERVISOR_REPLY_TIMEOUT_MS;
+							const poll = () => {
+								if (Date.now() >= deadline) {
+									resolve(null); // Timeout — fall back to corrective re-spawn
+									return;
+								}
+								try {
+									const messages = readInbox(inboxDir, config.batchId);
+									// Only accept messages newer than escalation timestamp
+									for (const { filename, message } of messages) {
+										if (message.timestamp >= escalationTimestamp && message.from === "supervisor") {
+											// Consume the message
+											const ackDir = join(dirname(inboxDir), "ack");
+											try {
+												ackMessage(inboxDir, filename);
+											} catch {
+												/* best effort */
+											}
+											resolve(message.content);
+											return;
+										}
+									}
+								} catch {
+									/* inbox not ready yet */
+								}
+								setTimeout(poll, POLL_INTERVAL_MS);
+							};
+							poll();
+						});
+
+						if (!supervisorReply) {
+							// Timeout — let the session close, corrective re-spawn will handle it
+							logExecution(
+								statusPath,
+								"Exit intercept timeout",
+								`Supervisor did not respond within ${SUPERVISOR_REPLY_TIMEOUT_MS / 1000}s — closing session`,
+							);
+							return null;
+						}
+
+						// Interpret supervisor reply: close directives vs instructional content
+						const normalizedReply = supervisorReply.trim().toLowerCase();
+						const CLOSE_DIRECTIVES = ["skip", "let it fail", "close", "abort", "stop"];
+						// Only short messages (< 30 chars) can be close directives.
+						// Longer messages are always instructions even if they start with "stop".
+						const isShortEnoughForDirective = normalizedReply.length < 30;
+						if (
+							isShortEnoughForDirective &&
+							CLOSE_DIRECTIVES.some(
+								(d) =>
+									normalizedReply === d ||
+									normalizedReply.startsWith(d + ":") ||
+									normalizedReply.startsWith(d + " ") ||
+									normalizedReply.startsWith(d + ".") ||
+									normalizedReply.startsWith(d + " -"),
+							)
+						) {
+							logExecution(
+								statusPath,
+								"Exit intercept close",
+								`Supervisor directed session close: "${supervisorReply.slice(0, 100)}"`,
+							);
+							return null;
+						}
+
+						// Instructional reply — return as new prompt for the worker
+						logExecution(
+							statusPath,
+							"Exit intercept reprompt",
+							`Supervisor provided instructions (${supervisorReply.length} chars) — reprompting worker`,
+						);
+						return supervisorReply;
 					}
-
-					// Interpret supervisor reply: close directives vs instructional content
-					const normalizedReply = supervisorReply.trim().toLowerCase();
-					const CLOSE_DIRECTIVES = ["skip", "let it fail", "close", "abort", "stop"];
-					// Only short messages (< 30 chars) can be close directives.
-					// Longer messages are always instructions even if they start with "stop".
-					const isShortEnoughForDirective = normalizedReply.length < 30;
-					if (isShortEnoughForDirective && CLOSE_DIRECTIVES.some(d =>
-						normalizedReply === d ||
-						normalizedReply.startsWith(d + ":") ||
-						normalizedReply.startsWith(d + " ") ||
-						normalizedReply.startsWith(d + ".") ||
-						normalizedReply.startsWith(d + " -")
-					)) {
-						logExecution(statusPath, "Exit intercept close",
-							`Supervisor directed session close: "${supervisorReply.slice(0, 100)}"`);
-						return null;
-					}
-
-					// Instructional reply — return as new prompt for the worker
-					logExecution(statusPath, "Exit intercept reprompt",
-						`Supervisor provided instructions (${supervisorReply.length} chars) — reprompting worker`);
-					return supervisorReply;
-				}
 				: undefined,
 		};
 
@@ -782,8 +837,22 @@ export async function executeTaskV2(
 				iterationTelemetry = telemetry;
 				lastTelemetry = telemetry;
 				// Emit lane snapshot
-				emitSnapshot(config, taskId, segmentId, "running", telemetry, statusPath, reviewerStatePath, snapshotSegmentCtx);
-			} catch { /* non-fatal: telemetry callback must never crash the engine */ }
+				emitSnapshot(
+					config,
+					taskId,
+					segmentId,
+					"running",
+					telemetry,
+					statusPath,
+					reviewerStatePath,
+					snapshotSegmentCtx,
+					remainingSteps.length > 0
+						? `Step ${remainingSteps[0].number}: ${remainingSteps[0].name}`
+						: undefined,
+				);
+			} catch {
+				/* non-fatal: telemetry callback must never crash the engine */
+			}
 		});
 
 		// Reviewer telemetry is written by the worker bridge during review_step.
@@ -792,7 +861,17 @@ export async function executeTaskV2(
 		let reviewerSnapshotFailures = 0;
 		const reviewerRefreshFailureThreshold = 5;
 		const reviewerRefresh = setInterval(() => {
-			const ok = emitSnapshot(config, taskId, segmentId, "running", iterationTelemetry, statusPath, reviewerStatePath, snapshotSegmentCtx);
+			const ok = emitSnapshot(
+				config,
+				taskId,
+				segmentId,
+				"running",
+				iterationTelemetry,
+				statusPath,
+				reviewerStatePath,
+				snapshotSegmentCtx,
+				remainingSteps.length > 0 ? `Step ${remainingSteps[0].number}: ${remainingSteps[0].name}` : undefined,
+			);
 			if (ok) {
 				reviewerSnapshotFailures = 0;
 				return;
@@ -820,12 +899,20 @@ export async function executeTaskV2(
 		lastTelemetry = workerResult;
 
 		// Clean up wrap-up signal
-		if (existsSync(wrapUpFile)) try { unlinkSync(wrapUpFile); } catch { /* ignore */ }
+		if (existsSync(wrapUpFile))
+			try {
+				unlinkSync(wrapUpFile);
+			} catch {
+				/* ignore */
+			}
 
 		// Accumulate costs
 		cumulativeCostUsd += workerResult.costUsd;
-		cumulativeTokens += workerResult.inputTokens + workerResult.outputTokens +
-			workerResult.cacheReadTokens + workerResult.cacheWriteTokens;
+		cumulativeTokens +=
+			workerResult.inputTokens +
+			workerResult.outputTokens +
+			workerResult.cacheReadTokens +
+			workerResult.cacheWriteTokens;
 
 		// ── TP-106: Poll worker outbox for replies/escalations ─────
 		try {
@@ -879,37 +966,50 @@ export async function executeTaskV2(
 									exitReason: `${isEscalation ? "agent_escalation" : "agent_reply"}: ${sanitized}`,
 								},
 							});
-						} catch { /* best effort */ }
+						} catch {
+							/* best effort */
+						}
 					}
 				}
 
 				// Consume outbox message to prevent duplicate processing in later iterations.
 				ackOutboxMessage(config.stateRoot, config.batchId, workerAgentId, msg.id);
 			}
-		} catch { /* best effort */ }
+		} catch {
+			/* best effort */
+		}
 
 		// ── Steering annotation ─────────────────────────────────────
 		try {
 			if (existsSync(steeringPendingPath)) {
 				const raw = readFileSync(steeringPendingPath, "utf-8");
-				for (const line of raw.split("\n").filter(l => l.trim())) {
+				for (const line of raw.split("\n").filter((l) => l.trim())) {
 					try {
 						const entry = JSON.parse(line) as { ts: number; content: string; id: string };
 						const sanitized = entry.content.replace(/\r?\n/g, " / ").replace(/\|/g, "\\|").slice(0, 200);
 						const ts = new Date(entry.ts).toISOString().slice(0, 16).replace("T", " ");
 						logExecution(statusPath, "⚠️ Steering", sanitized);
-					} catch { /* skip malformed */ }
+					} catch {
+						/* skip malformed */
+					}
 				}
 				unlinkSync(steeringPendingPath);
 			}
-		} catch { /* non-fatal */ }
+		} catch {
+			/* non-fatal */
+		}
 
 		// Log iteration result
 		const statusMsg = workerResult.killed
 			? `killed (${workerKillReason === "context" ? "context limit" : "wall-clock timeout"})`
-			: (workerResult.exitCode === 0 ? "done" : `error (code ${workerResult.exitCode})`);
-		logExecution(statusPath, `Worker iter ${totalIterations}`,
-			`${statusMsg} in ${Math.round(workerResult.durationMs / 1000)}s, tools: ${workerResult.toolCalls}`);
+			: workerResult.exitCode === 0
+				? "done"
+				: `error (code ${workerResult.exitCode})`;
+		logExecution(
+			statusPath,
+			`Worker iter ${totalIterations}`,
+			`${statusMsg} in ${Math.round(workerResult.durationMs / 1000)}s, tools: ${workerResult.toolCalls}`,
+		);
 
 		// ── Check progress ──────────────────────────────────────────
 		const afterStatusContent = readFileSync(statusPath, "utf-8");
@@ -938,25 +1038,48 @@ export async function executeTaskV2(
 					stdio: ["pipe", "pipe", "pipe"],
 				}).trim();
 				// Only count source file changes as soft progress, not just STATUS.md
-				const changedFiles = diffOutput.split("\n").filter(l => l.includes("|"));
-				const sourceChanges = changedFiles.filter(l => !l.includes("STATUS.md") && !l.includes(".steering"));
+				const changedFiles = diffOutput.split("\n").filter((l) => l.includes("|"));
+				const sourceChanges = changedFiles.filter((l) => !l.includes("STATUS.md") && !l.includes(".steering"));
 				hasSoftProgress = sourceChanges.length > 0;
-			} catch { /* git not available or timeout — treat as no soft progress */ }
+			} catch {
+				/* git not available or timeout — treat as no soft progress */
+			}
 
 			if (hasSoftProgress) {
 				// Worker has uncommitted code changes — don't count toward stall.
 				// Reset the counter since the worker is actively editing.
-				logExecution(statusPath, "Soft progress",
-					`Iteration ${totalIterations}: 0 new checkboxes but uncommitted source changes detected — not counting as stall`);
+				logExecution(
+					statusPath,
+					"Soft progress",
+					`Iteration ${totalIterations}: 0 new checkboxes but uncommitted source changes detected — not counting as stall`,
+				);
 				noProgressCount = 0;
 			} else {
 				noProgressCount++;
-				logExecution(statusPath, "No progress",
-					`Iteration ${totalIterations}: 0 new checkboxes (${noProgressCount}/${config.noProgressLimit} stall limit)`);
+				logExecution(
+					statusPath,
+					"No progress",
+					`Iteration ${totalIterations}: 0 new checkboxes (${noProgressCount}/${config.noProgressLimit} stall limit)`,
+				);
 				if (noProgressCount >= config.noProgressLimit) {
 					logExecution(statusPath, "Task blocked", `No progress after ${noProgressCount} iterations`);
-					return makeResult(taskId, segmentId, workerAgentId, "failed", startTime,
-						`No progress after ${noProgressCount} iterations`, false, totalIterations, cumulativeCostUsd, cumulativeTokens, config, statusPath, reviewerStatePath, lastTelemetry, snapshotSegmentCtx);
+					return makeResult(
+						taskId,
+						segmentId,
+						workerAgentId,
+						"failed",
+						startTime,
+						`No progress after ${noProgressCount} iterations`,
+						false,
+						totalIterations,
+						cumulativeCostUsd,
+						cumulativeTokens,
+						config,
+						statusPath,
+						reviewerStatePath,
+						lastTelemetry,
+						snapshotSegmentCtx,
+					);
 				}
 			}
 		} else {
@@ -971,7 +1094,7 @@ export async function executeTaskV2(
 				if (isSegmentComplete(afterStatusContent, stepNum, currentRepoId)) {
 					// Only mark step complete in STATUS.md if ALL segments in that step
 					// are complete (not just ours). But for loop exit, we only care about ours.
-					const ss = afterStatus.steps.find(s => s.number === stepNum);
+					const ss = afterStatus.steps.find((s) => s.number === stepNum);
 					if (isStepComplete(ss)) {
 						updateStepStatus(statusPath, stepNum, "complete");
 					}
@@ -979,7 +1102,7 @@ export async function executeTaskV2(
 			}
 		} else {
 			for (const step of parsed.steps) {
-				const ss = afterStatus.steps.find(s => s.number === step.number);
+				const ss = afterStatus.steps.find((s) => s.number === step.number);
 				if (isStepComplete(ss)) {
 					updateStepStatus(statusPath, step.number, "complete");
 				}
@@ -991,12 +1114,12 @@ export async function executeTaskV2(
 		// have their segment checkboxes complete.
 		let allComplete: boolean;
 		if (repoStepNumbers && currentRepoId) {
-			allComplete = [...repoStepNumbers].every(stepNum =>
+			allComplete = [...repoStepNumbers].every((stepNum) =>
 				isSegmentComplete(afterStatusContent, stepNum, currentRepoId),
 			);
 		} else {
-			allComplete = parsed.steps.every(step => {
-				const ss = afterStatus.steps.find(s => s.number === step.number);
+			allComplete = parsed.steps.every((step) => {
+				const ss = afterStatus.steps.find((s) => s.number === step.number);
 				return isStepComplete(ss);
 			});
 		}
@@ -1012,21 +1135,18 @@ export async function executeTaskV2(
 	// the iteration loop variables are out of scope here.
 	const postLoopRepoId = segmentId ? config.repoId : null;
 	const postLoopStepSegMap = unit.task.stepSegmentMap;
-	const postLoopRepoSteps = (postLoopStepSegMap && postLoopRepoId)
-		? getStepsForRepoId(postLoopStepSegMap, postLoopRepoId)
-		: null;
-	const effectivePostLoopRepoSteps = (postLoopRepoSteps && postLoopRepoSteps.size > 0)
-		? postLoopRepoSteps
-		: null;
+	const postLoopRepoSteps =
+		postLoopStepSegMap && postLoopRepoId ? getStepsForRepoId(postLoopStepSegMap, postLoopRepoId) : null;
+	const effectivePostLoopRepoSteps = postLoopRepoSteps && postLoopRepoSteps.size > 0 ? postLoopRepoSteps : null;
 
 	let allStepsComplete: boolean;
 	if (effectivePostLoopRepoSteps && postLoopRepoId) {
-		allStepsComplete = [...effectivePostLoopRepoSteps].every(stepNum =>
+		allStepsComplete = [...effectivePostLoopRepoSteps].every((stepNum) =>
 			isSegmentComplete(finalStatusContent, stepNum, postLoopRepoId),
 		);
 	} else {
-		allStepsComplete = parsed.steps.every(step => {
-			const ss = finalStatus.steps.find(s => s.number === step.number);
+		allStepsComplete = parsed.steps.every((step) => {
+			const ss = finalStatus.steps.find((s) => s.number === step.number);
 			return isStepComplete(ss);
 		});
 	}
@@ -1035,40 +1155,54 @@ export async function executeTaskV2(
 		let incomplete: string;
 		if (effectivePostLoopRepoSteps && postLoopRepoId) {
 			incomplete = [...effectivePostLoopRepoSteps]
-				.filter(stepNum => !isSegmentComplete(finalStatusContent, stepNum, postLoopRepoId))
-				.map(n => `Step ${n}`)
+				.filter((stepNum) => !isSegmentComplete(finalStatusContent, stepNum, postLoopRepoId))
+				.map((n) => `Step ${n}`)
 				.join(", ");
 		} else {
 			incomplete = parsed.steps
-				.filter(step => {
-					const ss = finalStatus.steps.find(s => s.number === step.number);
+				.filter((step) => {
+					const ss = finalStatus.steps.find((s) => s.number === step.number);
 					return !isStepComplete(ss);
 				})
-				.map(s => `Step ${s.number}`)
+				.map((s) => `Step ${s.number}`)
 				.join(", ");
 		}
 		logExecution(statusPath, "Task incomplete", `Max iterations reached. Incomplete: ${incomplete}`);
-		return makeResult(taskId, segmentId, workerAgentId, "failed", startTime,
+		return makeResult(
+			taskId,
+			segmentId,
+			workerAgentId,
+			"failed",
+			startTime,
 			`Max iterations (${config.maxIterations}) reached with incomplete steps: ${incomplete}`,
-			false, totalIterations, cumulativeCostUsd, cumulativeTokens, config, statusPath, reviewerStatePath, lastTelemetry, snapshotSegmentCtx);
+			false,
+			totalIterations,
+			cumulativeCostUsd,
+			cumulativeTokens,
+			config,
+			statusPath,
+			reviewerStatePath,
+			lastTelemetry,
+			snapshotSegmentCtx,
+		);
 	}
 
 	// TP-145: Determine if this is a non-final segment of a multi-segment task.
 	// If more segments remain after this one, suppress .DONE creation so that
 	// the engine can advance the segment frontier and execute subsequent segments.
 	// .DONE must only exist when ALL segments of a multi-segment task are complete.
-	const isNonFinalSegment = segmentId != null
-		&& Array.isArray(unit.task.segmentIds)
-		&& unit.task.segmentIds.length > 1
-		&& unit.task.segmentIds[unit.task.segmentIds.length - 1] !== segmentId;
+	const isNonFinalSegment =
+		segmentId != null &&
+		Array.isArray(unit.task.segmentIds) &&
+		unit.task.segmentIds.length > 1 &&
+		unit.task.segmentIds[unit.task.segmentIds.length - 1] !== segmentId;
 
 	// TP-165: Check for pending expansion requests in the worker's outbox.
 	// If the worker filed expansion requests, more segments may be added by the
 	// engine at the segment boundary — .DONE must not be created even if this
 	// appears to be the final segment based on the static segmentIds list.
-	const hasPendingExpansionRequests = segmentId != null && hasPendingExpansionRequestFiles(
-		config.stateRoot, config.batchId, workerAgentId,
-	);
+	const hasPendingExpansionRequests =
+		segmentId != null && hasPendingExpansionRequestFiles(config.stateRoot, config.batchId, workerAgentId);
 
 	if (isNonFinalSegment || hasPendingExpansionRequests) {
 		// Segment succeeded but more segments remain — suppress .DONE and "✅ Complete" status.
@@ -1077,23 +1211,50 @@ export async function executeTaskV2(
 		// write access and sometimes create .DONE on their own, bypassing this gate).
 		if (existsSync(donePath)) {
 			let deleted = false;
-			try { unlinkSync(donePath); deleted = true; } catch { /* best effort */ }
+			try {
+				unlinkSync(donePath);
+				deleted = true;
+			} catch {
+				/* best effort */
+			}
 			if (deleted) {
-				logExecution(statusPath, "Segment complete",
-					`Segment ${segmentId} succeeded (non-final — removed premature worker-created .DONE)`);
+				logExecution(
+					statusPath,
+					"Segment complete",
+					`Segment ${segmentId} succeeded (non-final — removed premature worker-created .DONE)`,
+				);
 			} else {
-				logExecution(statusPath, "Segment complete",
-					`⚠️ Segment ${segmentId} succeeded but FAILED to remove premature .DONE — downstream segments may be skipped`);
+				logExecution(
+					statusPath,
+					"Segment complete",
+					`⚠️ Segment ${segmentId} succeeded but FAILED to remove premature .DONE — downstream segments may be skipped`,
+				);
 			}
 		} else {
-			logExecution(statusPath, "Segment complete",
-				`Segment ${segmentId} succeeded (not final — .DONE suppressed)`);
+			logExecution(
+				statusPath,
+				"Segment complete",
+				`Segment ${segmentId} succeeded (not final — .DONE suppressed)`,
+			);
 		}
-		const suppressionReason = isNonFinalSegment
-			? "non-final"
-			: "pending expansion requests";
-		return makeResult(taskId, segmentId, workerAgentId, "succeeded", startTime,
-			`Segment completed (${suppressionReason} — .DONE suppressed)`, false, totalIterations, cumulativeCostUsd, cumulativeTokens, config, statusPath, reviewerStatePath, lastTelemetry, snapshotSegmentCtx);
+		const suppressionReason = isNonFinalSegment ? "non-final" : "pending expansion requests";
+		return makeResult(
+			taskId,
+			segmentId,
+			workerAgentId,
+			"succeeded",
+			startTime,
+			`Segment completed (${suppressionReason} — .DONE suppressed)`,
+			false,
+			totalIterations,
+			cumulativeCostUsd,
+			cumulativeTokens,
+			config,
+			statusPath,
+			reviewerStatePath,
+			lastTelemetry,
+			snapshotSegmentCtx,
+		);
 	}
 
 	// Create .DONE if not already present (final segment or single-segment/whole-task execution)
@@ -1103,8 +1264,23 @@ export async function executeTaskV2(
 	updateStatusField(statusPath, "Status", "✅ Complete");
 	logExecution(statusPath, "Task complete", ".DONE created");
 
-	return makeResult(taskId, segmentId, workerAgentId, "succeeded", startTime,
-		".DONE file created by lane-runner", true, totalIterations, cumulativeCostUsd, cumulativeTokens, config, statusPath, reviewerStatePath, lastTelemetry, snapshotSegmentCtx);
+	return makeResult(
+		taskId,
+		segmentId,
+		workerAgentId,
+		"succeeded",
+		startTime,
+		".DONE file created by lane-runner",
+		true,
+		totalIterations,
+		cumulativeCostUsd,
+		cumulativeTokens,
+		config,
+		statusPath,
+		reviewerStatePath,
+		lastTelemetry,
+		snapshotSegmentCtx,
+	);
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -1118,11 +1294,7 @@ export async function executeTaskV2(
  *
  * @returns true if at least one pending expansion request file exists
  */
-export function hasPendingExpansionRequestFiles(
-	stateRoot: string,
-	batchId: string,
-	agentId: string,
-): boolean {
+export function hasPendingExpansionRequestFiles(stateRoot: string, batchId: string, agentId: string): boolean {
 	const outboxDir = join(stateRoot, ".pi", "mailbox", batchId, agentId, "outbox");
 	if (!existsSync(outboxDir)) return false;
 	try {
@@ -1133,9 +1305,7 @@ export function hasPendingExpansionRequestFiles(
 	}
 }
 
-export function mapLaneTaskStatusToTerminalSnapshotStatus(
-	status: LaneTaskStatus,
-): "idle" | "complete" | "failed" {
+export function mapLaneTaskStatusToTerminalSnapshotStatus(status: LaneTaskStatus): "idle" | "complete" | "failed" {
 	if (status === "succeeded") return "complete";
 	if (status === "skipped") return "idle";
 	return "failed";
@@ -1168,17 +1338,18 @@ function makeResult(
 	/** TP-174: Segment context for segment-scoped snapshot progress */
 	segmentCtx?: { stepSegmentMap: StepSegmentMapping[]; repoId: string } | null,
 ): LaneRunnerTaskResult {
-	const telemetry = status === "skipped"
-		? undefined
-		: {
-			inputTokens: finalTelemetry?.inputTokens ?? 0,
-			outputTokens: finalTelemetry?.outputTokens ?? 0,
-			cacheReadTokens: finalTelemetry?.cacheReadTokens ?? 0,
-			cacheWriteTokens: finalTelemetry?.cacheWriteTokens ?? 0,
-			costUsd: finalTelemetry?.costUsd ?? 0,
-			toolCalls: finalTelemetry?.toolCalls ?? 0,
-			durationMs: finalTelemetry?.durationMs ?? 0,
-		};
+	const telemetry =
+		status === "skipped"
+			? undefined
+			: {
+					inputTokens: finalTelemetry?.inputTokens ?? 0,
+					outputTokens: finalTelemetry?.outputTokens ?? 0,
+					cacheReadTokens: finalTelemetry?.cacheReadTokens ?? 0,
+					cacheWriteTokens: finalTelemetry?.cacheWriteTokens ?? 0,
+					costUsd: finalTelemetry?.costUsd ?? 0,
+					toolCalls: finalTelemetry?.toolCalls ?? 0,
+					durationMs: finalTelemetry?.durationMs ?? 0,
+				};
 
 	const result: LaneRunnerTaskResult = {
 		outcome: {
@@ -1201,7 +1372,16 @@ function makeResult(
 	// TP-115: Emit terminal snapshot with real telemetry from agent-host result
 	if (config && statusPath && reviewerStatePath) {
 		const terminalStatus = mapLaneTaskStatusToTerminalSnapshotStatus(status);
-		emitSnapshot(config, taskId, segmentId, terminalStatus, finalTelemetry ?? {}, statusPath, reviewerStatePath, segmentCtx);
+		emitSnapshot(
+			config,
+			taskId,
+			segmentId,
+			terminalStatus,
+			finalTelemetry ?? {},
+			statusPath,
+			reviewerStatePath,
+			segmentCtx,
+		);
 	}
 
 	return result;
@@ -1214,9 +1394,10 @@ export function readReviewerTelemetrySnapshot(
 	config: LaneRunnerConfig,
 	reviewerStatePathOrStatusPath: string,
 ): (RuntimeAgentTelemetrySnapshot & { reviewType?: string; reviewStep?: number }) | null {
-	const reviewerPath = basename(reviewerStatePathOrStatusPath).toLowerCase() === "status.md"
-		? join(dirname(reviewerStatePathOrStatusPath), ".reviewer-state.json")
-		: reviewerStatePathOrStatusPath;
+	const reviewerPath =
+		basename(reviewerStatePathOrStatusPath).toLowerCase() === "status.md"
+			? join(dirname(reviewerStatePathOrStatusPath), ".reviewer-state.json")
+			: reviewerStatePathOrStatusPath;
 	if (!existsSync(reviewerPath)) return null;
 
 	try {
@@ -1240,7 +1421,7 @@ export function readReviewerTelemetrySnapshot(
 		if (parsed.status !== "running") return null;
 
 		// Stale guard: if updatedAt is present and older than threshold, ignore
-		if (parsed.updatedAt && (Date.now() - parsed.updatedAt) > REVIEWER_STATE_STALE_MS) return null;
+		if (parsed.updatedAt && Date.now() - parsed.updatedAt > REVIEWER_STATE_STALE_MS) return null;
 
 		return {
 			agentId: buildRuntimeAgentId(config.agentIdPrefix, config.laneNumber, "reviewer"),
@@ -1280,6 +1461,7 @@ function emitSnapshot(
 	reviewerStatePath: string,
 	/** TP-174: Optional segment context for segment-scoped progress reporting */
 	segmentContext?: { stepSegmentMap: StepSegmentMapping[]; repoId: string } | null,
+	currentStepNameOverride?: string,
 ): boolean {
 	try {
 		// Parse progress from STATUS.md
@@ -1312,14 +1494,22 @@ function emitSnapshot(
 				total = parsed.steps.reduce((sum, s) => sum + s.totalItems, 0);
 			}
 
+			const currentStepFromStatus = currentStepMatch?.[1]?.trim() || "";
+			const resolvedCurrentStep =
+				currentStepFromStatus && currentStepFromStatus !== "Unknown"
+					? currentStepFromStatus
+					: (currentStepNameOverride ?? "Unknown");
+
 			progress = {
-				currentStep: currentStepMatch?.[1]?.trim() || "Unknown",
+				currentStep: resolvedCurrentStep,
 				checked,
 				total,
 				iteration: parsed.iteration,
 				reviews: parsed.reviewCounter,
 			};
-		} catch { /* best effort */ }
+		} catch {
+			/* best effort */
+		}
 
 		const reviewerSnapshot = readReviewerTelemetrySnapshot(config, reviewerStatePath);
 
@@ -1357,4 +1547,3 @@ function emitSnapshot(
 		return false;
 	}
 }
-

@@ -15,16 +15,8 @@
 import { describe, it } from "node:test";
 import { expect } from "./expect.ts";
 
-import {
-	validatePersistedState,
-	upconvertV3toV4,
-	serializeBatchState,
-} from "../taskplane/persistence.ts";
-import {
-	BATCH_STATE_SCHEMA_VERSION,
-	defaultResilienceState,
-	defaultBatchDiagnostics,
-} from "../taskplane/types.ts";
+import { validatePersistedState, upconvertV3toV4, serializeBatchState } from "../taskplane/persistence.ts";
+import { BATCH_STATE_SCHEMA_VERSION, defaultResilienceState, defaultBatchDiagnostics } from "../taskplane/types.ts";
 import type {
 	OrchBatchRuntimeState,
 	AllocatedLane,
@@ -52,25 +44,29 @@ function makeValidV4(): Record<string, unknown> {
 		currentWaveIndex: 0,
 		totalWaves: 1,
 		wavePlan: [["TP-001"]],
-		lanes: [{
-			laneNumber: 1,
-			laneId: "lane-1",
-			laneSessionId: "orch-lane-1",
-			worktreePath: "/tmp/wt-1",
-			branch: "task/lane-1-20260328T010000",
-			taskIds: ["TP-001"],
-		}],
-		tasks: [{
-			taskId: "TP-001",
-			laneNumber: 1,
-			sessionName: "orch-lane-1",
-			status: "running",
-			taskFolder: "/tmp/tasks/TP-001",
-			startedAt: 1741478400000,
-			endedAt: null,
-			doneFileFound: false,
-			exitReason: "",
-		}],
+		lanes: [
+			{
+				laneNumber: 1,
+				laneId: "lane-1",
+				laneSessionId: "orch-lane-1",
+				worktreePath: "/tmp/wt-1",
+				branch: "task/lane-1-20260328T010000",
+				taskIds: ["TP-001"],
+			},
+		],
+		tasks: [
+			{
+				taskId: "TP-001",
+				laneNumber: 1,
+				sessionName: "orch-lane-1",
+				status: "running",
+				taskFolder: "/tmp/tasks/TP-001",
+				startedAt: 1741478400000,
+				endedAt: null,
+				doneFileFound: false,
+				exitReason: "",
+			},
+		],
 		mergeResults: [],
 		totalTasks: 1,
 		succeededTasks: 0,
@@ -119,7 +115,6 @@ function makeSegmentRecord(overrides?: Partial<PersistedSegmentRecord>): Persist
 // ═════════════════════════════════════════════════════════════════════
 
 describe("Schema v4 Migration (TP-081)", () => {
-
 	describe("v3 → v4 migration", () => {
 		it("migrates v3 state to v4 with empty segments", () => {
 			const v3 = makeValidV3();
@@ -562,25 +557,29 @@ describe("Schema v4 Migration (TP-081)", () => {
 				currentWaveIndex: 0,
 				totalWaves: 1,
 				wavePlan: [["TP-001"]],
-				lanes: [{
-					laneNumber: 1,
-					laneId: "lane-1",
-					laneSessionId: "orch-lane-1",
-					worktreePath: "/tmp/wt-1",
-					branch: "task/lane-1",
-					taskIds: ["TP-001"],
-				}],
-				tasks: [{
-					taskId: "TP-001",
-					laneNumber: 1,
-					sessionName: "orch-lane-1",
-					status: "running",
-					taskFolder: "/tmp/tasks/TP-001",
-					startedAt: null,
-					endedAt: null,
-					doneFileFound: false,
-					exitReason: "",
-				}],
+				lanes: [
+					{
+						laneNumber: 1,
+						laneId: "lane-1",
+						laneSessionId: "orch-lane-1",
+						worktreePath: "/tmp/wt-1",
+						branch: "task/lane-1",
+						taskIds: ["TP-001"],
+					},
+				],
+				tasks: [
+					{
+						taskId: "TP-001",
+						laneNumber: 1,
+						sessionName: "orch-lane-1",
+						status: "running",
+						taskFolder: "/tmp/tasks/TP-001",
+						startedAt: null,
+						endedAt: null,
+						doneFileFound: false,
+						exitReason: "",
+					},
+				],
 				mergeResults: [],
 				totalTasks: 1,
 				succeededTasks: 0,
@@ -640,12 +639,15 @@ describe("Schema v4 Migration (TP-081)", () => {
 				laneSessionId: lr.laneSessionId,
 				worktreePath: lr.worktreePath,
 				branch: lr.branch,
-				tasks: lr.taskIds.map((taskId, i) => ({
-					taskId,
-					order: i,
-					task: { ...dummyParsedTask, taskId },
-					estimatedMinutes: 10,
-				} as AllocatedTask)),
+				tasks: lr.taskIds.map(
+					(taskId, i) =>
+						({
+							taskId,
+							order: i,
+							task: { ...dummyParsedTask, taskId },
+							estimatedMinutes: 10,
+						}) as AllocatedTask,
+				),
 				strategy: "round-robin" as const,
 				estimatedLoad: 1,
 				estimatedMinutes: 10,
@@ -666,7 +668,7 @@ describe("Schema v4 Migration (TP-081)", () => {
 				batchId: persisted.batchId,
 				baseBranch: persisted.baseBranch,
 				orchBranch: persisted.orchBranch ?? "",
-				mode: persisted.mode as any ?? "repo",
+				mode: (persisted.mode as any) ?? "repo",
 				pauseSignal: { paused: false },
 				waveResults: [],
 				currentWaveIndex: persisted.currentWaveIndex,

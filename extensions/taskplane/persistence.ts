@@ -6,9 +6,34 @@ import { readFileSync, writeFileSync, existsSync, unlinkSync, renameSync, mkdirS
 import { join, dirname, basename } from "path";
 
 import { execLog } from "./execution.ts";
-import { BATCH_STATE_SCHEMA_VERSION, StateFileError, batchStatePath, BATCH_HISTORY_MAX_ENTRIES, defaultResilienceState, defaultBatchDiagnostics } from "./types.ts";
+import {
+	BATCH_STATE_SCHEMA_VERSION,
+	StateFileError,
+	batchStatePath,
+	BATCH_HISTORY_MAX_ENTRIES,
+	defaultResilienceState,
+	defaultBatchDiagnostics,
+} from "./types.ts";
 import type { BatchHistorySummary } from "./types.ts";
-import type { AllocatedLane, DiscoveryResult, EngineEvent, EscalationContext, LaneTaskOutcome, LaneTaskStatus, MonitorState, OrchBatchPhase, OrchBatchRuntimeState, PersistedBatchState, PersistedLaneRecord, PersistedMergeResult, PersistedSegmentRecord, PersistedTaskRecord, TaskMonitorSnapshot, Tier0RecoveryPattern, WorkspaceMode } from "./types.ts";
+import type {
+	AllocatedLane,
+	DiscoveryResult,
+	EngineEvent,
+	EscalationContext,
+	LaneTaskOutcome,
+	LaneTaskStatus,
+	MonitorState,
+	OrchBatchPhase,
+	OrchBatchRuntimeState,
+	PersistedBatchState,
+	PersistedLaneRecord,
+	PersistedMergeResult,
+	PersistedSegmentRecord,
+	PersistedTaskRecord,
+	TaskMonitorSnapshot,
+	Tier0RecoveryPattern,
+	WorkspaceMode,
+} from "./types.ts";
 import { sleepSync } from "./worktree.ts";
 import type { PreserveFailedLaneProgressResult } from "./worktree.ts";
 import { normalizeLaneSessionAlias, readLaneSessionAliases } from "./tmux-compat.ts";
@@ -56,20 +81,22 @@ export function hasTaskDoneMarker(taskFolder: string): boolean {
 function sameOutcomeTelemetry(a: LaneTaskOutcome["telemetry"], b: LaneTaskOutcome["telemetry"]): boolean {
 	if (!a && !b) return true;
 	if (!a || !b) return false;
-	return a.inputTokens === b.inputTokens
-		&& a.outputTokens === b.outputTokens
-		&& a.cacheReadTokens === b.cacheReadTokens
-		&& a.cacheWriteTokens === b.cacheWriteTokens
-		&& a.costUsd === b.costUsd
-		&& a.toolCalls === b.toolCalls
-		&& a.durationMs === b.durationMs;
+	return (
+		a.inputTokens === b.inputTokens &&
+		a.outputTokens === b.outputTokens &&
+		a.cacheReadTokens === b.cacheReadTokens &&
+		a.cacheWriteTokens === b.cacheWriteTokens &&
+		a.costUsd === b.costUsd &&
+		a.toolCalls === b.toolCalls &&
+		a.durationMs === b.durationMs
+	);
 }
 
 /**
  * Upsert a task outcome in-place. Returns true if changed.
  */
 export function upsertTaskOutcome(outcomes: LaneTaskOutcome[], next: LaneTaskOutcome): boolean {
-	const idx = outcomes.findIndex(o => o.taskId === next.taskId);
+	const idx = outcomes.findIndex((o) => o.taskId === next.taskId);
 	if (idx < 0) {
 		outcomes.push(next);
 		return true;
@@ -120,7 +147,7 @@ export function applyPartialProgressToOutcomes(
 	let updated = 0;
 	for (const r of ppResult.results) {
 		if (!r.saved || !r.savedBranch) continue;
-		const outcome = outcomes.find(o => o.taskId === r.taskId);
+		const outcome = outcomes.find((o) => o.taskId === r.taskId);
 		if (outcome) {
 			outcome.partialProgressCommits = r.commitCount;
 			outcome.partialProgressBranch = r.savedBranch;
@@ -136,25 +163,23 @@ export function applyPartialProgressToOutcomes(
  * Ensures the persisted state has a full task registry as soon as a wave starts,
  * including lane/session assignment, even before tasks finish.
  */
-export function seedPendingOutcomesForAllocatedLanes(
-	lanes: AllocatedLane[],
-	outcomes: LaneTaskOutcome[],
-): boolean {
+export function seedPendingOutcomesForAllocatedLanes(lanes: AllocatedLane[], outcomes: LaneTaskOutcome[]): boolean {
 	let changed = false;
 	for (const lane of lanes) {
 		for (const laneTask of lane.tasks) {
-			const existing = outcomes.find(o => o.taskId === laneTask.taskId);
+			const existing = outcomes.find((o) => o.taskId === laneTask.taskId);
 			if (existing) continue;
-			changed = upsertTaskOutcome(outcomes, {
-				taskId: laneTask.taskId,
-				status: "pending",
-				startTime: null,
-				endTime: null,
-				exitReason: "Pending execution",
-				sessionName: lane.laneSessionId,
-				doneFileFound: false,
-				laneNumber: lane.laneNumber,
-			}) || changed;
+			changed =
+				upsertTaskOutcome(outcomes, {
+					taskId: laneTask.taskId,
+					status: "pending",
+					startTime: null,
+					endTime: null,
+					exitReason: "Pending execution",
+					sessionName: lane.laneSessionId,
+					doneFileFound: false,
+					laneNumber: lane.laneNumber,
+				}) || changed;
 		}
 	}
 	return changed;
@@ -166,79 +191,82 @@ export function seedPendingOutcomesForAllocatedLanes(
  * This captures in-wave task transitions (pending → running → terminal)
  * so state persistence does not lag until wave completion.
  */
-export function syncTaskOutcomesFromMonitor(
-	monitorState: MonitorState,
-	outcomes: LaneTaskOutcome[],
-): boolean {
+export function syncTaskOutcomesFromMonitor(monitorState: MonitorState, outcomes: LaneTaskOutcome[]): boolean {
 	let changed = false;
 
 	for (const lane of monitorState.lanes) {
 		// Remaining tasks => pending
 		for (const taskId of lane.remainingTasks) {
-			const existing = outcomes.find(o => o.taskId === taskId);
-			if (existing && (existing.status === "succeeded" || existing.status === "failed" || existing.status === "stalled")) {
+			const existing = outcomes.find((o) => o.taskId === taskId);
+			if (
+				existing &&
+				(existing.status === "succeeded" || existing.status === "failed" || existing.status === "stalled")
+			) {
 				continue;
 			}
-			changed = upsertTaskOutcome(outcomes, {
-				taskId,
-				status: "pending",
-				startTime: existing?.startTime ?? null,
-				endTime: null,
-				exitReason: existing?.exitReason || "Pending execution",
-				sessionName: existing?.sessionName || lane.sessionName,
-				doneFileFound: false,
-				laneNumber: existing?.laneNumber ?? lane.laneNumber,
-				telemetry: existing?.telemetry,
-				partialProgressCommits: existing?.partialProgressCommits,
-				partialProgressBranch: existing?.partialProgressBranch,
-				exitDiagnostic: existing?.exitDiagnostic,
-			}) || changed;
+			changed =
+				upsertTaskOutcome(outcomes, {
+					taskId,
+					status: "pending",
+					startTime: existing?.startTime ?? null,
+					endTime: null,
+					exitReason: existing?.exitReason || "Pending execution",
+					sessionName: existing?.sessionName || lane.sessionName,
+					doneFileFound: false,
+					laneNumber: existing?.laneNumber ?? lane.laneNumber,
+					telemetry: existing?.telemetry,
+					partialProgressCommits: existing?.partialProgressCommits,
+					partialProgressBranch: existing?.partialProgressBranch,
+					exitDiagnostic: existing?.exitDiagnostic,
+				}) || changed;
 		}
 
 		// Completed tasks => succeeded
 		// Use existing endTime if already set — prevents changed=true on every
 		// poll tick (lastPollTime differs each tick, causing persist log spam).
 		for (const taskId of lane.completedTasks) {
-			const existing = outcomes.find(o => o.taskId === taskId);
-			changed = upsertTaskOutcome(outcomes, {
-				taskId,
-				status: "succeeded",
-				startTime: existing?.startTime ?? null,
-				endTime: existing?.endTime ?? monitorState.lastPollTime,
-				exitReason: existing?.exitReason || ".DONE file created by task-runner",
-				sessionName: existing?.sessionName || lane.sessionName,
-				doneFileFound: true,
-				laneNumber: existing?.laneNumber ?? lane.laneNumber,
-				telemetry: existing?.telemetry,
-				partialProgressCommits: existing?.partialProgressCommits,
-				partialProgressBranch: existing?.partialProgressBranch,
-				exitDiagnostic: existing?.exitDiagnostic,
-			}) || changed;
+			const existing = outcomes.find((o) => o.taskId === taskId);
+			changed =
+				upsertTaskOutcome(outcomes, {
+					taskId,
+					status: "succeeded",
+					startTime: existing?.startTime ?? null,
+					endTime: existing?.endTime ?? monitorState.lastPollTime,
+					exitReason: existing?.exitReason || ".DONE file created by task-runner",
+					sessionName: existing?.sessionName || lane.sessionName,
+					doneFileFound: true,
+					laneNumber: existing?.laneNumber ?? lane.laneNumber,
+					telemetry: existing?.telemetry,
+					partialProgressCommits: existing?.partialProgressCommits,
+					partialProgressBranch: existing?.partialProgressBranch,
+					exitDiagnostic: existing?.exitDiagnostic,
+				}) || changed;
 		}
 
 		// Failed tasks => failed
 		for (const taskId of lane.failedTasks) {
-			const existing = outcomes.find(o => o.taskId === taskId);
-			changed = upsertTaskOutcome(outcomes, {
-				taskId,
-				status: "failed",
-				startTime: existing?.startTime ?? null,
-				endTime: existing?.endTime ?? monitorState.lastPollTime,
-				exitReason: existing?.exitReason || "Task failed or stalled",
-				sessionName: existing?.sessionName || lane.sessionName,
-				doneFileFound: false,
-				laneNumber: existing?.laneNumber ?? lane.laneNumber,
-				telemetry: existing?.telemetry,
-				partialProgressCommits: existing?.partialProgressCommits,
-				partialProgressBranch: existing?.partialProgressBranch,
-				exitDiagnostic: existing?.exitDiagnostic,
-			}) || changed;
+			const existing = outcomes.find((o) => o.taskId === taskId);
+			changed =
+				upsertTaskOutcome(outcomes, {
+					taskId,
+					status: "failed",
+					startTime: existing?.startTime ?? null,
+					endTime: existing?.endTime ?? monitorState.lastPollTime,
+					exitReason: existing?.exitReason || "Task failed or stalled",
+					sessionName: existing?.sessionName || lane.sessionName,
+					doneFileFound: false,
+					laneNumber: existing?.laneNumber ?? lane.laneNumber,
+					telemetry: existing?.telemetry,
+					partialProgressCommits: existing?.partialProgressCommits,
+					partialProgressBranch: existing?.partialProgressBranch,
+					exitDiagnostic: existing?.exitDiagnostic,
+				}) || changed;
 		}
 
 		// Current task snapshot => running/stalled/succeeded/failed/skipped
 		if (lane.currentTaskId && lane.currentTaskSnapshot) {
 			const snap = lane.currentTaskSnapshot;
-			const existing = outcomes.find(o => o.taskId === lane.currentTaskId);
+			const existing = outcomes.find((o) => o.taskId === lane.currentTaskId);
 			const monitorToLane: Record<TaskMonitorSnapshot["status"], LaneTaskStatus> = {
 				pending: "pending",
 				running: "running",
@@ -249,26 +277,35 @@ export function syncTaskOutcomesFromMonitor(
 				unknown: existing?.status || "running",
 			};
 			const mappedStatus = monitorToLane[snap.status];
-			const terminal = mappedStatus === "succeeded" || mappedStatus === "failed" || mappedStatus === "stalled" || mappedStatus === "skipped";
+			const terminal =
+				mappedStatus === "succeeded" ||
+				mappedStatus === "failed" ||
+				mappedStatus === "stalled" ||
+				mappedStatus === "skipped";
 
 			// TP-051: Use snap.observedAt (Date.now() from monitor poll) instead of
 			// snap.lastHeartbeat (STATUS.md mtime) for task start time. The mtime
 			// reflects when STATUS.md was last edited, which may be long before
 			// actual execution started (e.g., during task staging).
-			changed = upsertTaskOutcome(outcomes, {
-				taskId: lane.currentTaskId,
-				status: mappedStatus,
-				startTime: existing?.startTime ?? snap.observedAt,
-				endTime: terminal ? (existing?.endTime ?? snap.observedAt) : null,
-				exitReason: existing?.exitReason || (mappedStatus === "running" ? "Task in progress" : (snap.stallReason || "Task reached terminal state")),
-				sessionName: existing?.sessionName || lane.sessionName,
-				doneFileFound: snap.doneFileFound,
-				laneNumber: existing?.laneNumber ?? lane.laneNumber,
-				telemetry: existing?.telemetry,
-				partialProgressCommits: existing?.partialProgressCommits,
-				partialProgressBranch: existing?.partialProgressBranch,
-				exitDiagnostic: existing?.exitDiagnostic,
-			}) || changed;
+			changed =
+				upsertTaskOutcome(outcomes, {
+					taskId: lane.currentTaskId,
+					status: mappedStatus,
+					startTime: existing?.startTime ?? snap.observedAt,
+					endTime: terminal ? (existing?.endTime ?? snap.observedAt) : null,
+					exitReason:
+						existing?.exitReason ||
+						(mappedStatus === "running"
+							? "Task in progress"
+							: snap.stallReason || "Task reached terminal state"),
+					sessionName: existing?.sessionName || lane.sessionName,
+					doneFileFound: snap.doneFileFound,
+					laneNumber: existing?.laneNumber ?? lane.laneNumber,
+					telemetry: existing?.telemetry,
+					partialProgressCommits: existing?.partialProgressCommits,
+					partialProgressBranch: existing?.partialProgressBranch,
+					exitDiagnostic: existing?.exitDiagnostic,
+				}) || changed;
 		}
 	}
 
@@ -344,9 +381,12 @@ export function persistRuntimeState(
 			waveIndex: batchState.currentWaveIndex,
 		});
 	} catch (err: unknown) {
-		const msg = err instanceof StateFileError
-			? `[${err.code}] ${err.message}`
-			: (err instanceof Error ? err.message : String(err));
+		const msg =
+			err instanceof StateFileError
+				? `[${err.code}] ${err.message}`
+				: err instanceof Error
+					? err.message
+					: String(err);
 		execLog("state", batchState.batchId, `write failed: ${msg}`, {
 			reason,
 			phase: batchState.phase,
@@ -355,23 +395,33 @@ export function persistRuntimeState(
 	}
 }
 
-
 // ── State Validation ─────────────────────────────────────────────────
 
 /** All valid OrchBatchPhase values for validation. */
 export const VALID_BATCH_PHASES: ReadonlySet<string> = new Set([
-	"idle", "launching", "planning", "executing", "merging", "paused", "stopped", "completed", "failed",
+	"idle",
+	"launching",
+	"planning",
+	"executing",
+	"merging",
+	"paused",
+	"stopped",
+	"completed",
+	"failed",
 ]);
 
 /** All valid LaneTaskStatus values for validation. */
 export const VALID_TASK_STATUSES: ReadonlySet<string> = new Set([
-	"pending", "running", "succeeded", "failed", "stalled", "skipped",
+	"pending",
+	"running",
+	"succeeded",
+	"failed",
+	"stalled",
+	"skipped",
 ]);
 
 /** All valid merge result statuses for persisted state. */
-export const VALID_PERSISTED_MERGE_STATUSES: ReadonlySet<string> = new Set([
-	"succeeded", "failed", "partial",
-]);
+export const VALID_PERSISTED_MERGE_STATUSES: ReadonlySet<string> = new Set(["succeeded", "failed", "partial"]);
 
 /**
  * Upconvert a v1 state object to v2 in-memory.
@@ -462,20 +512,18 @@ export function upconvertV3toV4(obj: Record<string, unknown>): void {
  */
 export function validatePersistedState(data: unknown): PersistedBatchState {
 	if (!data || typeof data !== "object") {
-		throw new StateFileError(
-			"STATE_SCHEMA_INVALID",
-			"Batch state must be a non-null object",
-		);
+		throw new StateFileError("STATE_SCHEMA_INVALID", "Batch state must be a non-null object");
 	}
 
 	const obj = data as Record<string, unknown>;
 
-	// ── Schema version ───────────────────────────────────────────
-	if (typeof obj.schemaVersion !== "number") {
-		throw new StateFileError(
-			"STATE_SCHEMA_INVALID",
-			`Missing or invalid "schemaVersion" field (expected number, got ${typeof obj.schemaVersion})`,
+	// ── Schema version — default to current if missing/invalid (TP-205 fix) ──
+	if (typeof obj.schemaVersion !== "number" || Number.isNaN(obj.schemaVersion)) {
+		execLog(
+			"persistence",
+			`schemaVersion missing or invalid (${obj.schemaVersion}), defaulting to v${BATCH_STATE_SCHEMA_VERSION}`,
 		);
+		obj.schemaVersion = BATCH_STATE_SCHEMA_VERSION;
 	}
 	// Accept v1 (auto-upconvert to v2→v3→v4), v2 (upconvert to v3→v4), v3 (upconvert to v4), and v4 (current).
 	// Reject anything else — including future versions from newer runtimes.
@@ -484,8 +532,8 @@ export function validatePersistedState(data: unknown): PersistedBatchState {
 		throw new StateFileError(
 			"STATE_SCHEMA_INVALID",
 			`Unsupported schema version ${obj.schemaVersion} (expected ${BATCH_STATE_SCHEMA_VERSION}). ` +
-			`Upgrade taskplane to a version that supports schema v${obj.schemaVersion}, ` +
-			`or delete .pi/batch-state.json and re-run the batch.`,
+				`Upgrade taskplane to a version that supports schema v${obj.schemaVersion}, ` +
+				`or delete .pi/batch-state.json and re-run the batch.`,
 		);
 	}
 	const isV1 = obj.schemaVersion === 1;
@@ -552,8 +600,15 @@ export function validatePersistedState(data: unknown): PersistedBatchState {
 
 	// ── Required number fields ───────────────────────────────────
 	for (const field of [
-		"startedAt", "updatedAt", "currentWaveIndex", "totalWaves",
-		"totalTasks", "succeededTasks", "failedTasks", "skippedTasks", "blockedTasks",
+		"startedAt",
+		"updatedAt",
+		"currentWaveIndex",
+		"totalWaves",
+		"totalTasks",
+		"succeededTasks",
+		"failedTasks",
+		"skippedTasks",
+		"blockedTasks",
 	] as const) {
 		if (typeof obj[field] !== "number") {
 			throw new StateFileError(
@@ -585,10 +640,7 @@ export function validatePersistedState(data: unknown): PersistedBatchState {
 	const wavePlan = obj.wavePlan as unknown[];
 	for (let i = 0; i < wavePlan.length; i++) {
 		if (!Array.isArray(wavePlan[i])) {
-			throw new StateFileError(
-				"STATE_SCHEMA_INVALID",
-				`wavePlan[${i}] is not an array`,
-			);
+			throw new StateFileError("STATE_SCHEMA_INVALID", `wavePlan[${i}] is not an array`);
 		}
 		for (const taskId of wavePlan[i] as unknown[]) {
 			if (typeof taskId !== "string") {
@@ -605,24 +657,15 @@ export function validatePersistedState(data: unknown): PersistedBatchState {
 	for (let i = 0; i < tasks.length; i++) {
 		const t = tasks[i] as Record<string, unknown>;
 		if (!t || typeof t !== "object") {
-			throw new StateFileError(
-				"STATE_SCHEMA_INVALID",
-				`tasks[${i}] is not an object`,
-			);
+			throw new StateFileError("STATE_SCHEMA_INVALID", `tasks[${i}] is not an object`);
 		}
 		for (const field of ["taskId", "sessionName", "taskFolder", "exitReason"] as const) {
 			if (typeof t[field] !== "string") {
-				throw new StateFileError(
-					"STATE_SCHEMA_INVALID",
-					`tasks[${i}].${field} is missing or not a string`,
-				);
+				throw new StateFileError("STATE_SCHEMA_INVALID", `tasks[${i}].${field} is missing or not a string`);
 			}
 		}
 		if (typeof t.laneNumber !== "number") {
-			throw new StateFileError(
-				"STATE_SCHEMA_INVALID",
-				`tasks[${i}].laneNumber is missing or not a number`,
-			);
+			throw new StateFileError("STATE_SCHEMA_INVALID", `tasks[${i}].laneNumber is missing or not a number`);
 		}
 		if (typeof t.status !== "string" || !VALID_TASK_STATUSES.has(t.status)) {
 			throw new StateFileError(
@@ -631,22 +674,13 @@ export function validatePersistedState(data: unknown): PersistedBatchState {
 			);
 		}
 		if (t.startedAt !== null && typeof t.startedAt !== "number") {
-			throw new StateFileError(
-				"STATE_SCHEMA_INVALID",
-				`tasks[${i}].startedAt is not a number or null`,
-			);
+			throw new StateFileError("STATE_SCHEMA_INVALID", `tasks[${i}].startedAt is not a number or null`);
 		}
 		if (t.endedAt !== null && typeof t.endedAt !== "number") {
-			throw new StateFileError(
-				"STATE_SCHEMA_INVALID",
-				`tasks[${i}].endedAt is not a number or null`,
-			);
+			throw new StateFileError("STATE_SCHEMA_INVALID", `tasks[${i}].endedAt is not a number or null`);
 		}
 		if (typeof t.doneFileFound !== "boolean") {
-			throw new StateFileError(
-				"STATE_SCHEMA_INVALID",
-				`tasks[${i}].doneFileFound is missing or not a boolean`,
-			);
+			throw new StateFileError("STATE_SCHEMA_INVALID", `tasks[${i}].doneFileFound is missing or not a boolean`);
 		}
 		// v2 optional fields: repoId, resolvedRepoId (string | undefined)
 		if (t.repoId !== undefined && typeof t.repoId !== "string") {
@@ -697,17 +731,11 @@ export function validatePersistedState(data: unknown): PersistedBatchState {
 	for (let i = 0; i < lanes.length; i++) {
 		const l = lanes[i] as Record<string, unknown>;
 		if (!l || typeof l !== "object") {
-			throw new StateFileError(
-				"STATE_SCHEMA_INVALID",
-				`lanes[${i}] is not an object`,
-			);
+			throw new StateFileError("STATE_SCHEMA_INVALID", `lanes[${i}] is not an object`);
 		}
 		for (const field of ["laneId", "worktreePath", "branch"] as const) {
 			if (typeof l[field] !== "string") {
-				throw new StateFileError(
-					"STATE_SCHEMA_INVALID",
-					`lanes[${i}].${field} is missing or not a string`,
-				);
+				throw new StateFileError("STATE_SCHEMA_INVALID", `lanes[${i}].${field} is missing or not a string`);
 			}
 		}
 
@@ -740,16 +768,10 @@ export function validatePersistedState(data: unknown): PersistedBatchState {
 		normalizeLaneSessionAlias(l);
 
 		if (typeof l.laneNumber !== "number") {
-			throw new StateFileError(
-				"STATE_SCHEMA_INVALID",
-				`lanes[${i}].laneNumber is missing or not a number`,
-			);
+			throw new StateFileError("STATE_SCHEMA_INVALID", `lanes[${i}].laneNumber is missing or not a number`);
 		}
 		if (!Array.isArray(l.taskIds)) {
-			throw new StateFileError(
-				"STATE_SCHEMA_INVALID",
-				`lanes[${i}].taskIds is missing or not an array`,
-			);
+			throw new StateFileError("STATE_SCHEMA_INVALID", `lanes[${i}].taskIds is missing or not an array`);
 		}
 		// v2 optional field: repoId (string | undefined)
 		if (l.repoId !== undefined && typeof l.repoId !== "string") {
@@ -763,7 +785,7 @@ export function validatePersistedState(data: unknown): PersistedBatchState {
 	if (legacyTmuxSessionLaneIndexes.length > 0) {
 		console.error(
 			"[taskplane] migration: detected legacy lanes[].tmuxSessionName in .pi/batch-state.json; " +
-			"normalized to lanes[].laneSessionId for this release. Re-save state (or re-run /orch-resume) to persist canonical fields.",
+				"normalized to lanes[].laneSessionId for this release. Re-save state (or re-run /orch-resume) to persist canonical fields.",
 		);
 	}
 
@@ -772,16 +794,10 @@ export function validatePersistedState(data: unknown): PersistedBatchState {
 	for (let i = 0; i < mergeResults.length; i++) {
 		const m = mergeResults[i] as Record<string, unknown>;
 		if (!m || typeof m !== "object") {
-			throw new StateFileError(
-				"STATE_SCHEMA_INVALID",
-				`mergeResults[${i}] is not an object`,
-			);
+			throw new StateFileError("STATE_SCHEMA_INVALID", `mergeResults[${i}] is not an object`);
 		}
 		if (typeof m.waveIndex !== "number") {
-			throw new StateFileError(
-				"STATE_SCHEMA_INVALID",
-				`mergeResults[${i}].waveIndex is missing or not a number`,
-			);
+			throw new StateFileError("STATE_SCHEMA_INVALID", `mergeResults[${i}].waveIndex is missing or not a number`);
 		}
 		if (typeof m.status !== "string" || !VALID_PERSISTED_MERGE_STATUSES.has(m.status)) {
 			throw new StateFileError(
@@ -824,10 +840,7 @@ export function validatePersistedState(data: unknown): PersistedBatchState {
 	// ── Validate lastError ───────────────────────────────────────
 	if (obj.lastError !== null) {
 		if (typeof obj.lastError !== "object") {
-			throw new StateFileError(
-				"STATE_SCHEMA_INVALID",
-				`lastError is not an object or null`,
-			);
+			throw new StateFileError("STATE_SCHEMA_INVALID", `lastError is not an object or null`);
 		}
 		const le = obj.lastError as Record<string, unknown>;
 		if (typeof le.code !== "string" || typeof le.message !== "string") {
@@ -841,20 +854,14 @@ export function validatePersistedState(data: unknown): PersistedBatchState {
 	// ── Validate blockedTaskIds: array of strings ────────────────
 	for (const id of obj.blockedTaskIds as unknown[]) {
 		if (typeof id !== "string") {
-			throw new StateFileError(
-				"STATE_SCHEMA_INVALID",
-				`blockedTaskIds contains non-string value: ${typeof id}`,
-			);
+			throw new StateFileError("STATE_SCHEMA_INVALID", `blockedTaskIds contains non-string value: ${typeof id}`);
 		}
 	}
 
 	// ── Validate errors: array of strings ────────────────────────
 	for (const err of obj.errors as unknown[]) {
 		if (typeof err !== "string") {
-			throw new StateFileError(
-				"STATE_SCHEMA_INVALID",
-				`errors array contains non-string value: ${typeof err}`,
-			);
+			throw new StateFileError("STATE_SCHEMA_INVALID", `errors array contains non-string value: ${typeof err}`);
 		}
 	}
 
@@ -1056,10 +1063,7 @@ export function validatePersistedState(data: unknown): PersistedBatchState {
 			}
 			for (let j = 0; j < (t.segmentIds as unknown[]).length; j++) {
 				if (typeof (t.segmentIds as unknown[])[j] !== "string") {
-					throw new StateFileError(
-						"STATE_SCHEMA_INVALID",
-						`tasks[${i}].segmentIds[${j}] is not a string`,
-					);
+					throw new StateFileError("STATE_SCHEMA_INVALID", `tasks[${i}].segmentIds[${j}] is not a string`);
 				}
 			}
 		}
@@ -1083,13 +1087,19 @@ export function validatePersistedState(data: unknown): PersistedBatchState {
 	for (let i = 0; i < segments.length; i++) {
 		const s = segments[i] as Record<string, unknown>;
 		if (!s || typeof s !== "object") {
-			throw new StateFileError(
-				"STATE_SCHEMA_INVALID",
-				`segments[${i}] is not an object`,
-			);
+			throw new StateFileError("STATE_SCHEMA_INVALID", `segments[${i}] is not an object`);
 		}
 		// Required string fields
-		for (const field of ["segmentId", "taskId", "repoId", "laneId", "sessionName", "worktreePath", "branch", "exitReason"] as const) {
+		for (const field of [
+			"segmentId",
+			"taskId",
+			"repoId",
+			"laneId",
+			"sessionName",
+			"worktreePath",
+			"branch",
+			"exitReason",
+		] as const) {
 			if (typeof s[field] !== "string") {
 				throw new StateFileError(
 					"STATE_SCHEMA_INVALID",
@@ -1173,12 +1183,31 @@ export function validatePersistedState(data: unknown): PersistedBatchState {
 	// serialization. This protects against data loss from future schema
 	// extensions or external tools writing additional fields.
 	const KNOWN_TOP_LEVEL_FIELDS = new Set([
-		"schemaVersion", "phase", "batchId", "baseBranch", "orchBranch", "mode",
-		"startedAt", "updatedAt", "endedAt", "currentWaveIndex", "totalWaves",
-		"wavePlan", "lanes", "tasks", "mergeResults",
-		"totalTasks", "succeededTasks", "failedTasks", "skippedTasks", "blockedTasks",
-		"blockedTaskIds", "lastError", "errors",
-		"resilience", "diagnostics",
+		"schemaVersion",
+		"phase",
+		"batchId",
+		"baseBranch",
+		"orchBranch",
+		"mode",
+		"startedAt",
+		"updatedAt",
+		"endedAt",
+		"currentWaveIndex",
+		"totalWaves",
+		"wavePlan",
+		"lanes",
+		"tasks",
+		"mergeResults",
+		"totalTasks",
+		"succeededTasks",
+		"failedTasks",
+		"skippedTasks",
+		"blockedTasks",
+		"blockedTaskIds",
+		"lastError",
+		"errors",
+		"resilience",
+		"diagnostics",
 		"segments",
 		"_extraFields",
 	]);
@@ -1241,69 +1270,70 @@ export function serializeBatchState(
 	}
 
 	// Build a lookup from taskId → AllocatedTask (which holds the ParsedTask with repo fields).
-	const allocatedTaskByTaskId = new Map<string, { allocatedTask: import("./types.ts").AllocatedTask; lane: AllocatedLane }>();
+	const allocatedTaskByTaskId = new Map<
+		string,
+		{ allocatedTask: import("./types.ts").AllocatedTask; lane: AllocatedLane }
+	>();
 	for (const lane of lanes) {
 		for (const allocTask of lane.tasks) {
 			allocatedTaskByTaskId.set(allocTask.taskId, { allocatedTask: allocTask, lane });
 		}
 	}
 
-	const taskRecords: PersistedTaskRecord[] = [...taskIdSet]
-		.sort()
-		.map((taskId) => {
-			const lane = laneByTaskId.get(taskId);
-			const outcome = outcomeByTaskId.get(taskId);
-			const allocated = allocatedTaskByTaskId.get(taskId);
+	const taskRecords: PersistedTaskRecord[] = [...taskIdSet].sort().map((taskId) => {
+		const lane = laneByTaskId.get(taskId);
+		const outcome = outcomeByTaskId.get(taskId);
+		const allocated = allocatedTaskByTaskId.get(taskId);
 
-			const record: PersistedTaskRecord = {
-				taskId,
-				laneNumber: lane?.laneNumber ?? outcome?.laneNumber ?? 0,
-				sessionName: outcome?.sessionName || lane?.laneSessionId || "",
-				status: outcome?.status ?? "pending",
-				taskFolder: "", // Enriched by caller from discovery
-				startedAt: outcome?.startTime ?? null,
-				endedAt: outcome?.endTime ?? null,
-				doneFileFound: outcome?.doneFileFound ?? false,
-				exitReason: outcome?.exitReason ?? "",
-			};
+		const record: PersistedTaskRecord = {
+			taskId,
+			laneNumber: lane?.laneNumber ?? outcome?.laneNumber ?? 0,
+			sessionName: outcome?.sessionName || lane?.laneSessionId || "",
+			status: outcome?.status ?? "pending",
+			taskFolder: "", // Enriched by caller from discovery
+			startedAt: outcome?.startTime ?? null,
+			endedAt: outcome?.endTime ?? null,
+			doneFileFound: outcome?.doneFileFound ?? false,
+			exitReason: outcome?.exitReason ?? "",
+		};
 
-			// v2: Serialize repo-aware fields from the ParsedTask
-			if (allocated?.allocatedTask.task?.promptRepoId !== undefined) {
-				record.repoId = allocated.allocatedTask.task.promptRepoId;
-			}
-			if (allocated?.allocatedTask.task?.resolvedRepoId !== undefined) {
-				record.resolvedRepoId = allocated.allocatedTask.task.resolvedRepoId;
-			}
+		// v2: Serialize repo-aware fields from the ParsedTask
+		if (allocated?.allocatedTask.task?.promptRepoId !== undefined) {
+			record.repoId = allocated.allocatedTask.task.promptRepoId;
+		}
+		if (allocated?.allocatedTask.task?.resolvedRepoId !== undefined) {
+			record.resolvedRepoId = allocated.allocatedTask.task.resolvedRepoId;
+		}
 
-			// TP-028: Serialize partial progress fields from task outcome
-			if (outcome?.partialProgressCommits !== undefined) {
-				record.partialProgressCommits = outcome.partialProgressCommits;
-			}
-			if (outcome?.partialProgressBranch !== undefined) {
-				record.partialProgressBranch = outcome.partialProgressBranch;
-			}
+		// TP-028: Serialize partial progress fields from task outcome
+		if (outcome?.partialProgressCommits !== undefined) {
+			record.partialProgressCommits = outcome.partialProgressCommits;
+		}
+		if (outcome?.partialProgressBranch !== undefined) {
+			record.partialProgressBranch = outcome.partialProgressBranch;
+		}
 
-			// TP-030 v3: Serialize exit diagnostic from task outcome
-			if (outcome?.exitDiagnostic !== undefined) {
-				record.exitDiagnostic = outcome.exitDiagnostic;
-			}
+		// TP-030 v3: Serialize exit diagnostic from task outcome
+		if (outcome?.exitDiagnostic !== undefined) {
+			record.exitDiagnostic = outcome.exitDiagnostic;
+		}
 
-			// TP-081 v4: Serialize segment-level fields from ParsedTask or existing state
-			if (allocated?.allocatedTask.task?.packetRepoId !== undefined) {
-				(record as any).packetRepoId = allocated.allocatedTask.task.packetRepoId;
-			}
-			if (allocated?.allocatedTask.task?.packetTaskPath !== undefined) {
-				(record as any).packetTaskPath = allocated.allocatedTask.task.packetTaskPath;
-			}
-			if (allocated?.allocatedTask.task?.segmentIds !== undefined) {
-				(record as any).segmentIds = allocated.allocatedTask.task.segmentIds;
-			}
-			if (allocated?.allocatedTask.task?.activeSegmentId !== undefined) {
-				(record as any).activeSegmentId = allocated.allocatedTask.task.activeSegmentId;
-			}
+		// TP-081 v4: Serialize segment-level fields from ParsedTask or existing state
+		if (allocated?.allocatedTask.task?.packetRepoId !== undefined) {
+			(record as any).packetRepoId = allocated.allocatedTask.task.packetRepoId;
+		}
+		if (allocated?.allocatedTask.task?.packetTaskPath !== undefined) {
+			(record as any).packetTaskPath = allocated.allocatedTask.task.packetTaskPath;
+		}
+		if (allocated?.allocatedTask.task?.segmentIds !== undefined) {
+			(record as any).segmentIds = allocated.allocatedTask.task.segmentIds;
+		}
+		if (allocated?.allocatedTask.task?.activeSegmentId !== undefined) {
+			(record as any).activeSegmentId = allocated.allocatedTask.task.activeSegmentId;
+		}
 
-			return record;
-		});
+		return record;
+	});
 
 	// Build lane records
 	const laneRecords: PersistedLaneRecord[] = lanes.map((lane) => {
@@ -1326,26 +1356,25 @@ export function serializeBatchState(
 	// 0-based for PersistedMergeResult (dashboard renders as "Wave N+1").
 	// Clamp to 0 minimum: resume re-exec merges use sentinel waveIndex -1,
 	// which would produce -2 without clamping.
-	const mergeResults: PersistedMergeResult[] = (state.mergeResults || [])
-		.map((mr) => {
-			const record: PersistedMergeResult = {
-				waveIndex: Math.max(0, mr.waveIndex - 1),
-				status: mr.status,
-				failedLane: mr.failedLane,
-				failureReason: mr.failureReason,
-			};
-			// v2 (TP-009): Serialize per-repo merge outcomes when available (workspace mode).
-			if (mr.repoResults && mr.repoResults.length > 0) {
-				record.repoResults = mr.repoResults.map((rr) => ({
-					repoId: rr.repoId,
-					status: rr.status,
-					laneNumbers: rr.laneResults.map((lr) => lr.laneNumber),
-					failedLane: rr.failedLane,
-					failureReason: rr.failureReason,
-				}));
-			}
-			return record;
-		});
+	const mergeResults: PersistedMergeResult[] = (state.mergeResults || []).map((mr) => {
+		const record: PersistedMergeResult = {
+			waveIndex: Math.max(0, mr.waveIndex - 1),
+			status: mr.status,
+			failedLane: mr.failedLane,
+			failureReason: mr.failureReason,
+		};
+		// v2 (TP-009): Serialize per-repo merge outcomes when available (workspace mode).
+		if (mr.repoResults && mr.repoResults.length > 0) {
+			record.repoResults = mr.repoResults.map((rr) => ({
+				repoId: rr.repoId,
+				status: rr.status,
+				laneNumbers: rr.laneResults.map((lr) => lr.laneNumber),
+				failedLane: rr.failedLane,
+				failureReason: rr.failureReason,
+			}));
+		}
+		return record;
+	});
 
 	const persisted: PersistedBatchState = {
 		schemaVersion: BATCH_STATE_SCHEMA_VERSION,
@@ -1372,9 +1401,8 @@ export function serializeBatchState(
 		skippedTasks: state.skippedTasks,
 		blockedTasks: state.blockedTasks,
 		blockedTaskIds: [...state.blockedTaskIds],
-		lastError: state.errors.length > 0
-			? { code: "BATCH_ERROR", message: state.errors[state.errors.length - 1] }
-			: null,
+		lastError:
+			state.errors.length > 0 ? { code: "BATCH_ERROR", message: state.errors[state.errors.length - 1] } : null,
 		errors: [...state.errors],
 		resilience: state.resilience ?? defaultResilienceState(),
 		diagnostics: state.diagnostics ?? defaultBatchDiagnostics(),
@@ -1385,7 +1413,7 @@ export function serializeBatchState(
 	// Extra fields are placed at the end of the object (after known schema fields)
 	// and will not overwrite any known field.
 	if (state._extraFields) {
-		const output = persisted as Record<string, unknown>;
+		const output = persisted as unknown as Record<string, unknown>;
 		for (const [key, value] of Object.entries(state._extraFields)) {
 			if (!(key in output)) {
 				output[key] = value;
@@ -1461,12 +1489,16 @@ export function saveBatchState(json: string, repoRoot: string): void {
 	}
 
 	// All retries exhausted — clean up temp file if possible
-	try { unlinkSync(tmpPath); } catch { /* ignore cleanup errors */ }
+	try {
+		unlinkSync(tmpPath);
+	} catch {
+		/* ignore cleanup errors */
+	}
 
 	throw new StateFileError(
 		"STATE_FILE_IO_ERROR",
 		`Failed to atomically save state file "${finalPath}" after ` +
-		`${STATE_WRITE_MAX_RETRIES} attempts: ${lastError?.message ?? "unknown error"}`,
+			`${STATE_WRITE_MAX_RETRIES} attempts: ${lastError?.message ?? "unknown error"}`,
 	);
 }
 
@@ -1505,7 +1537,13 @@ export function loadBatchState(repoRoot: string): PersistedBatchState | null {
 		);
 	}
 
-	return validatePersistedState(parsed);
+	try {
+		return validatePersistedState(parsed);
+	} catch (err) {
+		// If validation fails (e.g., corrupt/empty state), return null to allow fresh start
+		execLog("persistence", `loadBatchState validation failed: ${(err as Error).message}, returning null`);
+		return null;
+	}
 }
 
 /**
@@ -1532,7 +1570,6 @@ export function deleteBatchState(repoRoot: string): void {
 		);
 	}
 }
-
 
 // ── Orphan Detection (TS-009 Step 3) ─────────────────────────────────
 
@@ -1597,8 +1634,8 @@ export function parseOrchSessionNames(stdout: string, prefix: string): string[] 
 
 	return stdout
 		.split("\n")
-		.map(line => line.trim())
-		.filter(name => name.length > 0 && name.startsWith(filterPrefix))
+		.map((line) => line.trim())
+		.filter((name) => name.length > 0 && name.startsWith(filterPrefix))
 		.sort();
 }
 
@@ -1687,8 +1724,8 @@ export function analyzeOrchestratorStartupState(
 
 	if (stateStatus === "valid" && loadedState) {
 		// Check if all tasks completed (all have .DONE files)
-		const allTaskIds = loadedState.tasks.map(t => t.taskId);
-		const allDone = allTaskIds.length > 0 && allTaskIds.every(id => doneTaskIds.has(id));
+		const allTaskIds = loadedState.tasks.map((t) => t.taskId);
+		const allDone = allTaskIds.length > 0 && allTaskIds.every((id) => doneTaskIds.has(id));
 
 		if (allDone) {
 			return {
@@ -1704,7 +1741,7 @@ export function analyzeOrchestratorStartupState(
 		}
 
 		// Not all tasks done — batch was interrupted (crashed orchestrator)
-		const completedCount = allTaskIds.filter(id => doneTaskIds.has(id)).length;
+		const completedCount = allTaskIds.filter((id) => doneTaskIds.has(id)).length;
 
 		// Only phases that resumeOrchBatch can actually handle should get "resume".
 		// "failed" / "stopped" / "idle" / "planning" are non-resumable — if nothing
@@ -1734,10 +1771,10 @@ export function analyzeOrchestratorStartupState(
 			recommendedAction: isResumable ? "resume" : "cleanup-stale",
 			userMessage: isResumable
 				? `🔄 Found interrupted batch ${loadedState.batchId} (${loadedState.phase}).\n` +
-				  `   ${completedCount}/${allTaskIds.length} task(s) completed.\n` +
-				  `   Use /orch-resume to continue, or /orch-abort to clean up.`
+					`   ${completedCount}/${allTaskIds.length} task(s) completed.\n` +
+					`   Use /orch-resume to continue, or /orch-abort to clean up.`
 				: `🧹 Found non-resumable batch state (${loadedState.batchId}, phase=${loadedState.phase}).\n` +
-				  `   ${completedCount}/${allTaskIds.length} task(s) completed. Cleaning up state file.`,
+					`   ${completedCount}/${allTaskIds.length} task(s) completed. Cleaning up state file.`,
 		};
 	}
 
@@ -1814,15 +1851,8 @@ export function detectOrphanSessions(prefix: string, repoRoot: string): OrphanDe
 	}
 
 	// ── 3. Analyze and return ────────────────────────────────────
-	return analyzeOrchestratorStartupState(
-		orphanSessions,
-		stateStatus,
-		loadedState,
-		stateError,
-		doneTaskIds,
-	);
+	return analyzeOrchestratorStartupState(orphanSessions, stateStatus, loadedState, stateError, doneTaskIds);
 }
-
 
 // ── Batch History ────────────────────────────────────────────────────
 
@@ -1858,7 +1888,7 @@ export function saveBatchHistory(repoRoot: string, summary: BatchHistorySummary)
 		const history = loadBatchHistory(repoRoot);
 		// Upsert by batchId so resumed batches replace their earlier partial entry
 		// instead of creating duplicates.
-		const nextHistory = history.filter(entry => entry.batchId !== summary.batchId);
+		const nextHistory = history.filter((entry) => entry.batchId !== summary.batchId);
 		// Prepend newest first
 		nextHistory.unshift(summary);
 		// Trim to max
@@ -1888,7 +1918,7 @@ export function updateBatchHistoryIntegration(repoRoot: string, batchId: string,
 	const filePath = batchHistoryPath(repoRoot);
 	try {
 		const history = loadBatchHistory(repoRoot);
-		const entry = history.find(e => e.batchId === batchId);
+		const entry = history.find((e) => e.batchId === batchId);
 		if (!entry) {
 			execLog("batch", "history", `no history entry found for batchId=${batchId}, skipping integratedAt update`);
 			return;
@@ -1904,7 +1934,6 @@ export function updateBatchHistoryIntegration(repoRoot: string, batchId: string,
 		execLog("batch", "history", `failed to update integratedAt: ${err}`);
 	}
 }
-
 
 // ── Tier 0 Supervisor Event Logging (TP-039 Step 2) ─────────────────
 
@@ -2028,7 +2057,6 @@ export function emitTier0Event(stateRoot: string, event: Tier0Event): void {
 	}
 }
 
-
 // ── Engine Event Logging (TP-040) ───────────────────────────────────
 
 /**
@@ -2084,4 +2112,3 @@ export function emitEngineEvent(
 		}
 	}
 }
-

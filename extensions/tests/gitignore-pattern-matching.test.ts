@@ -48,16 +48,14 @@ const TASKPLANE_GITIGNORE_ENTRIES = [
 	".worktrees/",
 ];
 
-const TASKPLANE_GITIGNORE_NPM_ENTRIES = [
-	".pi/npm/",
-];
+const TASKPLANE_GITIGNORE_NPM_ENTRIES = [".pi/npm/"];
 
 const ALL_GITIGNORE_PATTERNS = [...TASKPLANE_GITIGNORE_ENTRIES, ...TASKPLANE_GITIGNORE_NPM_ENTRIES];
 
 // ─── Helper: match a file against all patterns ───────────────────────────
 
 function matchesAnyPattern(file: string, patterns: string[]): boolean {
-	return patterns.map(p => patternToRegex(p)).some(regex => regex.test(file));
+	return patterns.map((p) => patternToRegex(p)).some((regex) => regex.test(file));
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────────

@@ -12,6 +12,7 @@ dist/
 .agents/
 .worktrees/
 .tmp-*.log
+tmp/
 
 # ── OS / Editor ──────────────────────────────────────────────────────
 .DS_Store

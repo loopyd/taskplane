@@ -19,7 +19,16 @@
  * @since TP-104
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, rmSync, appendFileSync, renameSync } from "fs";
+import {
+	existsSync,
+	mkdirSync,
+	readFileSync,
+	writeFileSync,
+	readdirSync,
+	rmSync,
+	appendFileSync,
+	renameSync,
+} from "fs";
 import { join, dirname } from "path";
 
 import {
@@ -237,7 +246,7 @@ export function isTerminalStatus(status: RuntimeAgentStatus): boolean {
  * @since TP-104
  */
 export function getLiveAgents(registry: RuntimeRegistry): RuntimeAgentManifest[] {
-	return Object.values(registry.agents).filter(m => !isTerminalStatus(m.status));
+	return Object.values(registry.agents).filter((m) => !isTerminalStatus(m.status));
 }
 
 /**
@@ -246,7 +255,7 @@ export function getLiveAgents(registry: RuntimeRegistry): RuntimeAgentManifest[]
  * @since TP-104
  */
 export function getAgentsByRole(registry: RuntimeRegistry, role: RuntimeAgentRole): RuntimeAgentManifest[] {
-	return Object.values(registry.agents).filter(m => m.role === role);
+	return Object.values(registry.agents).filter((m) => m.role === role);
 }
 
 // ── Orphan Detection ─────────────────────────────────────────────────

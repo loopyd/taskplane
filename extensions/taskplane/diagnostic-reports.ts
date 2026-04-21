@@ -10,13 +10,30 @@
  *
  * @module orch/diagnostic-reports
  */
-import { existsSync, mkdirSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 
 import { execLog } from "./execution.ts";
 import { resolveOperatorId } from "./naming.ts";
-import type { AllocatedLane, LaneTaskOutcome, OrchBatchRuntimeState, OrchestratorConfig, PersistedTaskRecord, BatchDiagnostics, PersistedTaskExitSummary } from "./types.ts";
-import { defaultBatchDiagnostics } from "./types.ts";
+import type {
+	AllocatedLane,
+	AgentRoleDiagnostics,
+	AgentTaskDiagnostics,
+	BatchAgentDiagnostics,
+	LaneTaskOutcome,
+	MergeWaveResult,
+	OrchBatchRuntimeState,
+	OrchestratorConfig,
+	PersistedTaskRecord,
+	BatchDiagnostics,
+	PersistedTaskExitSummary,
+} from "./types.ts";
+import {
+	defaultAgentRoleDiagnostics,
+	defaultAgentTaskDiagnostics,
+	defaultBatchAgentDiagnostics,
+	defaultBatchDiagnostics,
+} from "./types.ts";
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -102,6 +119,262 @@ function ensureDiagnosticsDir(stateRoot: string): string {
 	return dir;
 }
 
+type ReviewerVerdict = "APPROVE" | "REVISE" | "RETHINK" | "UNKNOWN";
+type AgentObservation = {
+	taskId?: string;
+	outcome: string;
+	success?: boolean;
+	durationSec?: number;
+	costUsd?: number;
+	toolCalls?: number;
+	inputTokens?: number;
+	outputTokens?: number;
+	cacheReadTokens?: number;
+	cacheWriteTokens?: number;
+};
+
+const REVIEW_FILE_PATTERN = /^R\d+-(plan|code)-step\d+\.md$/i;
+
+const AGENT_DIAGNOSTIC_ROLE_ORDER = ["worker", "reviewer", "supervisor", "merger"] as const;
+
+function incrementCounter(map: Record<string, number>, key: string): void {
+	map[key] = (map[key] ?? 0) + 1;
+}
+
+function applyObservation(
+	roleDiagnostics: AgentRoleDiagnostics,
+	observation: AgentObservation,
+): void {
+	roleDiagnostics.runs += 1;
+	if (observation.success === true) roleDiagnostics.succeeded += 1;
+	if (observation.success === false) roleDiagnostics.failed += 1;
+	roleDiagnostics.durationSec += observation.durationSec ?? 0;
+	roleDiagnostics.costUsd += observation.costUsd ?? 0;
+	roleDiagnostics.toolCalls += observation.toolCalls ?? 0;
+	roleDiagnostics.inputTokens += observation.inputTokens ?? 0;
+	roleDiagnostics.outputTokens += observation.outputTokens ?? 0;
+	roleDiagnostics.cacheReadTokens += observation.cacheReadTokens ?? 0;
+	roleDiagnostics.cacheWriteTokens += observation.cacheWriteTokens ?? 0;
+	incrementCounter(roleDiagnostics.outcomes, observation.outcome);
+
+	if (!observation.taskId) return;
+
+	const taskDiagnostics =
+		roleDiagnostics.taskMetrics[observation.taskId] ??
+		(roleDiagnostics.taskMetrics[observation.taskId] = defaultAgentTaskDiagnostics());
+	taskDiagnostics.runs += 1;
+	if (observation.success === true) taskDiagnostics.succeeded += 1;
+	if (observation.success === false) taskDiagnostics.failed += 1;
+	taskDiagnostics.durationSec += observation.durationSec ?? 0;
+	taskDiagnostics.costUsd += observation.costUsd ?? 0;
+	taskDiagnostics.toolCalls += observation.toolCalls ?? 0;
+	taskDiagnostics.inputTokens += observation.inputTokens ?? 0;
+	taskDiagnostics.outputTokens += observation.outputTokens ?? 0;
+	taskDiagnostics.cacheReadTokens += observation.cacheReadTokens ?? 0;
+	taskDiagnostics.cacheWriteTokens += observation.cacheWriteTokens ?? 0;
+	incrementCounter(taskDiagnostics.outcomes, observation.outcome);
+	taskDiagnostics.lastOutcome = observation.outcome;
+}
+
+function hasAgentDiagnosticsData(roleDiagnostics: AgentRoleDiagnostics): boolean {
+	return (
+		roleDiagnostics.runs > 0 ||
+		Object.keys(roleDiagnostics.outcomes).length > 0 ||
+		Object.keys(roleDiagnostics.taskMetrics).length > 0
+	);
+}
+
+function parseReviewerVerdict(content: string): ReviewerVerdict {
+	const verdictMatch = content.match(/###?\s*Verdict[:\s]*(APPROVE|REVISE|RETHINK)/i);
+	if (verdictMatch) {
+		return verdictMatch[1].toUpperCase() as ReviewerVerdict;
+	}
+
+	const lower = content.toLowerCase();
+	if (lower.includes("approve") && !lower.includes("do not approve")) return "APPROVE";
+	if (lower.includes("revise") || lower.includes("changes requested")) return "REVISE";
+	if (lower.includes("rethink")) return "RETHINK";
+	return "UNKNOWN";
+}
+
+function collectReviewerDiagnostics(tasks: PersistedTaskRecord[]): AgentRoleDiagnostics {
+	const roleDiagnostics = defaultAgentRoleDiagnostics();
+
+	for (const task of tasks) {
+		const taskFolder = task.taskFolder;
+		if (!taskFolder) continue;
+
+		const reviewsDir = join(taskFolder, ".reviews");
+		if (!existsSync(reviewsDir)) continue;
+
+		let files: string[] = [];
+		try {
+			files = readdirSync(reviewsDir)
+				.filter((name) => REVIEW_FILE_PATTERN.test(name))
+				.sort();
+		} catch {
+			continue;
+		}
+
+		for (const file of files) {
+			let verdict: ReviewerVerdict = "UNKNOWN";
+			try {
+				const content = readFileSync(join(reviewsDir, file), "utf-8");
+				verdict = parseReviewerVerdict(content);
+			} catch {
+				verdict = "UNKNOWN";
+			}
+
+			let success: boolean | undefined;
+			if (verdict === "APPROVE") success = true;
+			if (verdict === "REVISE" || verdict === "RETHINK") success = false;
+
+			applyObservation(roleDiagnostics, {
+				taskId: task.taskId,
+				outcome: verdict,
+				success,
+			});
+		}
+	}
+
+	return roleDiagnostics;
+}
+
+function collectWorkerDiagnostics(allTaskOutcomes: LaneTaskOutcome[]): AgentRoleDiagnostics {
+	const roleDiagnostics = defaultAgentRoleDiagnostics();
+
+	for (const outcome of allTaskOutcomes) {
+		if (!outcome || outcome.status === "pending") continue;
+
+		const telemetry = outcome.telemetry;
+		const durationSec = telemetry
+			? Math.round(telemetry.durationMs / 1000)
+			: outcome.startTime !== null && outcome.endTime !== null
+				? Math.round((outcome.endTime - outcome.startTime) / 1000)
+				: 0;
+
+		applyObservation(roleDiagnostics, {
+			taskId: outcome.taskId,
+			outcome: outcome.status.toUpperCase(),
+			success: outcome.status === "succeeded" ? true : outcome.status === "failed" || outcome.status === "stalled" ? false : undefined,
+			durationSec,
+			costUsd: telemetry?.costUsd ?? 0,
+			toolCalls: telemetry?.toolCalls ?? 0,
+			inputTokens: telemetry?.inputTokens ?? 0,
+			outputTokens: telemetry?.outputTokens ?? 0,
+			cacheReadTokens: telemetry?.cacheReadTokens ?? 0,
+			cacheWriteTokens: telemetry?.cacheWriteTokens ?? 0,
+		});
+	}
+
+	return roleDiagnostics;
+}
+
+function collectSupervisorDiagnostics(stateRoot: string, batchId: string): AgentRoleDiagnostics {
+	const roleDiagnostics = defaultAgentRoleDiagnostics();
+	const eventsPath = join(stateRoot, ".pi", "mailbox", batchId, "events.jsonl");
+	if (!existsSync(eventsPath)) return roleDiagnostics;
+
+	let content: string;
+	try {
+		content = readFileSync(eventsPath, "utf-8");
+	} catch {
+		return roleDiagnostics;
+	}
+
+	const lines = content
+		.split("\n")
+		.map((line) => line.trim())
+		.filter((line) => line.length > 0);
+
+	for (const line of lines) {
+		let parsed: unknown;
+		try {
+			parsed = JSON.parse(line);
+		} catch {
+			continue;
+		}
+
+		if (!parsed || typeof parsed !== "object") continue;
+		const event = parsed as { type?: string };
+		if (typeof event.type !== "string") continue;
+
+		const normalizedType = event.type.toUpperCase();
+		applyObservation(roleDiagnostics, {
+			outcome: normalizedType,
+			success:
+				event.type === "message_delivered"
+					? true
+					: event.type === "message_rate_limited"
+						? false
+						: undefined,
+		});
+	}
+
+	return roleDiagnostics;
+}
+
+function collectMergerDiagnostics(mergeResults: MergeWaveResult[]): AgentRoleDiagnostics {
+	const roleDiagnostics = defaultAgentRoleDiagnostics();
+
+	for (const waveResult of mergeResults) {
+		const laneResults = waveResult.laneResults ?? [];
+		if (laneResults.length === 0) {
+			const outcome = waveResult.status.toUpperCase();
+			applyObservation(roleDiagnostics, {
+				outcome,
+				success: waveResult.status === "succeeded" ? true : waveResult.status === "failed" || waveResult.status === "partial" ? false : undefined,
+				durationSec: Math.round((waveResult.totalDurationMs ?? 0) / 1000),
+			});
+			continue;
+		}
+
+		for (const laneResult of laneResults) {
+			const mergeStatus = laneResult.result?.status ?? (laneResult.error ? "ERROR" : waveResult.status.toUpperCase());
+			const success = mergeStatus === "SUCCESS" || mergeStatus === "CONFLICT_RESOLVED";
+			const failed = mergeStatus === "CONFLICT_UNRESOLVED" || mergeStatus === "BUILD_FAILURE" || !!laneResult.error;
+
+			applyObservation(roleDiagnostics, {
+				taskId: laneResult.laneId || `lane-${laneResult.laneNumber}`,
+				outcome: mergeStatus,
+				success: success ? true : failed ? false : undefined,
+				durationSec: Math.round((laneResult.durationMs ?? 0) / 1000),
+			});
+		}
+	}
+
+	return roleDiagnostics;
+}
+
+function collectWorkerDiagnosticsFromEvents(events: DiagnosticEvent[]): AgentRoleDiagnostics {
+	const roleDiagnostics = defaultAgentRoleDiagnostics();
+	for (const event of events) {
+		applyObservation(roleDiagnostics, {
+			taskId: event.taskId,
+			outcome: event.classification,
+			success: event.status === "succeeded" ? true : event.status === "failed" ? false : undefined,
+			durationSec: event.durationSec,
+			costUsd: event.cost,
+		});
+	}
+	return roleDiagnostics;
+}
+
+function mergeAgentDiagnostics(
+	baseDiagnostics: BatchAgentDiagnostics | undefined,
+	fallbackDiagnostics: BatchAgentDiagnostics,
+): BatchAgentDiagnostics {
+	const merged: BatchAgentDiagnostics = defaultBatchAgentDiagnostics();
+	for (const role of AGENT_DIAGNOSTIC_ROLE_ORDER) {
+		const baseRole = baseDiagnostics?.[role];
+		merged[role] =
+			baseRole && hasAgentDiagnosticsData(baseRole)
+				? baseRole
+				: fallbackDiagnostics[role];
+	}
+	return merged;
+}
+
 // ── Event Generation ─────────────────────────────────────────────────
 
 /**
@@ -173,7 +446,7 @@ export function buildDiagnosticEvents(input: DiagnosticReportInput): DiagnosticE
  * Serialize diagnostic events to JSONL format (one JSON object per line).
  */
 export function eventsToJsonl(events: DiagnosticEvent[]): string {
-	return events.map(e => JSON.stringify(e)).join("\n") + "\n";
+	return events.map((e) => JSON.stringify(e)).join("\n") + "\n";
 }
 
 // ── Human-Readable Summary ───────────────────────────────────────────
@@ -209,6 +482,13 @@ function formatCost(cost: number): string {
 export function buildMarkdownReport(input: DiagnosticReportInput, events: DiagnosticEvent[]): string {
 	const { batchId, phase, mode, startedAt, endedAt, diagnostics } = input;
 	const { succeededTasks, failedTasks, skippedTasks, blockedTasks, totalTasks } = input;
+	const fallbackAgentDiagnostics: BatchAgentDiagnostics = {
+		worker: collectWorkerDiagnosticsFromEvents(events),
+		reviewer: collectReviewerDiagnostics(input.tasks),
+		supervisor: collectSupervisorDiagnostics(input.stateRoot, input.batchId),
+		merger: defaultAgentRoleDiagnostics(),
+	};
+	const agentDiagnostics = mergeAgentDiagnostics(diagnostics.agentDiagnostics, fallbackAgentDiagnostics);
 
 	const batchDurationSec = endedAt ? Math.round((endedAt - startedAt) / 1000) : 0;
 	const batchCost = diagnostics.batchCost ?? 0;
@@ -248,7 +528,7 @@ export function buildMarkdownReport(input: DiagnosticReportInput, events: Diagno
 		lines.push(`|------|--------|---------------|------|----------|---------|`);
 		for (const evt of events) {
 			lines.push(
-				`| ${evt.taskId} | ${evt.status} | ${evt.classification} | ${formatCost(evt.cost)} | ${formatDuration(evt.durationSec)} | ${evt.retries} |`
+				`| ${evt.taskId} | ${evt.status} | ${evt.classification} | ${formatCost(evt.cost)} | ${formatDuration(evt.durationSec)} | ${evt.retries} |`,
 			);
 		}
 		lines.push(``);
@@ -276,8 +556,8 @@ export function buildMarkdownReport(input: DiagnosticReportInput, events: Diagno
 		} else {
 			for (const repoKey of repoKeys) {
 				const repoEvents = byRepo.get(repoKey)!;
-				const repoSucceeded = repoEvents.filter(e => e.status === "succeeded").length;
-				const repoFailed = repoEvents.filter(e => e.status === "failed").length;
+				const repoSucceeded = repoEvents.filter((e) => e.status === "succeeded").length;
+				const repoFailed = repoEvents.filter((e) => e.status === "failed").length;
 				const repoCost = repoEvents.reduce((sum, e) => sum + e.cost, 0);
 
 				lines.push(`### ${repoKey}`);
@@ -290,11 +570,64 @@ export function buildMarkdownReport(input: DiagnosticReportInput, events: Diagno
 				lines.push(`|------|--------|---------------|------|----------|`);
 				for (const evt of repoEvents) {
 					lines.push(
-						`| ${evt.taskId} | ${evt.status} | ${evt.classification} | ${formatCost(evt.cost)} | ${formatDuration(evt.durationSec)} |`
+						`| ${evt.taskId} | ${evt.status} | ${evt.classification} | ${formatCost(evt.cost)} | ${formatDuration(evt.durationSec)} |`,
 					);
 				}
 				lines.push(``);
 			}
+		}
+	}
+
+	lines.push(`## Agent Diagnostics`);
+	lines.push(``);
+
+	for (const role of AGENT_DIAGNOSTIC_ROLE_ORDER) {
+		const roleDiagnostics = agentDiagnostics[role];
+		const roleTitle = `${role.charAt(0).toUpperCase()}${role.slice(1)}`;
+		lines.push(`### ${roleTitle}`);
+		lines.push(``);
+
+		if (!hasAgentDiagnosticsData(roleDiagnostics)) {
+			lines.push(`_No ${role} runs recorded._`);
+			lines.push(``);
+			continue;
+		}
+
+		lines.push(`| Metric | Value |`);
+		lines.push(`|--------|-------|`);
+		lines.push(`| Runs | ${roleDiagnostics.runs} |`);
+		lines.push(`| Succeeded | ${roleDiagnostics.succeeded} |`);
+		lines.push(`| Failed | ${roleDiagnostics.failed} |`);
+		lines.push(`| Duration | ${formatDuration(Math.round(roleDiagnostics.durationSec))} |`);
+		lines.push(`| Cost | ${formatCost(roleDiagnostics.costUsd)} |`);
+		lines.push(`| Tool Calls | ${roleDiagnostics.toolCalls} |`);
+		lines.push(`| Input Tokens | ${roleDiagnostics.inputTokens} |`);
+		lines.push(`| Output Tokens | ${roleDiagnostics.outputTokens} |`);
+		lines.push(`| Cache Read Tokens | ${roleDiagnostics.cacheReadTokens} |`);
+		lines.push(`| Cache Write Tokens | ${roleDiagnostics.cacheWriteTokens} |`);
+		lines.push(``);
+
+		const outcomeEntries = Object.entries(roleDiagnostics.outcomes).sort((a, b) => a[0].localeCompare(b[0]));
+		if (outcomeEntries.length > 0) {
+			lines.push(`| Outcome | Count |`);
+			lines.push(`|---------|-------|`);
+			for (const [outcome, count] of outcomeEntries) {
+				lines.push(`| ${outcome} | ${count} |`);
+			}
+			lines.push(``);
+		}
+
+		const taskIds = Object.keys(roleDiagnostics.taskMetrics).sort();
+		if (taskIds.length > 0) {
+			lines.push(`| Scope | Runs | Succeeded | Failed | Cost | Duration | Tool Calls | Last Outcome |`);
+			lines.push(`|-------|------|-----------|--------|------|----------|------------|--------------|`);
+			for (const taskId of taskIds) {
+				const taskMetrics: AgentTaskDiagnostics = roleDiagnostics.taskMetrics[taskId];
+				lines.push(
+					`| ${taskId} | ${taskMetrics.runs} | ${taskMetrics.succeeded} | ${taskMetrics.failed} | ${formatCost(taskMetrics.costUsd)} | ${formatDuration(Math.round(taskMetrics.durationSec))} | ${taskMetrics.toolCalls} | ${taskMetrics.lastOutcome ?? "-"} |`,
+				);
+			}
+			lines.push(``);
 		}
 	}
 
@@ -342,6 +675,12 @@ export function emitDiagnosticReports(input: DiagnosticReportInput): void {
 			jsonl: jsonlPath,
 			report: reportPath,
 			taskCount: events.length,
+			agentRuns: {
+				worker: input.diagnostics.agentDiagnostics?.worker.runs ?? 0,
+				reviewer: input.diagnostics.agentDiagnostics?.reviewer.runs ?? 0,
+				supervisor: input.diagnostics.agentDiagnostics?.supervisor.runs ?? 0,
+				merger: input.diagnostics.agentDiagnostics?.merger.runs ?? 0,
+			},
 		});
 	} catch (err: unknown) {
 		const msg = err instanceof Error ? err.message : String(err);
@@ -377,7 +716,10 @@ export function assembleDiagnosticInput(
 ): DiagnosticReportInput {
 	// Build lookup maps for fast per-task enrichment (mirrors serializeBatchState logic).
 	const laneByTaskId = new Map<string, AllocatedLane>();
-	const allocatedTaskByTaskId = new Map<string, { allocatedTask: import("./types.ts").AllocatedTask; lane: AllocatedLane }>();
+	const allocatedTaskByTaskId = new Map<
+		string,
+		{ allocatedTask: import("./types.ts").AllocatedTask; lane: AllocatedLane }
+	>();
 	for (const lane of lanes) {
 		for (const allocTask of lane.tasks) {
 			laneByTaskId.set(allocTask.taskId, lane);
@@ -401,48 +743,56 @@ export function assembleDiagnosticInput(
 	}
 
 	// Build task records sorted by taskId for deterministic output.
-	const tasks: PersistedTaskRecord[] = [...taskIdSet]
-		.sort()
-		.map((taskId): PersistedTaskRecord => {
-			const lane = laneByTaskId.get(taskId);
-			const outcome = outcomeByTaskId.get(taskId);
-			const allocated = allocatedTaskByTaskId.get(taskId);
+	const tasks: PersistedTaskRecord[] = [...taskIdSet].sort().map((taskId): PersistedTaskRecord => {
+		const lane = laneByTaskId.get(taskId);
+		const outcome = outcomeByTaskId.get(taskId);
+		const allocated = allocatedTaskByTaskId.get(taskId);
+		const taskFolder = allocated?.allocatedTask.task?.taskFolder ?? "";
 
-			const record: PersistedTaskRecord = {
-				taskId,
-				laneNumber: lane?.laneNumber ?? 0,
-				sessionName: outcome?.sessionName || lane?.laneSessionId || "",
-				status: outcome?.status ?? "pending",
-				taskFolder: "",
-				startedAt: outcome?.startTime ?? null,
-				endedAt: outcome?.endTime ?? null,
-				doneFileFound: outcome?.doneFileFound ?? false,
-				exitReason: outcome?.exitReason ?? "",
-			};
+		const record: PersistedTaskRecord = {
+			taskId,
+			laneNumber: lane?.laneNumber ?? 0,
+			sessionName: outcome?.sessionName || lane?.laneSessionId || "",
+			status: outcome?.status ?? "pending",
+			taskFolder,
+			startedAt: outcome?.startTime ?? null,
+			endedAt: outcome?.endTime ?? null,
+			doneFileFound: outcome?.doneFileFound ?? false,
+			exitReason: outcome?.exitReason ?? "",
+		};
 
-			// Repo attribution from allocated task metadata (workspace mode).
-			if (allocated?.allocatedTask.task?.promptRepoId !== undefined) {
-				record.repoId = allocated.allocatedTask.task.promptRepoId;
-			}
-			if (allocated?.allocatedTask.task?.resolvedRepoId !== undefined) {
-				record.resolvedRepoId = allocated.allocatedTask.task.resolvedRepoId;
-			}
+		// Repo attribution from allocated task metadata (workspace mode).
+		if (allocated?.allocatedTask.task?.promptRepoId !== undefined) {
+			record.repoId = allocated.allocatedTask.task.promptRepoId;
+		}
+		if (allocated?.allocatedTask.task?.resolvedRepoId !== undefined) {
+			record.resolvedRepoId = allocated.allocatedTask.task.resolvedRepoId;
+		}
 
-			// Partial progress fields from outcome.
-			if (outcome?.partialProgressCommits !== undefined) {
-				record.partialProgressCommits = outcome.partialProgressCommits;
-			}
-			if (outcome?.partialProgressBranch !== undefined) {
-				record.partialProgressBranch = outcome.partialProgressBranch;
-			}
+		// Partial progress fields from outcome.
+		if (outcome?.partialProgressCommits !== undefined) {
+			record.partialProgressCommits = outcome.partialProgressCommits;
+		}
+		if (outcome?.partialProgressBranch !== undefined) {
+			record.partialProgressBranch = outcome.partialProgressBranch;
+		}
 
-			// v3: Exit diagnostic from outcome.
-			if (outcome?.exitDiagnostic !== undefined) {
-				record.exitDiagnostic = outcome.exitDiagnostic;
-			}
+		// v3: Exit diagnostic from outcome.
+		if (outcome?.exitDiagnostic !== undefined) {
+			record.exitDiagnostic = outcome.exitDiagnostic;
+		}
 
-			return record;
-		});
+		return record;
+	});
+
+	const baseDiagnostics = batchState.diagnostics ?? defaultBatchDiagnostics();
+	const fallbackAgentDiagnostics: BatchAgentDiagnostics = {
+		worker: collectWorkerDiagnostics(allTaskOutcomes),
+		reviewer: collectReviewerDiagnostics(tasks),
+		supervisor: collectSupervisorDiagnostics(stateRoot, batchState.batchId),
+		merger: collectMergerDiagnostics(batchState.mergeResults ?? []),
+	};
+	const agentDiagnostics = mergeAgentDiagnostics(baseDiagnostics.agentDiagnostics, fallbackAgentDiagnostics);
 
 	return {
 		orchConfig,
@@ -452,7 +802,10 @@ export function assembleDiagnosticInput(
 		startedAt: batchState.startedAt,
 		endedAt: batchState.endedAt,
 		tasks,
-		diagnostics: batchState.diagnostics ?? defaultBatchDiagnostics(),
+		diagnostics: {
+			...baseDiagnostics,
+			agentDiagnostics,
+		},
 		succeededTasks: batchState.succeededTasks,
 		failedTasks: batchState.failedTasks,
 		skippedTasks: batchState.skippedTasks,

@@ -135,8 +135,8 @@ export function resolvePiCliPath(): string {
 
 	throw new Error(
 		"Cannot find Pi CLI entrypoint (@mariozechner/pi-coding-agent/dist/cli.js). " +
-		"Ensure the pi coding agent is installed globally via 'npm install -g @mariozechner/pi-coding-agent'. " +
-		`npm root -g returned: ${npmRoot || "(empty — npm may not be on PATH)"}`,
+			"Ensure the pi coding agent is installed globally via 'npm install -g @mariozechner/pi-coding-agent'. " +
+			`npm root -g returned: ${npmRoot || "(empty — npm may not be on PATH)"}`,
 	);
 }
 
@@ -197,7 +197,9 @@ export function resolveTaskplanePackageFile(repoRoot: string, relPath: string): 
 		const piPkgDir = resolve(piPath, "..", ".."); // <npmRoot>/@mariozechner/pi-coding-agent
 		const npmRootFromPi = resolve(piPkgDir, "..", ".."); // <npmRoot>
 		candidates.push(join(npmRootFromPi, "taskplane", relPath));
-	} catch { /* ignore — process.argv[1] may be undefined in test contexts */ }
+	} catch {
+		/* ignore — process.argv[1] may be undefined in test contexts */
+	}
 
 	for (const candidate of candidates) {
 		if (existsSync(candidate)) return candidate;
@@ -230,8 +232,5 @@ export function resolveTaskplanePackageFile(repoRoot: string, relPath: string): 
  * ```
  */
 export function resolveTaskplaneAgentTemplate(agentName: string): string {
-	return resolveTaskplanePackageFile(
-		process.cwd(),
-		join("templates", "agents", `${agentName}.md`),
-	);
+	return resolveTaskplanePackageFile(process.cwd(), join("templates", "agents", `${agentName}.md`));
 }

@@ -22,7 +22,7 @@ import { DynamicBorder, getSettingsListTheme } from "@mariozechner/pi-coding-age
 import { Container, type SelectItem, SelectList, type SettingItem, SettingsList, Text } from "@mariozechner/pi-tui";
 import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync, unlinkSync } from "fs";
 import { join, dirname } from "path";
-import { parse as yamlParse } from "yaml";
+import { parseYamlLoose } from "./yaml-utils.ts";
 
 import {
 	CONFIG_VERSION,
@@ -39,7 +39,6 @@ import {
 	resolveGlobalPreferencesPath,
 } from "./config-loader.ts";
 import { loadPiSettingsPackages } from "./settings-loader.ts";
-
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -84,7 +83,6 @@ export interface SectionDef {
 	readOnly?: boolean;
 }
 
-
 // ── Section & Field Definitions ──────────────────────────────────────
 
 /**
@@ -95,113 +93,400 @@ export const SECTIONS: SectionDef[] = [
 	{
 		name: "Orchestrator",
 		fields: [
-			{ configPath: "orchestrator.orchestrator.maxLanes", label: "Max Lanes", control: "input", layer: "L1", fieldType: "number", description: "Maximum parallel execution lanes" },
-			{ configPath: "orchestrator.orchestrator.worktreeLocation", label: "Worktree Location", control: "toggle", layer: "L1", fieldType: "enum", values: ["sibling", "subdirectory"], description: "Where lane worktree directories are created" },
-			{ configPath: "orchestrator.orchestrator.worktreePrefix", label: "Worktree Prefix", control: "input", layer: "L1", fieldType: "string", description: "Prefix for worktree directory names" },
-			{ configPath: "orchestrator.orchestrator.batchIdFormat", label: "Batch ID Format", control: "toggle", layer: "L1", fieldType: "enum", values: ["timestamp", "sequential"], description: "Batch ID format for logs/branch naming" },
-			{ configPath: "orchestrator.orchestrator.sessionPrefix", label: "Session Prefix", control: "input", layer: "L1+L2", fieldType: "string", prefsKey: "sessionPrefix", description: "Prefix for orchestrator session names" },
-			{ configPath: "orchestrator.orchestrator.operatorId", label: "Operator ID", control: "input", layer: "L1+L2", fieldType: "string", prefsKey: "operatorId", description: "Operator identifier (empty = auto-detect)" },
-			{ configPath: "orchestrator.orchestrator.integration", label: "Integration", control: "picker", layer: "L1", fieldType: "enum", values: ["manual", "supervised", "auto"], description: "How completed batches are integrated. manual = user runs /orch-integrate. supervised = supervisor proposes plan, asks confirmation. auto = supervisor executes without asking." },
+			{
+				configPath: "orchestrator.orchestrator.maxLanes",
+				label: "Max Lanes",
+				control: "input",
+				layer: "L1",
+				fieldType: "number",
+				description: "Maximum parallel execution lanes",
+			},
+			{
+				configPath: "orchestrator.orchestrator.worktreeLocation",
+				label: "Worktree Location",
+				control: "toggle",
+				layer: "L1",
+				fieldType: "enum",
+				values: ["sibling", "subdirectory"],
+				description: "Where lane worktree directories are created",
+			},
+			{
+				configPath: "orchestrator.orchestrator.worktreePrefix",
+				label: "Worktree Prefix",
+				control: "input",
+				layer: "L1",
+				fieldType: "string",
+				description: "Prefix for worktree directory names",
+			},
+			{
+				configPath: "orchestrator.orchestrator.batchIdFormat",
+				label: "Batch ID Format",
+				control: "toggle",
+				layer: "L1",
+				fieldType: "enum",
+				values: ["timestamp", "sequential"],
+				description: "Batch ID format for logs/branch naming",
+			},
+			{
+				configPath: "orchestrator.orchestrator.sessionPrefix",
+				label: "Session Prefix",
+				control: "input",
+				layer: "L1+L2",
+				fieldType: "string",
+				prefsKey: "sessionPrefix",
+				description: "Prefix for orchestrator session names",
+			},
+			{
+				configPath: "orchestrator.orchestrator.operatorId",
+				label: "Operator ID",
+				control: "input",
+				layer: "L1+L2",
+				fieldType: "string",
+				prefsKey: "operatorId",
+				description: "Operator identifier (empty = auto-detect)",
+			},
+			{
+				configPath: "orchestrator.orchestrator.integration",
+				label: "Integration",
+				control: "picker",
+				layer: "L1",
+				fieldType: "enum",
+				values: ["manual", "supervised", "auto"],
+				description:
+					"How completed batches are integrated. manual = user runs /orch-integrate. supervised = supervisor proposes plan, asks confirmation. auto = supervisor executes without asking.",
+			},
 		],
 	},
 	{
 		name: "Agent: Supervisor",
 		fields: [
-			{ configPath: "orchestrator.supervisor.model", label: "Supervisor Model", control: "input", layer: "L1+L2", fieldType: "string", prefsKey: "supervisorModel", description: "Supervisor model (inherit = use session model)" },
-			{ configPath: "orchestrator.supervisor.autonomy", label: "Autonomy Level", control: "picker", layer: "L1", fieldType: "enum", values: ["interactive", "supervised", "autonomous"], description: "Recovery action confirmation behavior" },
+			{
+				configPath: "orchestrator.supervisor.model",
+				label: "Supervisor Model",
+				control: "input",
+				layer: "L1+L2",
+				fieldType: "string",
+				prefsKey: "supervisorModel",
+				description: "Supervisor model (inherit = use session model)",
+			},
+			{
+				configPath: "orchestrator.supervisor.autonomy",
+				label: "Autonomy Level",
+				control: "picker",
+				layer: "L1",
+				fieldType: "enum",
+				values: ["interactive", "supervised", "autonomous"],
+				description: "Recovery action confirmation behavior",
+			},
 		],
 	},
 	{
 		name: "Agent: Worker",
 		fields: [
-			{ configPath: "taskRunner.worker.model", label: "Worker Model", control: "input", layer: "L1+L2", fieldType: "string", prefsKey: "workerModel", description: "Worker model (inherit = use session model)" },
-			{ configPath: "taskRunner.worker.tools", label: "Worker Tools", control: "input", layer: "L1", fieldType: "string", description: "Worker tool allowlist" },
-			{ configPath: "taskRunner.worker.thinking", label: "Worker Thinking", control: "picker", layer: "L1", fieldType: "string", description: "Worker thinking mode" },
+			{
+				configPath: "taskRunner.worker.model",
+				label: "Worker Model",
+				control: "input",
+				layer: "L1+L2",
+				fieldType: "string",
+				prefsKey: "workerModel",
+				description: "Worker model (inherit = use session model)",
+			},
+			{
+				configPath: "taskRunner.worker.tools",
+				label: "Worker Tools",
+				control: "input",
+				layer: "L1",
+				fieldType: "string",
+				description: "Worker tool allowlist",
+			},
+			{
+				configPath: "taskRunner.worker.thinking",
+				label: "Worker Thinking",
+				control: "picker",
+				layer: "L1",
+				fieldType: "string",
+				description: "Worker thinking mode",
+			},
 		],
 	},
 	{
 		name: "Agent: Reviewer",
 		fields: [
-			{ configPath: "taskRunner.reviewer.model", label: "Reviewer Model", control: "input", layer: "L1+L2", fieldType: "string", prefsKey: "reviewerModel", description: "Reviewer model (inherit = use session model)" },
-			{ configPath: "taskRunner.reviewer.tools", label: "Reviewer Tools", control: "input", layer: "L1", fieldType: "string", description: "Reviewer tool allowlist" },
-			{ configPath: "taskRunner.reviewer.thinking", label: "Reviewer Thinking", control: "picker", layer: "L1", fieldType: "string", description: "Reviewer thinking mode" },
+			{
+				configPath: "taskRunner.reviewer.model",
+				label: "Reviewer Model",
+				control: "input",
+				layer: "L1+L2",
+				fieldType: "string",
+				prefsKey: "reviewerModel",
+				description: "Reviewer model (inherit = use session model)",
+			},
+			{
+				configPath: "taskRunner.reviewer.tools",
+				label: "Reviewer Tools",
+				control: "input",
+				layer: "L1",
+				fieldType: "string",
+				description: "Reviewer tool allowlist",
+			},
+			{
+				configPath: "taskRunner.reviewer.thinking",
+				label: "Reviewer Thinking",
+				control: "picker",
+				layer: "L1",
+				fieldType: "string",
+				description: "Reviewer thinking mode",
+			},
 		],
 	},
 	{
 		name: "Agent: Merge",
 		fields: [
-			{ configPath: "orchestrator.merge.model", label: "Merge Model", control: "input", layer: "L1+L2", fieldType: "string", prefsKey: "mergeModel", description: "Merge-agent model (inherit = use session model)" },
-			{ configPath: "orchestrator.merge.tools", label: "Merge Tools", control: "input", layer: "L1", fieldType: "string", description: "Merge-agent tool allowlist" },
-			{ configPath: "orchestrator.merge.thinking", label: "Merge Thinking", control: "picker", layer: "L1+L2", fieldType: "string", prefsKey: "mergeThinking", description: "Merge-agent thinking mode" },
-			{ configPath: "orchestrator.merge.order", label: "Merge Order", control: "toggle", layer: "L1", fieldType: "enum", values: ["fewest-files-first", "sequential"], description: "Lane merge ordering policy" },
-			{ configPath: "orchestrator.merge.timeoutMinutes", label: "Merge Timeout (minutes)", control: "input", layer: "L1", fieldType: "number", description: "Max time for merge agent to complete. Increase for large batches (default: 10)" },
+			{
+				configPath: "orchestrator.merge.model",
+				label: "Merge Model",
+				control: "input",
+				layer: "L1+L2",
+				fieldType: "string",
+				prefsKey: "mergeModel",
+				description: "Merge-agent model (inherit = use session model)",
+			},
+			{
+				configPath: "orchestrator.merge.tools",
+				label: "Merge Tools",
+				control: "input",
+				layer: "L1",
+				fieldType: "string",
+				description: "Merge-agent tool allowlist",
+			},
+			{
+				configPath: "orchestrator.merge.thinking",
+				label: "Merge Thinking",
+				control: "picker",
+				layer: "L1+L2",
+				fieldType: "string",
+				prefsKey: "mergeThinking",
+				description: "Merge-agent thinking mode",
+			},
+			{
+				configPath: "orchestrator.merge.order",
+				label: "Merge Order",
+				control: "toggle",
+				layer: "L1",
+				fieldType: "enum",
+				values: ["fewest-files-first", "sequential"],
+				description: "Lane merge ordering policy",
+			},
+			{
+				configPath: "orchestrator.merge.timeoutMinutes",
+				label: "Merge Timeout (minutes)",
+				control: "input",
+				layer: "L1",
+				fieldType: "number",
+				description: "Max time for merge agent to complete. Increase for large batches (default: 10)",
+			},
 		],
 	},
 	{
 		name: "Agent Extensions",
-		readOnly: true,  // Dynamically handled — no fixed fields
+		readOnly: true, // Dynamically handled — no fixed fields
 		fields: [],
 	},
 	{
 		name: "Context Limits",
 		fields: [
-			{ configPath: "taskRunner.context.workerContextWindow", label: "Context Window", control: "input", layer: "L1", fieldType: "number", description: "Worker context window size" },
-			{ configPath: "taskRunner.context.warnPercent", label: "Warn %", control: "input", layer: "L1", fieldType: "number", description: "Context utilization warn threshold (%)" },
-			{ configPath: "taskRunner.context.killPercent", label: "Kill %", control: "input", layer: "L1", fieldType: "number", description: "Context utilization hard-stop threshold (%)" },
-			{ configPath: "taskRunner.context.maxWorkerIterations", label: "Max Iterations", control: "input", layer: "L1", fieldType: "number", description: "Max worker iterations per step" },
-			{ configPath: "taskRunner.context.maxReviewCycles", label: "Max Review Cycles", control: "input", layer: "L1", fieldType: "number", description: "Max revise loops per review stage" },
-			{ configPath: "taskRunner.context.noProgressLimit", label: "No Progress Limit", control: "input", layer: "L1", fieldType: "number", description: "Max no-progress iterations before failure" },
-			{ configPath: "taskRunner.context.maxWorkerMinutes", label: "Max Worker Min (ctx)", control: "input", layer: "L1", fieldType: "number", optional: true, description: "Per-worker wall-clock cap (minutes, empty = no cap)" },
+			{
+				configPath: "taskRunner.context.workerContextWindow",
+				label: "Context Window",
+				control: "input",
+				layer: "L1",
+				fieldType: "number",
+				description: "Worker context window size",
+			},
+			{
+				configPath: "taskRunner.context.warnPercent",
+				label: "Warn %",
+				control: "input",
+				layer: "L1",
+				fieldType: "number",
+				description: "Context utilization warn threshold (%)",
+			},
+			{
+				configPath: "taskRunner.context.killPercent",
+				label: "Kill %",
+				control: "input",
+				layer: "L1",
+				fieldType: "number",
+				description: "Context utilization hard-stop threshold (%)",
+			},
+			{
+				configPath: "taskRunner.context.maxWorkerIterations",
+				label: "Max Iterations",
+				control: "input",
+				layer: "L1",
+				fieldType: "number",
+				description: "Max worker iterations per step",
+			},
+			{
+				configPath: "taskRunner.context.maxReviewCycles",
+				label: "Max Review Cycles",
+				control: "input",
+				layer: "L1",
+				fieldType: "number",
+				description: "Max revise loops per review stage",
+			},
+			{
+				configPath: "taskRunner.context.noProgressLimit",
+				label: "No Progress Limit",
+				control: "input",
+				layer: "L1",
+				fieldType: "number",
+				description: "Max no-progress iterations before failure",
+			},
+			{
+				configPath: "taskRunner.context.maxWorkerMinutes",
+				label: "Max Worker Min (ctx)",
+				control: "input",
+				layer: "L1",
+				fieldType: "number",
+				optional: true,
+				description: "Per-worker wall-clock cap (minutes, empty = no cap)",
+			},
 		],
 	},
 	{
 		name: "Failure Policy",
 		fields: [
-			{ configPath: "orchestrator.failure.onTaskFailure", label: "On Task Failure", control: "toggle", layer: "L1", fieldType: "enum", values: ["skip-dependents", "stop-wave", "stop-all"], description: "Batch behavior when a task fails" },
-			{ configPath: "orchestrator.failure.onMergeFailure", label: "On Merge Failure", control: "toggle", layer: "L1", fieldType: "enum", values: ["pause", "abort"], description: "Behavior when a merge step fails" },
-			{ configPath: "orchestrator.failure.stallTimeout", label: "Stall Timeout (min)", control: "input", layer: "L1", fieldType: "number", description: "Stall detection threshold (minutes)" },
-			{ configPath: "orchestrator.failure.maxWorkerMinutes", label: "Max Worker Min", control: "input", layer: "L1", fieldType: "number", description: "Max worker runtime budget per task (minutes)" },
-			{ configPath: "orchestrator.failure.abortGracePeriod", label: "Abort Grace (sec)", control: "input", layer: "L1", fieldType: "number", description: "Graceful abort wait time (seconds)" },
+			{
+				configPath: "orchestrator.failure.onTaskFailure",
+				label: "On Task Failure",
+				control: "toggle",
+				layer: "L1",
+				fieldType: "enum",
+				values: ["skip-dependents", "stop-wave", "stop-all"],
+				description: "Batch behavior when a task fails",
+			},
+			{
+				configPath: "orchestrator.failure.onMergeFailure",
+				label: "On Merge Failure",
+				control: "toggle",
+				layer: "L1",
+				fieldType: "enum",
+				values: ["pause", "abort"],
+				description: "Behavior when a merge step fails",
+			},
+			{
+				configPath: "orchestrator.failure.stallTimeout",
+				label: "Stall Timeout (min)",
+				control: "input",
+				layer: "L1",
+				fieldType: "number",
+				description: "Stall detection threshold (minutes)",
+			},
+			{
+				configPath: "orchestrator.failure.maxWorkerMinutes",
+				label: "Max Worker Min",
+				control: "input",
+				layer: "L1",
+				fieldType: "number",
+				description: "Max worker runtime budget per task (minutes)",
+			},
+			{
+				configPath: "orchestrator.failure.abortGracePeriod",
+				label: "Abort Grace (sec)",
+				control: "input",
+				layer: "L1",
+				fieldType: "number",
+				description: "Graceful abort wait time (seconds)",
+			},
 		],
 	},
 	{
 		name: "Dependencies",
 		fields: [
-			{ configPath: "orchestrator.dependencies.source", label: "Dep Source", control: "toggle", layer: "L1", fieldType: "enum", values: ["prompt", "agent"], description: "Dependency extraction source" },
-			{ configPath: "orchestrator.dependencies.cache", label: "Dep Cache", control: "toggle", layer: "L1", fieldType: "boolean", values: ["true", "false"], description: "Cache dependency analysis results" },
+			{
+				configPath: "orchestrator.dependencies.source",
+				label: "Dep Source",
+				control: "toggle",
+				layer: "L1",
+				fieldType: "enum",
+				values: ["prompt", "agent"],
+				description: "Dependency extraction source",
+			},
+			{
+				configPath: "orchestrator.dependencies.cache",
+				label: "Dep Cache",
+				control: "toggle",
+				layer: "L1",
+				fieldType: "boolean",
+				values: ["true", "false"],
+				description: "Cache dependency analysis results",
+			},
 		],
 	},
 	{
 		name: "Assignment",
 		fields: [
-			{ configPath: "orchestrator.assignment.strategy", label: "Strategy", control: "toggle", layer: "L1", fieldType: "enum", values: ["affinity-first", "round-robin", "load-balanced"], description: "Lane assignment strategy" },
+			{
+				configPath: "orchestrator.assignment.strategy",
+				label: "Strategy",
+				control: "toggle",
+				layer: "L1",
+				fieldType: "enum",
+				values: ["affinity-first", "round-robin", "load-balanced"],
+				description: "Lane assignment strategy",
+			},
 		],
 	},
 	{
 		name: "Pre-Warm",
 		fields: [
-			{ configPath: "orchestrator.preWarm.autoDetect", label: "Auto-Detect", control: "toggle", layer: "L1", fieldType: "boolean", values: ["true", "false"], description: "Enable automatic pre-warm command detection" },
+			{
+				configPath: "orchestrator.preWarm.autoDetect",
+				label: "Auto-Detect",
+				control: "toggle",
+				layer: "L1",
+				fieldType: "boolean",
+				values: ["true", "false"],
+				description: "Enable automatic pre-warm command detection",
+			},
 		],
 	},
 	{
 		name: "Monitoring",
 		fields: [
-			{ configPath: "orchestrator.monitoring.pollInterval", label: "Poll Interval (sec)", control: "input", layer: "L1", fieldType: "number", description: "Poll interval for lane/task monitoring (seconds)" },
+			{
+				configPath: "orchestrator.monitoring.pollInterval",
+				label: "Poll Interval (sec)",
+				control: "input",
+				layer: "L1",
+				fieldType: "number",
+				description: "Poll interval for lane/task monitoring (seconds)",
+			},
 		],
 	},
 	{
 		name: "Global Preferences",
 		fields: [
-			{ configPath: "preferences.dashboardPort", label: "Dashboard Port", control: "input", layer: "L2", fieldType: "number", prefsKey: "dashboardPort", optional: true, description: "Dashboard server port" },
+			{
+				configPath: "preferences.dashboardPort",
+				label: "Dashboard Port",
+				control: "input",
+				layer: "L2",
+				fieldType: "number",
+				prefsKey: "dashboardPort",
+				optional: true,
+				description: "Dashboard server port",
+			},
 		],
 	},
 	{
 		name: "Advanced (JSON Only)",
 		readOnly: true,
-		fields: [],  // Populated dynamically in getAdvancedItems()
+		fields: [], // Populated dynamically in getAdvancedItems()
 	},
 ];
-
 
 // ── Raw Config Readers (Source Detection) ────────────────────────────
 
@@ -252,21 +537,25 @@ export function readRawYamlConfigs(configRoot: string): Record<string, any> | nu
 	if (hasTr) {
 		try {
 			const raw = readFileSync(trPath, "utf-8");
-			const parsed = yamlParse(raw);
+			const parsed = parseYamlLoose(raw);
 			if (parsed && typeof parsed === "object") {
 				result.taskRunner = convertYamlKeys(parsed, "taskRunner");
 			}
-		} catch { /* ignore */ }
+		} catch {
+			/* ignore */
+		}
 	}
 
 	if (hasOrch) {
 		try {
 			const raw = readFileSync(orchPath, "utf-8");
-			const parsed = yamlParse(raw);
+			const parsed = parseYamlLoose(raw);
 			if (parsed && typeof parsed === "object") {
 				result.orchestrator = convertYamlKeys(parsed, "orchestrator");
 			}
-		} catch { /* ignore */ }
+		} catch {
+			/* ignore */
+		}
 	}
 
 	return Object.keys(result).length > 0 ? result : null;
@@ -337,7 +626,6 @@ function readRawPreferences(): Record<string, any> | null {
 		return null;
 	}
 }
-
 
 // ── Write-Back ───────────────────────────────────────────────────────
 
@@ -425,8 +713,8 @@ export function writeProjectConfigField(
 		} catch (e: any) {
 			throw new Error(
 				`Cannot write settings: ${jsonPath} contains malformed JSON. ` +
-				`Please fix or delete the file and try again. ` +
-				`(Parse error: ${e.message ?? "unknown"})`,
+					`Please fix or delete the file and try again. ` +
+					`(Parse error: ${e.message ?? "unknown"})`,
 			);
 		}
 	} else {
@@ -449,7 +737,11 @@ export function writeProjectConfigField(
 		renameSync(tmpPath, jsonPath);
 	} catch {
 		writeFileSync(jsonPath, json, "utf-8");
-		try { if (existsSync(tmpPath)) unlinkSync(tmpPath); } catch { /* cleanup best-effort */ }
+		try {
+			if (existsSync(tmpPath)) unlinkSync(tmpPath);
+		} catch {
+			/* cleanup best-effort */
+		}
 	}
 }
 
@@ -488,7 +780,11 @@ export function writeGlobalPreference(path: string, value: any): void {
 		renameSync(tmpPath, prefsPath);
 	} catch {
 		writeFileSync(prefsPath, json, "utf-8");
-		try { if (existsSync(tmpPath)) unlinkSync(tmpPath); } catch { /* cleanup best-effort */ }
+		try {
+			if (existsSync(tmpPath)) unlinkSync(tmpPath);
+		} catch {
+			/* cleanup best-effort */
+		}
 	}
 }
 
@@ -559,7 +855,6 @@ export function resolveWriteAction(
 	return defaultDest;
 }
 
-
 // ── Source Detection ─────────────────────────────────────────────────
 
 /**
@@ -596,17 +891,12 @@ export function detectFieldSource(
 	return "global";
 }
 
-
 // ── Value Formatting ─────────────────────────────────────────────────
 
 /**
  * Get the display value for a field from the merged config.
  */
-export function getFieldDisplayValue(
-	field: FieldDef,
-	mergedConfig: TaskplaneConfig,
-	prefs: GlobalPreferences,
-): string {
+export function getFieldDisplayValue(field: FieldDef, mergedConfig: TaskplaneConfig, prefs: GlobalPreferences): string {
 	// Special case: dashboardPort (L2-only, not in merged config)
 	if (field.configPath === "preferences.dashboardPort") {
 		const val = prefs.dashboardPort;
@@ -627,7 +917,6 @@ export function getFieldDisplayValue(
 
 	return String(val);
 }
-
 
 // ── Validation ───────────────────────────────────────────────────────
 
@@ -682,7 +971,6 @@ export function validateFieldInput(field: FieldDef, input: string): ValidationRe
 			return { valid: true };
 	}
 }
-
 
 // ── Advanced Section Items ───────────────────────────────────────────
 
@@ -772,11 +1060,7 @@ export function getAdvancedItems(config: TaskplaneConfig): AdvancedItem[] {
  * Known subsection objects (like `taskRunner.worker`, `orchestrator.merge`)
  * are recursed into, not reported as leaves themselves.
  */
-function walkConfig(
-	obj: any,
-	prefix: string,
-	visitor: (path: string, value: any) => void,
-): void {
+function walkConfig(obj: any, prefix: string, visitor: (path: string, value: any) => void): void {
 	if (obj === null || obj === undefined) return;
 
 	for (const [key, value] of Object.entries(obj)) {
@@ -861,7 +1145,6 @@ function summarizeArray(arr: any[]): string {
 	return `${arr.length} items`;
 }
 
-
 // ── TUI Rendering ────────────────────────────────────────────────────
 
 /**
@@ -909,10 +1192,10 @@ async function pickModel(ctx: ExtensionContext, currentModel: string): Promise<s
 		];
 
 		const providerChoice = await selectScrollable(ctx, "Choose model provider", providerOptions);
-		if (!providerChoice) return undefined;  // Cancelled
+		if (!providerChoice) return undefined; // Cancelled
 
 		if (providerChoice.startsWith("inherit")) {
-			return "";  // Empty string = inherit
+			return ""; // Empty string = inherit
 		}
 
 		// Extract provider name (strip " (N models)" suffix)
@@ -941,7 +1224,7 @@ async function pickModel(ctx: ExtensionContext, currentModel: string): Promise<s
 		}
 
 		const modelChoice = await selectScrollable(ctx, `Choose model (${provider})`, modelOptions);
-		if (!modelChoice) continue;  // Cancelled → back to providers
+		if (!modelChoice) continue; // Cancelled → back to providers
 		if (modelChoice === "← Back to providers") continue;
 
 		const resolved = modelOptionMap.get(modelChoice);
@@ -962,7 +1245,9 @@ const THINKING_MODE_OPTIONS: Array<{ value: ThinkingModeValue; label: string }> 
 ];
 
 function normalizeThinkingMode(value: unknown): ThinkingModeValue {
-	const cleaned = String(value ?? "").trim().toLowerCase();
+	const cleaned = String(value ?? "")
+		.trim()
+		.toLowerCase();
 	if (!cleaned || cleaned === "inherit") return "";
 	if (cleaned === "on") return "high";
 	if (["off", "minimal", "low", "medium", "high", "xhigh"].includes(cleaned)) {
@@ -1014,15 +1299,16 @@ function resolveModelRecord(ctx: ExtensionContext, modelRef: string): any | unde
 	if (slashIdx > 0) {
 		const provider = trimmed.slice(0, slashIdx).toLowerCase();
 		const id = trimmed.slice(slashIdx + 1).toLowerCase();
-		return available.find((m: any) =>
-			String(m?.provider ?? "").toLowerCase() === provider
-			&& String(m?.id ?? "").toLowerCase() === id,
+		return available.find(
+			(m: any) =>
+				String(m?.provider ?? "").toLowerCase() === provider && String(m?.id ?? "").toLowerCase() === id,
 		);
 	}
 
-	return available.find((m: any) =>
-		String(m?.id ?? "").toLowerCase() === lower
-		|| `${String(m?.provider ?? "").toLowerCase()}/${String(m?.id ?? "").toLowerCase()}` === lower,
+	return available.find(
+		(m: any) =>
+			String(m?.id ?? "").toLowerCase() === lower ||
+			`${String(m?.provider ?? "").toLowerCase()}/${String(m?.id ?? "").toLowerCase()}` === lower,
 	);
 }
 
@@ -1046,12 +1332,9 @@ export function modelSupportsThinking(model: any): boolean {
 		"reasoning_tokens",
 	];
 
-	const candidateObjects = [
-		model,
-		model.capabilities,
-		model.features,
-		model.metadata,
-	].filter((entry) => entry && typeof entry === "object");
+	const candidateObjects = [model, model.capabilities, model.features, model.metadata].filter(
+		(entry) => entry && typeof entry === "object",
+	);
 
 	for (const candidate of candidateObjects) {
 		for (const key of boolFlags) {
@@ -1178,7 +1461,10 @@ export async function openSettingsTui(
  * Reload all config state from disk. Called after write-back to
  * refresh the TUI display.
  */
-function loadConfigState(configRoot: string, pointerConfigRoot?: string): {
+function loadConfigState(
+	configRoot: string,
+	pointerConfigRoot?: string,
+): {
 	mergedConfig: TaskplaneConfig;
 	prefs: GlobalPreferences;
 	rawProject: Record<string, any> | null;
@@ -1211,11 +1497,12 @@ async function showSectionSelectorLoop(
 		const sectionItems: SelectItem[] = SECTIONS.map((section, i) => ({
 			value: String(i),
 			label: section.name,
-			description: section.name === "Agent Extensions"
-				? "Toggle extensions per agent type"
-				: section.readOnly
-					? "Read-only collection/record fields"
-					: `${section.fields.length} setting${section.fields.length === 1 ? "" : "s"}`,
+			description:
+				section.name === "Agent Extensions"
+					? "Toggle extensions per agent type"
+					: section.readOnly
+						? "Read-only collection/record fields"
+						: `${section.fields.length} setting${section.fields.length === 1 ? "" : "s"}`,
 		}));
 
 		const selectedSection = await ctx.ui.custom<string | null>((tui, theme, _kb, done) => {
@@ -1251,11 +1538,14 @@ async function showSectionSelectorLoop(
 			return {
 				render: (w: number) => container.render(w),
 				invalidate: () => container.invalidate(),
-				handleInput: (data: string) => { selectList.handleInput(data); tui.requestRender(); },
+				handleInput: (data: string) => {
+					selectList.handleInput(data);
+					tui.requestRender();
+				},
 			};
 		});
 
-		if (selectedSection === null) return;  // User pressed Esc
+		if (selectedSection === null) return; // User pressed Esc
 
 		const sectionIndex = parseInt(selectedSection, 10);
 		const section = SECTIONS[sectionIndex];
@@ -1273,10 +1563,7 @@ async function showSectionSelectorLoop(
 /**
  * Show the Advanced (JSON Only) section — read-only display.
  */
-async function showAdvancedSection(
-	ctx: ExtensionContext,
-	mergedConfig: TaskplaneConfig,
-): Promise<void> {
+async function showAdvancedSection(ctx: ExtensionContext, mergedConfig: TaskplaneConfig): Promise<void> {
 	const advItems = getAdvancedItems(mergedConfig);
 
 	const settingsItems: SettingItem[] = advItems.map((item) => ({
@@ -1295,15 +1582,17 @@ async function showAdvancedSection(
 
 		// Title
 		container.addChild(new Text(theme.fg("accent", theme.bold("Advanced (JSON Only)")), 1, 0));
-		container.addChild(new Text(theme.fg("dim", "These fields can only be edited directly in the config file"), 1, 0));
+		container.addChild(
+			new Text(theme.fg("dim", "These fields can only be edited directly in the config file"), 1, 0),
+		);
 		container.addChild(new Text("", 0, 0));
 
 		const settingsList = new SettingsList(
 			settingsItems,
 			Math.min(settingsItems.length + 2, 20),
 			getSettingsListTheme(),
-			() => {},  // onChange — no-op (read-only)
-			() => done(undefined),  // onCancel
+			() => {}, // onChange — no-op (read-only)
+			() => done(undefined), // onCancel
 		);
 		container.addChild(settingsList);
 
@@ -1317,7 +1606,10 @@ async function showAdvancedSection(
 		return {
 			render: (w: number) => container.render(w),
 			invalidate: () => container.invalidate(),
-			handleInput: (data: string) => { settingsList.handleInput?.(data); tui.requestRender(); },
+			handleInput: (data: string) => {
+				settingsList.handleInput?.(data);
+				tui.requestRender();
+			},
 		};
 	});
 }
@@ -1351,14 +1643,18 @@ async function showExtensionsSection(
 				container.addChild(new Text(theme.fg("accent", theme.bold("Agent Extensions")), 1, 0));
 				container.addChild(new Text("", 0, 0));
 				container.addChild(new Text(theme.fg("dim", "No third-party extensions found."), 1, 0));
-				container.addChild(new Text(theme.fg("dim", "Install extensions via pi settings to see them here."), 1, 0));
+				container.addChild(
+					new Text(theme.fg("dim", "Install extensions via pi settings to see them here."), 1, 0),
+				);
 				container.addChild(new Text("", 0, 0));
 				container.addChild(new Text(theme.fg("dim", "esc back"), 1, 0));
 				container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
 				return {
 					render: (w: number) => container.render(w),
 					invalidate: () => container.invalidate(),
-					handleInput: (data: string) => { if (data === "\x1b" || data === "\x1b\x1b") done(undefined); },
+					handleInput: (data: string) => {
+						if (data === "\x1b" || data === "\x1b\x1b") done(undefined);
+					},
 				};
 			});
 			return;
@@ -1414,7 +1710,10 @@ async function showExtensionsSection(
 			return {
 				render: (w: number) => container.render(w),
 				invalidate: () => container.invalidate(),
-				handleInput: (data: string) => { settingsList.handleInput?.(data); tui.requestRender(); },
+				handleInput: (data: string) => {
+					settingsList.handleInput?.(data);
+					tui.requestRender();
+				},
 			};
 		});
 
@@ -1436,15 +1735,17 @@ async function showExtensionsSection(
 			newExcludeList = currentExcludeList.filter((e: string) => e !== pkg);
 		} else {
 			// Add to exclusions → disable
-			newExcludeList = currentExcludeList.includes(pkg)
-				? currentExcludeList
-				: [...currentExcludeList, pkg];
+			newExcludeList = currentExcludeList.includes(pkg) ? currentExcludeList : [...currentExcludeList, pkg];
 		}
 
 		try {
 			writeProjectConfigField(configRoot, configPath, newExcludeList, pointerConfigRoot);
 			if (onConfigChanged) {
-				try { onConfigChanged(); } catch { /* non-fatal */ }
+				try {
+					onConfigChanged();
+				} catch {
+					/* non-fatal */
+				}
 			}
 			ctx.ui.notify(
 				`${enabling ? "✅ Enabled" : "❌ Disabled"} ${pkg} for ${configPath.includes("worker") ? "Worker" : configPath.includes("reviewer") ? "Reviewer" : "Merger"}`,
@@ -1463,8 +1764,10 @@ async function showExtensionsSection(
  */
 function formatSourceBadge(source: FieldSource): string {
 	switch (source) {
-		case "project": return "(project)";
-		case "global":  return "(global)";
+		case "project":
+			return "(project)";
+		case "global":
+			return "(global)";
 	}
 }
 
@@ -1487,13 +1790,20 @@ async function showSectionSettingsLoop(
 ): Promise<void> {
 	while (true) {
 		const state = loadConfigState(configRoot, pointerConfigRoot);
-		const result = await showSectionSettingsOnce(ctx, section, state.mergedConfig, state.prefs, state.rawProject, state.rawPrefs);
+		const result = await showSectionSettingsOnce(
+			ctx,
+			section,
+			state.mergedConfig,
+			state.prefs,
+			state.rawProject,
+			state.rawPrefs,
+		);
 
-		if (result === null) return;  // User pressed Esc → back to sections
+		if (result === null) return; // User pressed Esc → back to sections
 
 		// Process the pending change
 		const field = section.fields.find((f) => f.configPath === result.fieldId);
-		if (!field) continue;  // Safety: field not found
+		if (!field) continue; // Safety: field not found
 
 		let previousModelValue = "";
 
@@ -1508,21 +1818,19 @@ async function showSectionSettingsLoop(
 			if (field.configPath.endsWith(".model")) {
 				previousModelValue = normalizedCurrent;
 				const selected = await pickModel(ctx, normalizedCurrent);
-				if (selected === undefined) continue;  // Cancelled
+				if (selected === undefined) continue; // Cancelled
 				result.rawValue = selected;
 			} else if (field.control === "picker" && field.configPath.endsWith(".thinking")) {
 				const note = buildThinkingUnsupportedNoteForThinkingField(ctx, field, state.mergedConfig);
 				if (note) ctx.ui.notify(note, "info");
 				const selected = await pickThinkingMode(ctx, normalizedCurrent);
-				if (selected === undefined) continue;  // Cancelled
+				if (selected === undefined) continue; // Cancelled
 				result.rawValue = selected;
 			} else if (field.control === "picker" && field.values && field.values.length > 0) {
 				// Enum picker: show scrollable list of allowed values
-				const options = field.values.map((v) =>
-					`${v}${v === normalizedCurrent ? "  ✓ current" : ""}`
-				);
+				const options = field.values.map((v) => `${v}${v === normalizedCurrent ? "  ✓ current" : ""}`);
 				const selected = await selectScrollable(ctx, field.label, options);
-				if (!selected) continue;  // Cancelled
+				if (!selected) continue; // Cancelled
 				result.rawValue = selected.replace(/\s+✓ current$/, "");
 			} else {
 				const placeholder = currentClean === "(not set)" || currentClean === "(inherit)" ? "" : currentClean;
@@ -1532,7 +1840,7 @@ async function showSectionSettingsLoop(
 					placeholder,
 				);
 
-				if (newValue === null || newValue === undefined) continue;  // Cancelled
+				if (newValue === null || newValue === undefined) continue; // Cancelled
 
 				// Validate
 				const validation = validateFieldInput(field, newValue);
@@ -1560,7 +1868,7 @@ async function showSectionSettingsLoop(
 				...(hasProjectOverride ? ["Remove project override (revert to global)"] : []),
 				"Cancel",
 			];
-			destinationChoice = await ctx.ui.select("Save this change to:", options);
+			destinationChoice = (await ctx.ui.select("Save this change to:", options)) ?? null;
 		}
 
 		let projectConfirmed = true;
@@ -1585,13 +1893,14 @@ async function showSectionSettingsLoop(
 			}
 			// Notify caller to reload in-memory config from disk
 			if (onConfigChanged) {
-				try { onConfigChanged(); } catch { /* non-fatal */ }
+				try {
+					onConfigChanged();
+				} catch {
+					/* non-fatal */
+				}
 			}
 
-			ctx.ui.notify(
-				`✅ ${field.label} updated.`,
-				"info",
-			);
+			ctx.ui.notify(`✅ ${field.label} updated.`, "info");
 
 			const refreshedState = loadConfigState(configRoot, pointerConfigRoot);
 			const suggestion = buildThinkingSuggestionForModelChange(
@@ -1657,17 +1966,13 @@ async function showSectionSettingsOnce(
 					}));
 					// Return SelectList directly — Container doesn't forward
 					// handleInput to children, which would freeze the TUI.
-					const list = new SelectList(
-						selectItems,
-						Math.min(selectItems.length + 1, 10),
-						{
-							selectedPrefix: (t: string) => `\x1b[36m${t}\x1b[0m`,
-							selectedText: (t: string) => `\x1b[36m${t}\x1b[0m`,
-							description: (t: string) => `\x1b[2m${t}\x1b[0m`,
-							scrollInfo: (t: string) => `\x1b[2m${t}\x1b[0m`,
-							noMatch: (t: string) => `\x1b[33m${t}\x1b[0m`,
-						},
-					);
+					const list = new SelectList(selectItems, Math.min(selectItems.length + 1, 10), {
+						selectedPrefix: (t: string) => `\x1b[36m${t}\x1b[0m`,
+						selectedText: (t: string) => `\x1b[36m${t}\x1b[0m`,
+						description: (t: string) => `\x1b[2m${t}\x1b[0m`,
+						scrollInfo: (t: string) => `\x1b[2m${t}\x1b[0m`,
+						noMatch: (t: string) => `\x1b[33m${t}\x1b[0m`,
+					});
 					const currentIdx = field.values!.indexOf(displayValue);
 					if (currentIdx >= 0) list.setSelectedIndex(currentIdx);
 					list.onSelect = (selected) => done(selected.value);
@@ -1710,7 +2015,7 @@ async function showSectionSettingsOnce(
 				// Exit TUI with the change so the caller can handle write-back
 				done({ fieldId: id, rawValue: newValue });
 			},
-			() => done(null),  // onCancel → back to section selector
+			() => done(null), // onCancel → back to section selector
 			{ enableSearch: settingsItems.length > 5 },
 		);
 		container.addChild(settingsList);
@@ -1723,10 +2028,7 @@ async function showSectionSettingsOnce(
 
 		// Help text
 		container.addChild(new Text("", 0, 0));
-		container.addChild(new Text(
-			theme.fg("dim", "↑↓ navigate • ←→/space cycle • enter edit • esc back"),
-			1, 0,
-		));
+		container.addChild(new Text(theme.fg("dim", "↑↓ navigate • ←→/space cycle • enter edit • esc back"), 1, 0));
 
 		// Bottom border
 		container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
@@ -1734,11 +2036,13 @@ async function showSectionSettingsOnce(
 		return {
 			render: (w: number) => container.render(w),
 			invalidate: () => container.invalidate(),
-			handleInput: (data: string) => { settingsList.handleInput?.(data); tui.requestRender(); },
+			handleInput: (data: string) => {
+				settingsList.handleInput?.(data);
+				tui.requestRender();
+			},
 		};
 	});
 }
-
 
 // ── Input Submenu ────────────────────────────────────────────────────
 
@@ -1746,11 +2050,7 @@ async function showSectionSettingsOnce(
  * Create a submenu component for inline text input editing.
  * Used by SettingsList's submenu pattern for input-type fields.
  */
-function createInputSubmenu(
-	field: FieldDef,
-	currentValue: string,
-	done: (selectedValue?: string) => void,
-): any {
+function createInputSubmenu(field: FieldDef, currentValue: string, done: (selectedValue?: string) => void): any {
 	// Strip source badge from current value for editing
 	const cleanValue = currentValue.replace(/\s+\((?:default|project|global)\)$/, "");
 	let inputBuffer = cleanValue === "(not set)" || cleanValue === "(inherit)" ? "" : cleanValue;
@@ -1761,7 +2061,7 @@ function createInputSubmenu(
 		render(width: number): string[] {
 			const lines: string[] = [];
 			const prompt = `  Enter ${field.label}: `;
-			const inputDisplay = inputBuffer + "█";  // Simple cursor
+			const inputDisplay = inputBuffer + "█"; // Simple cursor
 			lines.push(truncateLine(prompt + inputDisplay, width));
 
 			if (field.optional) {
@@ -1818,7 +2118,6 @@ function truncateLine(text: string, width: number): string {
 	return text.substring(0, width - 3) + "...";
 }
 
-
 // ── JSON-Only Footer ─────────────────────────────────────────────────
 
 /**
@@ -1826,17 +2125,17 @@ function truncateLine(text: string, width: number): string {
  * Used to dynamically discover JSON-only sibling fields.
  */
 const SECTION_CONFIG_PREFIXES: Record<string, string[]> = {
-	"Orchestrator": ["orchestrator.orchestrator"],
+	Orchestrator: ["orchestrator.orchestrator"],
 	"Agent: Supervisor": ["orchestrator.supervisor"],
 	"Agent: Worker": ["taskRunner.worker"],
 	"Agent: Reviewer": ["taskRunner.reviewer"],
 	"Agent: Merge": ["orchestrator.merge"],
 	"Context Limits": ["taskRunner.context"],
 	"Failure Policy": ["orchestrator.failure"],
-	"Dependencies": ["orchestrator.dependencies"],
-	"Assignment": ["orchestrator.assignment"],
+	Dependencies: ["orchestrator.dependencies"],
+	Assignment: ["orchestrator.assignment"],
 	"Pre-Warm": ["orchestrator.preWarm"],
-	"Monitoring": ["orchestrator.monitoring"],
+	Monitoring: ["orchestrator.monitoring"],
 };
 
 /**

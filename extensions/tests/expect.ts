@@ -47,10 +47,7 @@ export function expect(actual: unknown): ExpectMethods {
 					`Expected string to contain "${needle}", but got: "${actual}"`,
 				);
 			} else if (Array.isArray(actual)) {
-				assert.ok(
-					actual.includes(needle),
-					`Expected array to contain ${JSON.stringify(needle)}`,
-				);
+				assert.ok(actual.includes(needle), `Expected array to contain ${JSON.stringify(needle)}`);
 			} else {
 				assert.fail(`toContain: actual is neither string nor array`);
 			}
@@ -74,28 +71,16 @@ export function expect(actual: unknown): ExpectMethods {
 			assert.ok(!actual, `Expected falsy value, got: ${actual}`);
 		},
 		toBeGreaterThan(n: number) {
-			assert.ok(
-				(actual as number) > n,
-				`Expected ${actual} > ${n}`,
-			);
+			assert.ok((actual as number) > n, `Expected ${actual} > ${n}`);
 		},
 		toBeGreaterThanOrEqual(n: number) {
-			assert.ok(
-				(actual as number) >= n,
-				`Expected ${actual} >= ${n}`,
-			);
+			assert.ok((actual as number) >= n, `Expected ${actual} >= ${n}`);
 		},
 		toBeLessThan(n: number) {
-			assert.ok(
-				(actual as number) < n,
-				`Expected ${actual} < ${n}`,
-			);
+			assert.ok((actual as number) < n, `Expected ${actual} < ${n}`);
 		},
 		toBeLessThanOrEqual(n: number) {
-			assert.ok(
-				(actual as number) <= n,
-				`Expected ${actual} <= ${n}`,
-			);
+			assert.ok((actual as number) <= n, `Expected ${actual} <= ${n}`);
 		},
 		toBeCloseTo(expected: number, numDigits: number = 2) {
 			const precision = 10 ** -numDigits / 2;
@@ -106,25 +91,16 @@ export function expect(actual: unknown): ExpectMethods {
 		},
 		toMatch(re: RegExp | string) {
 			if (typeof re === "string") {
-				assert.ok(
-					(actual as string).includes(re),
-					`Expected string to match "${re}", got: "${actual}"`,
-				);
+				assert.ok((actual as string).includes(re), `Expected string to match "${re}", got: "${actual}"`);
 			} else {
 				assert.match(actual as string, re);
 			}
 		},
 		toBeInstanceOf(cls: unknown) {
-			assert.ok(
-				actual instanceof (cls as any),
-				`Expected instance of ${(cls as any).name}, got ${actual}`,
-			);
+			assert.ok(actual instanceof (cls as any), `Expected instance of ${(cls as any).name}, got ${actual}`);
 		},
 		toHaveProperty(key: string) {
-			assert.ok(
-				actual != null && key in (actual as object),
-				`Expected object to have property "${key}"`,
-			);
+			assert.ok(actual != null && key in (actual as object), `Expected object to have property "${key}"`);
 		},
 		toThrow(expected?: string | RegExp | (new (...args: any[]) => Error)) {
 			if (expected === undefined) {
@@ -139,10 +115,7 @@ export function expect(actual: unknown): ExpectMethods {
 		},
 		toHaveBeenCalled() {
 			const fn = actual as any;
-			assert.ok(
-				fn.mock && fn.mock.calls.length > 0,
-				`Expected function to have been called`,
-			);
+			assert.ok(fn.mock && fn.mock.calls.length > 0, `Expected function to have been called`);
 		},
 		toHaveBeenCalledTimes(n: number) {
 			const fn = actual as any;
@@ -182,10 +155,7 @@ export function expect(actual: unknown): ExpectMethods {
 					`Expected string NOT to contain "${needle}", but it does`,
 				);
 			} else if (Array.isArray(actual)) {
-				assert.ok(
-					!actual.includes(needle),
-					`Expected array NOT to contain ${JSON.stringify(needle)}`,
-				);
+				assert.ok(!actual.includes(needle), `Expected array NOT to contain ${JSON.stringify(needle)}`);
 			} else {
 				assert.fail(`not.toContain: actual is neither string nor array`);
 			}
@@ -209,28 +179,16 @@ export function expect(actual: unknown): ExpectMethods {
 			assert.ok(actual, `Expected truthy value, got: ${actual}`);
 		},
 		toBeGreaterThan(n: number) {
-			assert.ok(
-				(actual as number) <= n,
-				`Expected ${actual} to NOT be greater than ${n}`,
-			);
+			assert.ok((actual as number) <= n, `Expected ${actual} to NOT be greater than ${n}`);
 		},
 		toBeGreaterThanOrEqual(n: number) {
-			assert.ok(
-				(actual as number) < n,
-				`Expected ${actual} to NOT be >= ${n}`,
-			);
+			assert.ok((actual as number) < n, `Expected ${actual} to NOT be >= ${n}`);
 		},
 		toBeLessThan(n: number) {
-			assert.ok(
-				(actual as number) >= n,
-				`Expected ${actual} to NOT be less than ${n}`,
-			);
+			assert.ok((actual as number) >= n, `Expected ${actual} to NOT be less than ${n}`);
 		},
 		toBeLessThanOrEqual(n: number) {
-			assert.ok(
-				(actual as number) > n,
-				`Expected ${actual} to NOT be <= ${n}`,
-			);
+			assert.ok((actual as number) > n, `Expected ${actual} to NOT be <= ${n}`);
 		},
 		toBeCloseTo(expected: number, numDigits: number = 2) {
 			const precision = 10 ** -numDigits / 2;
@@ -241,43 +199,27 @@ export function expect(actual: unknown): ExpectMethods {
 		},
 		toMatch(re: RegExp | string) {
 			if (typeof re === "string") {
-				assert.ok(
-					!(actual as string).includes(re),
-					`Expected string NOT to match "${re}", but it does`,
-				);
+				assert.ok(!(actual as string).includes(re), `Expected string NOT to match "${re}", but it does`);
 			} else {
 				assert.doesNotMatch(actual as string, re);
 			}
 		},
 		toBeInstanceOf(cls: unknown) {
-			assert.ok(
-				!(actual instanceof (cls as any)),
-				`Expected NOT to be instance of ${(cls as any).name}`,
-			);
+			assert.ok(!(actual instanceof (cls as any)), `Expected NOT to be instance of ${(cls as any).name}`);
 		},
 		toHaveProperty(key: string) {
-			assert.ok(
-				actual == null || !(key in (actual as object)),
-				`Expected object NOT to have property "${key}"`,
-			);
+			assert.ok(actual == null || !(key in (actual as object)), `Expected object NOT to have property "${key}"`);
 		},
 		toThrow(expected?: string | RegExp | (new (...args: any[]) => Error)) {
 			assert.doesNotThrow(actual as () => void);
 		},
 		toHaveBeenCalled() {
 			const fn = actual as any;
-			assert.ok(
-				fn.mock && fn.mock.calls.length === 0,
-				`Expected function NOT to have been called`,
-			);
+			assert.ok(fn.mock && fn.mock.calls.length === 0, `Expected function NOT to have been called`);
 		},
 		toHaveBeenCalledTimes(n: number) {
 			const fn = actual as any;
-			assert.notStrictEqual(
-				fn.mock.calls.length,
-				n,
-				`Expected function NOT to have been called ${n} times`,
-			);
+			assert.notStrictEqual(fn.mock.calls.length, n, `Expected function NOT to have been called ${n} times`);
 		},
 		toHaveBeenCalledWith(...args: unknown[]) {
 			const fn = actual as any;

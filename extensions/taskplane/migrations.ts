@@ -180,7 +180,7 @@ export const MIGRATION_REGISTRY: Migration[] = [
 			if (!existsSync(templatePath)) {
 				throw new Error(
 					`Migration template not found: ${templatePath}. ` +
-					`This may indicate a packaging issue with the taskplane package.`,
+						`This may indicate a packaging issue with the taskplane package.`,
 				);
 			}
 
@@ -211,11 +211,7 @@ export const MIGRATION_REGISTRY: Migration[] = [
  *                      If omitted, resolved from import.meta.url.
  * @returns Migration run result with applied/skipped/error details
  */
-export function runMigrations(
-	projectRoot: string,
-	packageRoot?: string,
-	configRoot?: string,
-): MigrationRunResult {
+export function runMigrations(projectRoot: string, packageRoot?: string, configRoot?: string): MigrationRunResult {
 	const pkgRoot = packageRoot ?? resolvePackageRoot();
 	const cfgRoot = configRoot ?? join(projectRoot, ".pi");
 	const result: MigrationRunResult = {

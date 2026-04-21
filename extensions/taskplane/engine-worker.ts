@@ -47,10 +47,7 @@ export type WorkerToMainMessage =
 /**
  * Messages sent FROM the main thread TO the worker.
  */
-export type WorkerInMessage =
-	| { type: "pause" }
-	| { type: "resume" }
-	| { type: "abort" };
+export type WorkerInMessage = { type: "pause" } | { type: "resume" } | { type: "abort" };
 
 /**
  * Serializable form of OrchBatchRuntimeState fields synced to main thread.
@@ -120,9 +117,7 @@ export interface EngineWorkerData {
  * Serialize WorkspaceConfig for cross-thread transfer.
  * Converts the Map to an array of entries.
  */
-export function serializeWorkspaceConfig(
-	config: WorkspaceConfig | null | undefined,
-): SerializedWorkspaceConfig | null {
+export function serializeWorkspaceConfig(config: WorkspaceConfig | null | undefined): SerializedWorkspaceConfig | null {
 	if (!config) return null;
 	return {
 		mode: config.mode,
@@ -177,10 +172,7 @@ function serializeBatchState(state: OrchBatchRuntimeState): SerializedBatchState
  * Updates only the fields that the worker thread tracks — preserves
  * main-thread-only fields like pauseSignal, dependencyGraph, etc.
  */
-export function applySerializedState(
-	batchState: OrchBatchRuntimeState,
-	serialized: SerializedBatchState,
-): void {
+export function applySerializedState(batchState: OrchBatchRuntimeState, serialized: SerializedBatchState): void {
 	batchState.phase = serialized.phase;
 	batchState.batchId = serialized.batchId;
 	batchState.baseBranch = serialized.baseBranch;
@@ -225,12 +217,14 @@ if (process.env.TASKPLANE_ENGINE_FORK === "1" && typeof process.send === "functi
 		};
 
 		try {
-			(process.send as (
-				message: WorkerToMainMessage,
-				sendHandle?: unknown,
-				options?: unknown,
-				callback?: (error: Error | null) => void,
-			) => boolean)(msg, undefined, undefined, () => done());
+			(
+				process.send as (
+					message: WorkerToMainMessage,
+					sendHandle?: unknown,
+					options?: unknown,
+					callback?: (error: Error | null) => void,
+				) => boolean
+			)(msg, undefined, undefined, () => done());
 			setTimeout(done, 75).unref();
 		} catch {
 			done();
@@ -260,9 +254,8 @@ if (process.env.TASKPLANE_ENGINE_FORK === "1" && typeof process.send === "functi
 			}
 
 			if (batchState) send({ type: "state-sync", state: serializeBatchState(batchState) });
-			sendWithAck(
-				{ type: "error", source, message: normalized.message, stack: normalized.stack },
-				() => process.exit(1),
+			sendWithAck({ type: "error", source, message: normalized.message, stack: normalized.stack }, () =>
+				process.exit(1),
 			);
 			setTimeout(() => process.exit(1), 200).unref();
 		};
@@ -326,36 +319,37 @@ if (process.env.TASKPLANE_ENGINE_FORK === "1" && typeof process.send === "functi
 		};
 
 		// ── Execute engine ───────────────────────────────────────────
-		const enginePromise = data.mode === "resume"
-			? resumeOrchBatch(
-				data.orchConfig,
-				data.runnerConfig,
-				data.cwd,
-				batchState,
-				onNotify,
-				onMonitorUpdate,
-				wsConfig,
-				data.workspaceRoot,
-				data.agentRoot,
-				data.force ?? false,
-				onSupervisorAlert,
-				data.supervisorAutonomy ?? "autonomous",
-			)
-			: executeOrchBatch(
-				data.args ?? "",
-				data.orchConfig,
-				data.runnerConfig,
-				data.cwd,
-				batchState,
-				onNotify,
-				onMonitorUpdate,
-				wsConfig,
-				data.workspaceRoot,
-				data.agentRoot,
-				onEngineEvent,
-				onSupervisorAlert,
-				data.supervisorAutonomy ?? "autonomous",
-			);
+		const enginePromise =
+			data.mode === "resume"
+				? resumeOrchBatch(
+						data.orchConfig,
+						data.runnerConfig,
+						data.cwd,
+						batchState,
+						onNotify,
+						onMonitorUpdate,
+						wsConfig,
+						data.workspaceRoot,
+						data.agentRoot,
+						data.force ?? false,
+						onSupervisorAlert,
+						data.supervisorAutonomy ?? "autonomous",
+					)
+				: executeOrchBatch(
+						data.args ?? "",
+						data.orchConfig,
+						data.runnerConfig,
+						data.cwd,
+						batchState,
+						onNotify,
+						onMonitorUpdate,
+						wsConfig,
+						data.workspaceRoot,
+						data.agentRoot,
+						onEngineEvent,
+						onSupervisorAlert,
+						data.supervisorAutonomy ?? "autonomous",
+					);
 
 		enginePromise
 			.then(() => {

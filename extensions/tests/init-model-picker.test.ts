@@ -1,9 +1,6 @@
 import { describe, it } from "node:test";
 import { expect } from "./expect.ts";
-import {
-	collectInitAgentConfig,
-	generateProjectConfig,
-} from "../../bin/taskplane.mjs";
+import { collectInitAgentConfig, generateProjectConfig } from "../../bin/taskplane.mjs";
 
 const AVAILABLE_MODELS = [
 	{ provider: "anthropic", id: "claude-sonnet-4-6", displayName: "anthropic/claude-sonnet-4-6" },
@@ -135,9 +132,7 @@ describe("init model picker flow", () => {
 	});
 
 	it("single-provider first init skips cross-provider guidance with an info message", async () => {
-		const singleProviderModels = [
-			{ provider: "openai", id: "gpt-5.3-codex", displayName: "openai/gpt-5.3-codex" },
-		];
+		const singleProviderModels = [{ provider: "openai", id: "gpt-5.3-codex", displayName: "openai/gpt-5.3-codex" }];
 		const logs: string[] = [];
 		let saveCalls = 0;
 

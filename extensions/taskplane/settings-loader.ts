@@ -1,136 +1,265 @@
 /**
- * Settings Loader — Read and merge Pi extension packages from settings files
+ * Settings Loader — Reads .pi/settings.json packages for agent spawning.
  *
- * Reads `.pi/settings.json` from both project-level and global locations,
- * extracts the `packages` arrays, merges them (project entries first,
- * deduplicated), and filters out taskplane itself.
+ * Taskplane spawns worker, reviewer, and merge subprocesses with --no-extensions,
+ * which disables all auto-discovered packages from .pi/settings.json.
+ * This module provides a utility to read those packages so callers can pass them
+ * explicitly as -e flags when spawning agents.
  *
- * Used by spawn points (worker, reviewer, merge agent) to forward
- * user-installed extensions as explicit `-e` flags alongside `--no-extensions`.
+ * ## Cascade
+ *
+ * 1. Global: `~/.pi/agent/settings.json` (resolved via PI `getAgentDir()` — handles
+ *    `PI_CODING_AGENT_DIR` env var, tilde expansion, cross-platform homedir).
+ * 2. Project: `<stateRoot>/.pi/settings.json` (overrides global).
+ *
+ * Project packages take priority over global packages (arrays are replaced,
+ * not merged). If project has no `packages` key, global packages are used.
+ *
+ * ## Usage
+ *
+ * ```ts
+ * import { loadPiSettingsPackages } from "./settings-loader.ts";
+ *
+ * const packages = loadPiSettingsPackages(stateRoot);
+ * if (packages) {
+ *   const projectPackages = packages.filter(p => !p.includes("taskplane"));
+ *   // pass to spawnAgent via extensions field or -e flags
+ * }
+ * ```
  *
  * @module taskplane/settings-loader
- * @since TP-180
+ * @since TP-198
  */
 
-import { readFileSync } from "fs";
-import { join } from "path";
-import { homedir } from "os";
+import { readFileSync, existsSync } from "fs";
+import { basename, isAbsolute, join, resolve } from "path";
+import * as PiCodingAgent from "@mariozechner/pi-coding-agent";
 
-// ── Constants ────────────────────────────────────────────────────────
-
-/** Subpath under a project root for the project-level Pi settings file. */
-const PROJECT_SETTINGS_SUBPATH = join(".pi", "settings.json");
-
-/** Subpath under the global agent dir for the global Pi settings file. */
-const GLOBAL_SETTINGS_SUBPATH = join(".pi", "agent", "settings.json");
-
-// ── Internal Helpers ─────────────────────────────────────────────────
+/** Path to .pi/settings.json relative to project root */
+const PROJECT_SETTINGS_FILE = ".pi/settings.json";
 
 /**
- * Safely read and parse a JSON file, returning null on any failure.
+ * Minimal shape of .pi/settings.json we care about.
  */
-function readJsonSafe(filePath: string): Record<string, unknown> | null {
+interface PiSettingsJson {
+	packages?: string[];
+	[key: string]: unknown;
+}
+
+const LOCAL_EXTENSION_ENTRYPOINTS = ["index.ts", "src/index.ts", "dist/index.js", "main.ts", "index.js"];
+
+/**
+ * Load the `packages` array from a .pi/settings.json file.
+ *
+ * Returns `null` if:
+ * - The file does not exist
+ * - The file is not valid JSON
+ * - The file has no `packages` key or it is not an array
+ *
+ * @param settingsPath - Absolute path to settings.json
+ * @returns Array of package specifiers or `null`
+ */
+function loadPackagesFromFile(settingsPath: string): string[] | null {
+	if (!existsSync(settingsPath)) {
+		return null;
+	}
+
 	try {
-		const raw = readFileSync(filePath, "utf-8");
-		const parsed = JSON.parse(raw);
-		if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-			return parsed as Record<string, unknown>;
+		const raw = readFileSync(settingsPath, "utf-8");
+		const parsed = JSON.parse(raw) as PiSettingsJson;
+
+		if (!Array.isArray(parsed.packages)) {
+			return null;
 		}
-		return null;
+
+		// Validate: each entry must be a non-empty string
+		const filtered = parsed.packages.filter((p): p is string => typeof p === "string" && p.trim().length > 0);
+
+		return filtered.length > 0 ? filtered : null;
 	} catch {
+		// Malformed JSON — return null
 		return null;
 	}
 }
 
 /**
- * Extract the `packages` array from a parsed settings object.
- * Returns an empty array if the key is missing or not an array of strings.
+ * Load project packages from `<stateRoot>/.pi/settings.json`.
  */
-function extractPackages(settings: Record<string, unknown> | null): string[] {
-	if (!settings) return [];
-	const packages = settings.packages;
-	if (!Array.isArray(packages)) return [];
-	// Filter to strings only, skip non-string entries gracefully
-	return packages.filter((p): p is string => typeof p === "string" && p.length > 0);
+function loadProjectPackages(stateRoot: string): string[] | null {
+	return loadPackagesFromFile(join(stateRoot, PROJECT_SETTINGS_FILE));
 }
 
 /**
- * Resolve the global Pi agent settings path.
+ * Load global packages from the PI agent config directory.
  *
- * Resolution order:
- *   1. `PI_CODING_AGENT_DIR` env → `<value>/settings.json`
- *   2. `os.homedir()/.pi/agent/settings.json`
+ * Resolved via PI's `getAgentDir()` which handles:
+ * - `PI_CODING_AGENT_DIR` env var (with tilde expansion)
+ * - Falls back to `~/.pi/agent/` using cross-platform `os.homedir()`
+ *
+ * Global settings path: `<agentDir>/settings.json`
  */
-function resolveGlobalSettingsPath(): string {
-	const agentDir = process.env.PI_CODING_AGENT_DIR;
-	if (agentDir) {
-		return join(agentDir, "settings.json");
+function loadGlobalPackages(): string[] | null {
+	const exportedGetAgentDir = (PiCodingAgent as { getAgentDir?: () => string }).getAgentDir;
+	const fallbackAgentDir = join(process.env.HOME || process.env.USERPROFILE || "", ".pi", "agent");
+	const agentDir = typeof exportedGetAgentDir === "function" ? exportedGetAgentDir() : fallbackAgentDir;
+	const globalSettingsPath = join(agentDir, "settings.json");
+	return loadPackagesFromFile(globalSettingsPath);
+}
+
+/**
+ * Load merged packages from `.pi/settings.json`, cascading global → project.
+ *
+ * Project packages take priority over global packages. If project has no
+ * `packages` key, falls back to global. If neither has packages, returns `null`.
+ *
+ * @param stateRoot - Absolute path to the project root (where `.pi/` lives)
+ * @returns Merged array of package specifiers or `null`
+ */
+export function loadPiSettingsPackages(stateRoot: string): string[] | null {
+	const projectPackages = loadProjectPackages(stateRoot);
+	if (projectPackages !== null) {
+		return projectPackages;
 	}
-	return join(homedir(), GLOBAL_SETTINGS_SUBPATH);
+
+	return loadGlobalPackages();
 }
 
-// ── Public API ───────────────────────────────────────────────────────
+function resolveLocalPackageEntry(packageRoot: string): string {
+	for (const relPath of LOCAL_EXTENSION_ENTRYPOINTS) {
+		const candidate = join(packageRoot, relPath);
+		if (existsSync(candidate)) return candidate;
+	}
+	return packageRoot;
+}
 
-/**
- * Load Pi extension packages from project and global settings files.
- *
- * Reads `.pi/settings.json` from the project root (stateRoot) and from
- * the global agent directory, merges the package lists (project first,
- * deduplicated), and filters out any package containing "taskplane"
- * (which is already loaded as the bridge extension).
- *
- * @param stateRoot - Project root directory (used to locate `.pi/settings.json`)
- * @returns Array of package specifiers (e.g., `["npm:pi-sage"]`) or empty array
- */
-export function loadPiSettingsPackages(stateRoot: string): string[] {
-	// Read project-level packages
-	const projectSettingsPath = join(stateRoot, PROJECT_SETTINGS_SUBPATH);
-	const projectSettings = readJsonSafe(projectSettingsPath);
-	const projectPackages = extractPackages(projectSettings);
-
-	// Read global packages
-	const globalSettingsPath = resolveGlobalSettingsPath();
-	const globalSettings = readJsonSafe(globalSettingsPath);
-	const globalPackages = extractPackages(globalSettings);
-
-	// Merge: project entries first, then global, deduplicated
-	const seen = new Set<string>();
-	const merged: string[] = [];
-
-	for (const pkg of projectPackages) {
-		if (!seen.has(pkg)) {
-			seen.add(pkg);
-			merged.push(pkg);
+function resolveLocalNpmPackage(packageName: string, stateRoot: string): string | null {
+	const roots = [
+		join(stateRoot, ".pi", "npm", "node_modules", packageName),
+		join(stateRoot, "node_modules", packageName),
+	];
+	for (const root of roots) {
+		if (existsSync(root)) {
+			return resolveLocalPackageEntry(root);
 		}
 	}
-	for (const pkg of globalPackages) {
-		if (!seen.has(pkg)) {
-			seen.add(pkg);
-			merged.push(pkg);
+	return null;
+}
+
+function resolveGitSpecifier(specifier: string, stateRoot: string): string {
+	const raw = specifier.slice(4).trim();
+	if (!raw) return specifier;
+
+	const gitRoot = join(stateRoot, ".pi", "git");
+	const candidates: string[] = [];
+
+	try {
+		if (/^https?:\/\//i.test(raw)) {
+			const parsed = new URL(raw);
+			const host = parsed.hostname;
+			const pathname = parsed.pathname.replace(/^\/+/, "").replace(/\.git$/i, "");
+			if (host && pathname) candidates.push(join(gitRoot, host, pathname));
+		}
+	} catch {
+		// Fall through to other candidate formats.
+	}
+
+	const sshMatch = raw.match(/^git@([^:]+):(.+)$/i);
+	if (sshMatch) {
+		const host = sshMatch[1];
+		const repoPath = sshMatch[2].replace(/\.git$/i, "");
+		if (host && repoPath) candidates.push(join(gitRoot, host, repoPath));
+	}
+
+	const cleanedRaw = raw.replace(/\.git$/i, "").replace(/^\/+/, "");
+	if (cleanedRaw) {
+		candidates.push(join(gitRoot, cleanedRaw));
+		const slashCount = cleanedRaw.split("/").filter(Boolean).length;
+		if (slashCount === 2) {
+			candidates.push(join(gitRoot, "github.com", cleanedRaw));
 		}
 	}
 
-	// Filter out taskplane itself (already loaded as bridge extension).
-	// Match known specifier patterns: "npm:taskplane", "taskplane", or scoped
-	// variants like "npm:@scope/taskplane". Avoid substring matching to prevent
-	// false positives on unrelated packages containing "taskplane" in their name.
-	return merged.filter((pkg) => {
-		// Strip npm:/git: prefix to get the bare package name
-		const bare = pkg.replace(/^(?:npm:|git:(?:github\.com\/[^/]+\/)?)/, "").toLowerCase();
-		// Exact match on bare name, or scoped exact match (@scope/taskplane)
-		return bare !== "taskplane" && !bare.endsWith("/taskplane");
-	});
+	const leaf = basename(cleanedRaw || raw).replace(/\.git$/i, "");
+	if (leaf) {
+		candidates.push(join(gitRoot, leaf));
+	}
+
+	const uniqueCandidates = [...new Set(candidates)];
+	for (const candidate of uniqueCandidates) {
+		if (existsSync(candidate)) return candidate;
+	}
+
+	return specifier;
+}
+
+export function resolveSettingsPackageSpecifier(specifier: string, stateRoot: string): string {
+	const value = String(specifier || "").trim();
+	if (!value) return "";
+
+	if (isAbsolute(value)) {
+		return existsSync(value) ? resolve(value) : value;
+	}
+
+	if (value.startsWith("./") || value.startsWith("../")) {
+		const resolvedPath = resolve(stateRoot, value);
+		return existsSync(resolvedPath) ? resolvedPath : value;
+	}
+
+	if (value.startsWith("npm:")) {
+		const packageName = value.slice(4).trim();
+		if (!packageName) return value;
+		const local = resolveLocalNpmPackage(packageName, stateRoot);
+		return local ?? packageName;
+	}
+
+	if (value.startsWith("git:")) {
+		return resolveGitSpecifier(value, stateRoot);
+	}
+
+	const localBare = resolveLocalNpmPackage(value, stateRoot);
+	if (localBare) return localBare;
+
+	return value;
+}
+
+export function resolvePiSettingsPackages(stateRoot: string, excluded?: string[] | null): string[] {
+	const filtered = filterExcludedExtensions(loadPiSettingsPackages(stateRoot), excluded);
+	const resolved = filtered
+		.map((pkg) => resolveSettingsPackageSpecifier(pkg, stateRoot))
+		.map((pkg) => pkg.trim())
+		.filter((pkg) => pkg.length > 0);
+	return [...new Set(resolved)];
 }
 
 /**
- * Filter out excluded extensions from a package list.
+ * Filter package specifiers by an exact-match exclusion list.
  *
- * @param packages - Full list of package specifiers
- * @param exclusions - Package specifiers to exclude (exact match)
- * @returns Filtered list with excluded packages removed
+ * @param packages - Package specifiers resolved from settings
+ * @param excluded - Exact package specifiers to exclude
+ * @returns Filtered package specifiers
  */
-export function filterExcludedExtensions(packages: string[], exclusions: string[]): string[] {
-	if (!exclusions || exclusions.length === 0) return packages;
-	const excludeSet = new Set(exclusions);
-	return packages.filter((pkg) => !excludeSet.has(pkg));
+export function filterExcludedExtensions(
+	packages: string[] | null | undefined,
+	excluded: string[] | null | undefined,
+): string[] {
+	if (!Array.isArray(packages) || packages.length === 0) {
+		return [];
+	}
+
+	if (!Array.isArray(excluded) || excluded.length === 0) {
+		return [...packages];
+	}
+
+	const excludedSet = new Set(
+		excluded
+			.filter((pkg): pkg is string => typeof pkg === "string")
+			.map((pkg) => pkg.trim())
+			.filter((pkg) => pkg.length > 0),
+	);
+
+	if (excludedSet.size === 0) {
+		return [...packages];
+	}
+
+	return packages.filter((pkg) => !excludedSet.has(pkg));
 }

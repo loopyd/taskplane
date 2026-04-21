@@ -19,12 +19,7 @@ import { readFileSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 
-import type {
-	TransactionRecord,
-	TransactionStatus,
-	MergeWaveResult,
-	MergeLaneResult,
-} from "../taskplane/types.ts";
+import type { TransactionRecord, TransactionStatus, MergeWaveResult, MergeLaneResult } from "../taskplane/types.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -177,12 +172,7 @@ describe("1.x — Transaction record: pre/post ref capture", () => {
 	});
 
 	it("1.8: TransactionStatus covers all four outcomes", () => {
-		const statuses: TransactionStatus[] = [
-			"committed",
-			"rolled_back",
-			"rollback_failed",
-			"merge_failed",
-		];
+		const statuses: TransactionStatus[] = ["committed", "rolled_back", "rollback_failed", "merge_failed"];
 
 		// Each status should be a valid TransactionStatus (type check implicit)
 		for (const s of statuses) {

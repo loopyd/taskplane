@@ -95,8 +95,12 @@ function makeMockPi() {
 }
 
 function makeMockExecutor(
-	resultOrFn: { success: boolean; integratedLocally: boolean; commitCount: string; message: string; error?: string } |
-		((mode: string, context: any) => { success: boolean; integratedLocally: boolean; commitCount: string; message: string; error?: string }),
+	resultOrFn:
+		| { success: boolean; integratedLocally: boolean; commitCount: string; message: string; error?: string }
+		| ((
+				mode: string,
+				context: any,
+		  ) => { success: boolean; integratedLocally: boolean; commitCount: string; message: string; error?: string }),
 ): IntegrationExecutor & { calls: Array<{ mode: string; context: any }> } {
 	const calls: Array<{ mode: string; context: any }> = [];
 	const executor = ((mode: string, context: any) => {
@@ -304,18 +308,14 @@ describe("18.x — Auto mode: executor call order and message assertions", () =>
 		expect(executor.calls[0].context.baseBranch).toBe("main");
 
 		// Success message emitted (no confirmation prompt)
-		const integrationMsg = pi.messages.find(
-			(m: any) => m.opts.customType === "supervisor-integration-result",
-		);
+		const integrationMsg = pi.messages.find((m: any) => m.opts.customType === "supervisor-integration-result");
 		expect(integrationMsg).toBeDefined();
 		expect(integrationMsg!.opts.content[0].text).toContain("✅");
 		expect(integrationMsg!.opts.content[0].text).toContain("Integration complete");
 		expect(integrationMsg!.sendOpts.triggerTurn).toBe(false);
 
 		// NO confirmation-related messages (no triggerTurn: true)
-		const confirmMsgs = pi.messages.filter(
-			(m: any) => m.sendOpts && m.sendOpts.triggerTurn === true,
-		);
+		const confirmMsgs = pi.messages.filter((m: any) => m.sendOpts && m.sendOpts.triggerTurn === true);
 		expect(confirmMsgs).toHaveLength(0);
 
 		// Supervisor deactivated
@@ -332,7 +332,13 @@ describe("18.x — Auto mode: executor call order and message assertions", () =>
 
 		const executor = makeMockExecutor((mode) => {
 			if (mode === "ff") {
-				return { success: false, integratedLocally: false, commitCount: "0", message: "not linear", error: "branches diverged" };
+				return {
+					success: false,
+					integratedLocally: false,
+					commitCount: "0",
+					message: "not linear",
+					error: "branches diverged",
+				};
 			}
 			return { success: true, integratedLocally: true, commitCount: "3", message: "Merged 3 commits" };
 		});
@@ -345,18 +351,14 @@ describe("18.x — Auto mode: executor call order and message assertions", () =>
 		expect(executor.calls[1].mode).toBe("merge");
 
 		// Success message includes fallback warning
-		const resultMsg = pi.messages.find(
-			(m: any) => m.opts.customType === "supervisor-integration-result",
-		);
+		const resultMsg = pi.messages.find((m: any) => m.opts.customType === "supervisor-integration-result");
 		expect(resultMsg).toBeDefined();
 		expect(resultMsg!.opts.content[0].text).toContain("✅");
 		expect(resultMsg!.opts.content[0].text).toContain("Fast-forward failed");
 		expect(resultMsg!.opts.content[0].text).toContain("Fell back to merge");
 
 		// No confirmation prompts
-		const confirmMsgs = pi.messages.filter(
-			(m: any) => m.sendOpts && m.sendOpts.triggerTurn === true,
-		);
+		const confirmMsgs = pi.messages.filter((m: any) => m.sendOpts && m.sendOpts.triggerTurn === true);
 		expect(confirmMsgs).toHaveLength(0);
 
 		expect(state.active).toBe(false);
@@ -386,18 +388,14 @@ describe("18.x — Auto mode: executor call order and message assertions", () =>
 		expect(executor.calls[1].mode).toBe("merge");
 
 		// Error message emitted
-		const resultMsg = pi.messages.find(
-			(m: any) => m.opts.customType === "supervisor-integration-result",
-		);
+		const resultMsg = pi.messages.find((m: any) => m.opts.customType === "supervisor-integration-result");
 		expect(resultMsg).toBeDefined();
 		expect(resultMsg!.opts.content[0].text).toContain("❌");
 		expect(resultMsg!.opts.content[0].text).toContain("Integration failed");
 		expect(resultMsg!.opts.content[0].text).toContain("/orch-integrate");
 
 		// No confirmation prompts
-		const confirmMsgs = pi.messages.filter(
-			(m: any) => m.sendOpts && m.sendOpts.triggerTurn === true,
-		);
+		const confirmMsgs = pi.messages.filter((m: any) => m.sendOpts && m.sendOpts.triggerTurn === true);
 		expect(confirmMsgs).toHaveLength(0);
 
 		expect(state.active).toBe(false);
@@ -416,7 +414,8 @@ describe("18.x — Auto mode: executor call order and message assertions", () =>
 		// Fallback message with /orch-integrate instruction
 		expect(pi.messages.length).toBeGreaterThanOrEqual(1);
 		const fallbackMsg = pi.messages.find(
-			(m: any) => m.opts.content[0].text.includes("executor unavailable") ||
+			(m: any) =>
+				m.opts.content[0].text.includes("executor unavailable") ||
 				m.opts.content[0].text.includes("/orch-integrate"),
 		);
 		expect(fallbackMsg).toBeDefined();
@@ -447,16 +446,12 @@ describe("18.x — Auto mode: executor call order and message assertions", () =>
 		expect(executor.calls[0].mode).toBe("pr");
 
 		// CI polling message emitted (since PR wasn't locally integrated)
-		const progressMsg = pi.messages.find(
-			(m: any) => m.opts.customType === "supervisor-integration-progress",
-		);
+		const progressMsg = pi.messages.find((m: any) => m.opts.customType === "supervisor-integration-progress");
 		expect(progressMsg).toBeDefined();
 		expect(progressMsg!.opts.content[0].text).toContain("CI");
 
 		// No confirmation prompts
-		const confirmMsgs = pi.messages.filter(
-			(m: any) => m.sendOpts && m.sendOpts.triggerTurn === true,
-		);
+		const confirmMsgs = pi.messages.filter((m: any) => m.sendOpts && m.sendOpts.triggerTurn === true);
 		expect(confirmMsgs).toHaveLength(0);
 	});
 
@@ -482,9 +477,7 @@ describe("18.x — Auto mode: executor call order and message assertions", () =>
 		expect(executor.calls[0].mode).toBe("merge");
 
 		// Success message
-		const resultMsg = pi.messages.find(
-			(m: any) => m.opts.customType === "supervisor-integration-result",
-		);
+		const resultMsg = pi.messages.find((m: any) => m.opts.customType === "supervisor-integration-result");
 		expect(resultMsg).toBeDefined();
 		expect(resultMsg!.opts.content[0].text).toContain("✅");
 
@@ -557,9 +550,7 @@ describe("19.x — Manual-mode guidance and branch-protection-detected default-t
 		deactivateSupervisor(pi as any, state);
 
 		// Summary message sent
-		const summaryMsg = pi.messages.find(
-			(m: any) => m.opts.customType === "supervisor-batch-summary",
-		);
+		const summaryMsg = pi.messages.find((m: any) => m.opts.customType === "supervisor-batch-summary");
 		expect(summaryMsg).toBeDefined();
 		expect(summaryMsg!.opts.content[0].text).toContain("📊 **Batch Summary**");
 		expect(summaryMsg!.opts.content[0].text).toContain("4/5 tasks succeeded");
@@ -569,7 +560,8 @@ describe("19.x — Manual-mode guidance and branch-protection-detected default-t
 
 		// No integration-related messages (no /orch-integrate execution)
 		const integrationMsgs = pi.messages.filter(
-			(m: any) => m.opts.customType === "supervisor-integration-result" ||
+			(m: any) =>
+				m.opts.customType === "supervisor-integration-result" ||
 				m.opts.customType === "supervisor-integration-progress",
 		);
 		expect(integrationMsgs).toHaveLength(0);
@@ -643,9 +635,7 @@ describe("19.x — Manual-mode guidance and branch-protection-detected default-t
 		expect(executor.calls[0].mode).toBe("pr");
 
 		// No confirmation prompt (triggerTurn: true)
-		const confirmMsgs = pi.messages.filter(
-			(m: any) => m.sendOpts && m.sendOpts.triggerTurn === true,
-		);
+		const confirmMsgs = pi.messages.filter((m: any) => m.sendOpts && m.sendOpts.triggerTurn === true);
 		expect(confirmMsgs).toHaveLength(0);
 	});
 });

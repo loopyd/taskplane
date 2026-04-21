@@ -31,11 +31,7 @@ import {
 } from "../taskplane/waves.ts";
 import { buildSegmentFrontierWaves } from "../taskplane/engine.ts";
 
-import type {
-	WorkspaceConfig,
-	WorkspaceRepoConfig,
-	ParsedTask,
-} from "../taskplane/types.ts";
+import type { WorkspaceConfig, WorkspaceRepoConfig, ParsedTask } from "../taskplane/types.ts";
 
 // ── Test Helpers ──────────────────────────────────────────────────────
 
@@ -382,12 +378,7 @@ describe("segment planning", () => {
 // ── TP-148: enforceGlobalLaneCap() ────────────────────────────────
 
 describe("enforceGlobalLaneCap", () => {
-	function makeEntry(
-		globalLane: number,
-		localLane: number,
-		repoId: string | undefined,
-		taskIds: string[],
-	) {
+	function makeEntry(globalLane: number, localLane: number, repoId: string | undefined, taskIds: string[]) {
 		return {
 			globalLane,
 			localLane,
@@ -486,14 +477,16 @@ describe("TP-166 global lane cap regression", () => {
 					globalLane: offset + i,
 					localLane: i,
 					repoId,
-					assignments: [{
-						taskId,
-						lane: i,
-						task: makeParsedTask(taskId, {
-							resolvedRepoId: repoId,
-							fileScope: [`${repoId}/src/module${i}.ts`],
-						}),
-					}],
+					assignments: [
+						{
+							taskId,
+							lane: i,
+							task: makeParsedTask(taskId, {
+								resolvedRepoId: repoId,
+								fileScope: [`${repoId}/src/module${i}.ts`],
+							}),
+						},
+					],
 				});
 			}
 			offset += 4;
@@ -507,15 +500,15 @@ describe("TP-166 global lane cap regression", () => {
 		expect(entries.length).toBe(4);
 
 		// All 12 task IDs should still be present
-		const allTaskIds = entries.flatMap(e => e.assignments.map(a => a.taskId)).sort();
+		const allTaskIds = entries.flatMap((e) => e.assignments.map((a) => a.taskId)).sort();
 		expect(allTaskIds.length).toBe(12);
 
 		// Each repo should have at least 1 lane
-		const repoIds = new Set(entries.map(e => e.repoId));
+		const repoIds = new Set(entries.map((e) => e.repoId));
 		expect(repoIds.size).toBe(3);
 
 		// Global lane numbers should be sequential 1..4
-		expect(entries.map(e => e.globalLane)).toEqual([1, 2, 3, 4]);
+		expect(entries.map((e) => e.globalLane)).toEqual([1, 2, 3, 4]);
 	});
 
 	it("single-repo mode (no repoId) stays within maxLanes", () => {
@@ -531,18 +524,20 @@ describe("TP-166 global lane cap regression", () => {
 				globalLane: i,
 				localLane: i,
 				repoId: undefined,
-				assignments: [{
-					taskId: `TP-${String(i).padStart(3, '0')}`,
-					lane: i,
-					task: makeParsedTask(`TP-${String(i).padStart(3, '0')}`),
-				}],
+				assignments: [
+					{
+						taskId: `TP-${String(i).padStart(3, "0")}`,
+						lane: i,
+						task: makeParsedTask(`TP-${String(i).padStart(3, "0")}`),
+					},
+				],
 			});
 		}
 
 		enforceGlobalLaneCap(entries, 3);
 
 		expect(entries.length).toBe(3);
-		const allTaskIds = entries.flatMap(e => e.assignments.map(a => a.taskId)).sort();
+		const allTaskIds = entries.flatMap((e) => e.assignments.map((a) => a.taskId)).sort();
 		expect(allTaskIds.length).toBe(6);
 	});
 });
@@ -557,11 +552,42 @@ describe("TP-166 wave count regression", () => {
 		pending.set("TP-001", makeParsedTask("TP-001", { resolvedRepoId: "api", fileScope: ["api/src/a.ts"] }));
 		pending.set("TP-002", makeParsedTask("TP-002", { resolvedRepoId: "web", fileScope: ["web/src/b.ts"] }));
 		pending.set("TP-003", makeParsedTask("TP-003", { resolvedRepoId: "api", fileScope: ["api/src/c.ts"] }));
-		pending.set("TP-004", makeParsedTask("TP-004", { resolvedRepoId: "api", dependencies: ["TP-001", "TP-002"], fileScope: ["api/src/d.ts", "web/src/d.ts"] }));
-		pending.set("TP-005", makeParsedTask("TP-005", { resolvedRepoId: "web", dependencies: ["TP-002", "TP-003"], fileScope: ["web/src/e.ts", "api/src/e.ts"] }));
-		pending.set("TP-006", makeParsedTask("TP-006", { resolvedRepoId: "api", dependencies: ["TP-004"], fileScope: ["api/src/f.ts"] }));
-		pending.set("TP-007", makeParsedTask("TP-007", { resolvedRepoId: "web", dependencies: ["TP-004", "TP-005"], fileScope: ["web/src/g.ts", "api/src/g.ts"] }));
-		pending.set("TP-008", makeParsedTask("TP-008", { resolvedRepoId: "api", dependencies: ["TP-005"], fileScope: ["api/src/h.ts", "web/src/h.ts"] }));
+		pending.set(
+			"TP-004",
+			makeParsedTask("TP-004", {
+				resolvedRepoId: "api",
+				dependencies: ["TP-001", "TP-002"],
+				fileScope: ["api/src/d.ts", "web/src/d.ts"],
+			}),
+		);
+		pending.set(
+			"TP-005",
+			makeParsedTask("TP-005", {
+				resolvedRepoId: "web",
+				dependencies: ["TP-002", "TP-003"],
+				fileScope: ["web/src/e.ts", "api/src/e.ts"],
+			}),
+		);
+		pending.set(
+			"TP-006",
+			makeParsedTask("TP-006", { resolvedRepoId: "api", dependencies: ["TP-004"], fileScope: ["api/src/f.ts"] }),
+		);
+		pending.set(
+			"TP-007",
+			makeParsedTask("TP-007", {
+				resolvedRepoId: "web",
+				dependencies: ["TP-004", "TP-005"],
+				fileScope: ["web/src/g.ts", "api/src/g.ts"],
+			}),
+		);
+		pending.set(
+			"TP-008",
+			makeParsedTask("TP-008", {
+				resolvedRepoId: "api",
+				dependencies: ["TP-005"],
+				fileScope: ["api/src/h.ts", "web/src/h.ts"],
+			}),
+		);
 
 		const completed = new Set<string>();
 		const graph = buildDependencyGraph(pending, completed);

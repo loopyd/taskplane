@@ -120,7 +120,7 @@ interface TaskPacket {
 	taskName: string;
 	size: string;
 	areaName: string;
-	repoId?: string;  // prompt-level repo declaration (optional)
+	repoId?: string; // prompt-level repo declaration (optional)
 	dependencies: string[];
 	fileScope: string[];
 }
@@ -150,7 +150,7 @@ const TASK_PACKETS: TaskPacket[] = [
 		taskName: "UI Shell Layout",
 		size: "M",
 		areaName: "ui-tasks",
-		repoId: "frontend",  // explicit prompt-level repo
+		repoId: "frontend", // explicit prompt-level repo
 		dependencies: [],
 		fileScope: ["src/components/Shell.tsx"],
 	},
@@ -168,7 +168,7 @@ const TASK_PACKETS: TaskPacket[] = [
 		size: "L",
 		areaName: "ui-tasks",
 		repoId: "frontend",
-		dependencies: ["UI-001", "AP-001"],  // cross-repo: AP-001 is in api
+		dependencies: ["UI-001", "AP-001"], // cross-repo: AP-001 is in api
 		fileScope: ["src/views/Dashboard.tsx", "src/views/Dashboard.test.tsx"],
 	},
 	{
@@ -176,7 +176,7 @@ const TASK_PACKETS: TaskPacket[] = [
 		taskName: "Shared Documentation Update",
 		size: "M",
 		areaName: "shared-tasks",
-		dependencies: ["AP-002", "UI-002"],  // cross-repo: depends on both api and frontend
+		dependencies: ["AP-002", "UI-002"], // cross-repo: depends on both api and frontend
 		fileScope: ["docs/api.md", "docs/ui.md"],
 	},
 ];
@@ -184,17 +184,13 @@ const TASK_PACKETS: TaskPacket[] = [
 // -- PROMPT.md Generation ----------------------------------------------
 
 function generatePrompt(packet: TaskPacket): string {
-	const depsSection = packet.dependencies.length > 0
-		? packet.dependencies.map(d => `- **Requires:** ${d}`).join("\n")
-		: "**None**";
+	const depsSection =
+		packet.dependencies.length > 0 ? packet.dependencies.map((d) => `- **Requires:** ${d}`).join("\n") : "**None**";
 
-	const repoSection = packet.repoId
-		? `\n## Execution Target\n\nRepo: ${packet.repoId}\n`
-		: "";
+	const repoSection = packet.repoId ? `\n## Execution Target\n\nRepo: ${packet.repoId}\n` : "";
 
-	const fileScopeSection = packet.fileScope.length > 0
-		? `\n## File Scope\n\n${packet.fileScope.map(f => `- ${f}`).join("\n")}\n`
-		: "";
+	const fileScopeSection =
+		packet.fileScope.length > 0 ? `\n## File Scope\n\n${packet.fileScope.map((f) => `- ${f}`).join("\n")}\n` : "";
 
 	return `# Task: ${packet.taskId} - ${packet.taskName}
 
@@ -243,10 +239,7 @@ function initGitRepo(dir: string, branch: string = "main"): void {
 
 // -- Workspace Config Generation ---------------------------------------
 
-function generateWorkspaceYaml(fixture: {
-	tasksRoot: string;
-	repoPaths: Record<string, string>;
-}): string {
+function generateWorkspaceYaml(fixture: { tasksRoot: string; repoPaths: Record<string, string> }): string {
 	const repoEntries = Object.entries(fixture.repoPaths)
 		.map(([id, path]) => `  ${id}:\n    path: "${path.replace(/\\/g, "/")}"`)
 		.join("\n");
@@ -342,16 +335,8 @@ export function buildPolyrepoFixture(): PolyrepoFixture {
 	// -- Write workspace config ----------------------------------------
 	const piDir = join(workspaceRoot, ".pi");
 	mkdirSync(piDir, { recursive: true });
-	writeFileSync(
-		join(piDir, "taskplane-workspace.yaml"),
-		generateWorkspaceYaml({ tasksRoot, repoPaths }),
-		"utf-8",
-	);
-	writeFileSync(
-		join(piDir, "task-runner.yaml"),
-		generateTaskRunnerYaml(areaPaths, areaRepoIds),
-		"utf-8",
-	);
+	writeFileSync(join(piDir, "taskplane-workspace.yaml"), generateWorkspaceYaml({ tasksRoot, repoPaths }), "utf-8");
+	writeFileSync(join(piDir, "task-runner.yaml"), generateTaskRunnerYaml(areaPaths, areaRepoIds), "utf-8");
 
 	// -- Load WorkspaceConfig via the real loader ----------------------
 	// This ensures repo paths are resolved through realpathSync.native,
@@ -393,12 +378,12 @@ export function buildPolyrepoFixture(): PolyrepoFixture {
 
 	// -- Expected outputs ----------------------------------------------
 	const expectedRouting: Record<string, string> = {
-		"SH-001": "docs",      // area fallback
-		"AP-001": "api",       // area fallback
-		"UI-001": "frontend",  // prompt-level repo
-		"AP-002": "api",       // area fallback
-		"UI-002": "frontend",  // prompt-level repo
-		"SH-002": "docs",      // area fallback
+		"SH-001": "docs", // area fallback
+		"AP-001": "api", // area fallback
+		"UI-001": "frontend", // prompt-level repo
+		"AP-002": "api", // area fallback
+		"UI-002": "frontend", // prompt-level repo
+		"SH-002": "docs", // area fallback
 	};
 
 	const expectedDeps: Record<string, string[]> = {
@@ -411,7 +396,7 @@ export function buildPolyrepoFixture(): PolyrepoFixture {
 	};
 
 	const expectedWaves: string[][] = [
-		["AP-001", "SH-001", "UI-001"],  // sorted alphabetically
+		["AP-001", "SH-001", "UI-001"], // sorted alphabetically
 		["AP-002", "UI-002"],
 		["SH-002"],
 	];
@@ -430,7 +415,9 @@ export function buildPolyrepoFixture(): PolyrepoFixture {
 		cleanup: () => {
 			try {
 				rmSync(workspaceRoot, { recursive: true, force: true });
-			} catch { /* best effort */ }
+			} catch {
+				/* best effort */
+			}
 		},
 	};
 }

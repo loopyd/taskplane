@@ -24,7 +24,16 @@
  */
 
 import { join, dirname } from "path";
-import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, renameSync, unlinkSync, appendFileSync } from "fs";
+import {
+	existsSync,
+	mkdirSync,
+	writeFileSync,
+	readFileSync,
+	readdirSync,
+	renameSync,
+	unlinkSync,
+	appendFileSync,
+} from "fs";
 import { randomBytes } from "crypto";
 import type { MailboxMessage, MailboxMessageType, WriteMailboxMessageOpts } from "./types.ts";
 import { MAILBOX_DIR_NAME, MAILBOX_MAX_CONTENT_BYTES, MAILBOX_MESSAGE_TYPES } from "./types.ts";
@@ -85,7 +94,6 @@ export function broadcastInboxDir(stateRoot: string, batchId: string): string {
 	return join(stateRoot, ".pi", MAILBOX_DIR_NAME, batchId, "_broadcast", "inbox");
 }
 
-
 // ── Write ────────────────────────────────────────────────────────────
 
 /**
@@ -116,8 +124,8 @@ export function writeMailboxMessage(
 	if (contentBytes > MAILBOX_MAX_CONTENT_BYTES) {
 		throw new Error(
 			`Mailbox message content exceeds ${MAILBOX_MAX_CONTENT_BYTES} byte limit ` +
-			`(${contentBytes} bytes). Steering messages should be concise directives. ` +
-			`Write larger context to a file and reference it by path.`,
+				`(${contentBytes} bytes). Steering messages should be concise directives. ` +
+				`Write larger context to a file and reference it by path.`,
 		);
 	}
 
@@ -140,9 +148,8 @@ export function writeMailboxMessage(
 	};
 
 	// Determine inbox directory
-	const inboxDir = to === "_broadcast"
-		? broadcastInboxDir(stateRoot, batchId)
-		: sessionInboxDir(stateRoot, batchId, to);
+	const inboxDir =
+		to === "_broadcast" ? broadcastInboxDir(stateRoot, batchId) : sessionInboxDir(stateRoot, batchId, to);
 
 	// Ensure inbox directory exists
 	mkdirSync(inboxDir, { recursive: true });
@@ -170,7 +177,6 @@ export function writeMailboxMessage(
 
 	return message;
 }
-
 
 // ── Read ─────────────────────────────────────────────────────────────
 
@@ -208,7 +214,7 @@ export function readInbox(
 	}
 
 	// Filter: only *.msg.json files (excludes .msg.json.tmp, .tmp, etc.)
-	const msgFiles = entries.filter(f => f.endsWith(".msg.json") && !f.endsWith(".msg.json.tmp"));
+	const msgFiles = entries.filter((f) => f.endsWith(".msg.json") && !f.endsWith(".msg.json.tmp"));
 
 	const results: Array<{ filename: string; message: MailboxMessage }> = [];
 
@@ -228,17 +234,13 @@ export function readInbox(
 		try {
 			parsed = JSON.parse(raw);
 		} catch {
-			process.stderr.write(
-				`[mailbox] WARNING: malformed JSON in ${filename}, skipping\n`,
-			);
+			process.stderr.write(`[mailbox] WARNING: malformed JSON in ${filename}, skipping\n`);
 			continue;
 		}
 
 		// Validate shape
 		if (!isValidMailboxMessage(parsed)) {
-			process.stderr.write(
-				`[mailbox] WARNING: invalid message shape in ${filename}, skipping\n`,
-			);
+			process.stderr.write(`[mailbox] WARNING: invalid message shape in ${filename}, skipping\n`);
 			continue;
 		}
 
@@ -264,7 +266,6 @@ export function readInbox(
 
 	return results;
 }
-
 
 // ── Acknowledge ──────────────────────────────────────────────────────
 
@@ -312,7 +313,6 @@ export function ackMessage(inboxDir: string, filename: string): boolean {
 	}
 }
 
-
 // ── Validation ───────────────────────────────────────────────────────
 
 /**
@@ -334,12 +334,13 @@ export function isValidMailboxMessage(obj: unknown): obj is MailboxMessage {
 		typeof m.batchId === "string" &&
 		typeof m.from === "string" &&
 		typeof m.to === "string" &&
-		typeof m.timestamp === "number" && Number.isFinite(m.timestamp) &&
-		typeof m.type === "string" && MAILBOX_MESSAGE_TYPES.has(m.type) &&
+		typeof m.timestamp === "number" &&
+		Number.isFinite(m.timestamp) &&
+		typeof m.type === "string" &&
+		MAILBOX_MESSAGE_TYPES.has(m.type) &&
 		typeof m.content === "string"
 	);
 }
-
 
 // ── Outbox (Agent → Supervisor, TP-106) ─────────────────────────
 
@@ -413,7 +414,11 @@ export function writeOutboxMessage(
 		writeFileSync(tempPath, JSON.stringify(message, null, 2) + "\n", "utf-8");
 		renameSync(tempPath, finalPath);
 	} catch (err) {
-		try { if (existsSync(tempPath)) unlinkSync(tempPath); } catch { /* cleanup */ }
+		try {
+			if (existsSync(tempPath)) unlinkSync(tempPath);
+		} catch {
+			/* cleanup */
+		}
 		throw new Error(`Failed to write outbox message: ${err instanceof Error ? err.message : String(err)}`);
 	}
 
@@ -430,11 +435,7 @@ export function writeOutboxMessage(
  *
  * @since TP-106
  */
-export function readOutbox(
-	stateRoot: string,
-	batchId: string,
-	agentId: string,
-): MailboxMessage[] {
+export function readOutbox(stateRoot: string, batchId: string, agentId: string): MailboxMessage[] {
 	const outboxDir = sessionOutboxDir(stateRoot, batchId, agentId);
 	if (!existsSync(outboxDir)) return [];
 
@@ -445,7 +446,7 @@ export function readOutbox(
 		return [];
 	}
 
-	const msgFiles = entries.filter(f => f.endsWith(".msg.json") && !f.endsWith(".msg.json.tmp"));
+	const msgFiles = entries.filter((f) => f.endsWith(".msg.json") && !f.endsWith(".msg.json.tmp"));
 	const messages: MailboxMessage[] = [];
 
 	for (const filename of msgFiles) {
@@ -455,7 +456,9 @@ export function readOutbox(
 			if (isValidMailboxMessage(parsed)) {
 				messages.push(parsed);
 			}
-		} catch { /* skip malformed */ }
+		} catch {
+			/* skip malformed */
+		}
 	}
 
 	messages.sort((a, b) => a.timestamp - b.timestamp);
@@ -484,12 +487,19 @@ export function readOutboxHistory(
 	const outboxDir = sessionOutboxDir(stateRoot, batchId, agentId);
 	const results: Array<{ message: MailboxMessage; acked: boolean }> = [];
 
-	for (const [dir, acked] of [[outboxDir, false], [join(outboxDir, "processed"), true]] as const) {
+	for (const [dir, acked] of [
+		[outboxDir, false],
+		[join(outboxDir, "processed"), true],
+	] as const) {
 		if (!existsSync(dir)) continue;
 		let entries: string[];
-		try { entries = readdirSync(dir); } catch { continue; }
+		try {
+			entries = readdirSync(dir);
+		} catch {
+			continue;
+		}
 
-		const msgFiles = entries.filter(f => f.endsWith(".msg.json") && !f.endsWith(".msg.json.tmp"));
+		const msgFiles = entries.filter((f) => f.endsWith(".msg.json") && !f.endsWith(".msg.json.tmp"));
 		for (const filename of msgFiles) {
 			try {
 				const raw = readFileSync(join(dir, filename), "utf-8");
@@ -497,7 +507,9 @@ export function readOutboxHistory(
 				if (isValidMailboxMessage(parsed)) {
 					results.push({ message: parsed, acked });
 				}
-			} catch { /* skip malformed */ }
+			} catch {
+				/* skip malformed */
+			}
 		}
 	}
 
@@ -512,12 +524,7 @@ export function readOutboxHistory(
  *
  * @since TP-106
  */
-export function ackOutboxMessage(
-	stateRoot: string,
-	batchId: string,
-	agentId: string,
-	messageId: string,
-): boolean {
+export function ackOutboxMessage(stateRoot: string, batchId: string, agentId: string, messageId: string): boolean {
 	const outboxDir = sessionOutboxDir(stateRoot, batchId, agentId);
 	const processedDir = join(outboxDir, "processed");
 	const file = `${messageId}.msg.json`;
@@ -549,22 +556,16 @@ export function ackOutboxMessage(
  *
  * @since TP-091
  */
-export function discoverMailboxAgentIds(
-	stateRoot: string,
-	batchId: string,
-): string[] {
+export function discoverMailboxAgentIds(stateRoot: string, batchId: string): string[] {
 	const mbRoot = join(stateRoot, ".pi", MAILBOX_DIR_NAME, batchId);
 	if (!existsSync(mbRoot)) return [];
 	try {
 		const entries = readdirSync(mbRoot, { withFileTypes: true });
-		return entries
-			.filter(e => e.isDirectory() && e.name !== "_broadcast")
-			.map(e => e.name);
+		return entries.filter((e) => e.isDirectory() && e.name !== "_broadcast").map((e) => e.name);
 	} catch {
 		return [];
 	}
 }
-
 
 export type MailboxAuditEventType =
 	| "message_sent"
@@ -599,18 +600,13 @@ export function appendMailboxAuditEvent(
 	const eventsPath = join(mailboxRoot(stateRoot, batchId), "events.jsonl");
 	try {
 		mkdirSync(dirname(eventsPath), { recursive: true });
-		appendFileSync(
-			eventsPath,
-			JSON.stringify({ batchId, ts: event.ts ?? Date.now(), ...event }) + "\n",
-			"utf-8",
-		);
+		appendFileSync(eventsPath, JSON.stringify({ batchId, ts: event.ts ?? Date.now(), ...event }) + "\n", "utf-8");
 	} catch (err) {
 		process.stderr.write(
 			`[mailbox] WARNING: failed to append mailbox event: ${err instanceof Error ? err.message : String(err)}\n`,
 		);
 	}
 }
-
 
 // ── Broadcast (TP-106) ────────────────────────────────────────
 
@@ -637,7 +633,6 @@ export function writeBroadcastMessage(
 		from: opts.from || "supervisor",
 	});
 }
-
 
 // ── Rate Limiting (TP-106) ─────────────────────────────────────
 

@@ -73,8 +73,8 @@ describe("1.x: Agent-host exit interception (TP-172)", () => {
 		expect(agentHostSrc).toContain("interceptionCount:");
 		expect(agentHostSrc).toContain("assistantMessage:");
 		expect(agentHostSrc).toContain("supervisorConsulted:");
-		expect(agentHostSrc).toContain("action: \"reprompt\"");
-		expect(agentHostSrc).toContain("action: \"close\"");
+		expect(agentHostSrc).toContain('action: "reprompt"');
+		expect(agentHostSrc).toContain('action: "close"');
 	});
 
 	it("1.9: callback invocation is wrapped for synchronous throw safety", () => {

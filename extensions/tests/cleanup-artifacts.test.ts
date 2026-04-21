@@ -68,8 +68,8 @@ describe("TP-168: Cleanup constants", () => {
 
 describe("TP-168: Age sweep covers all artifact types", () => {
 	const now = Date.now();
-	const staleTime = now - (4 * 24 * 60 * 60 * 1000); // 4 days ago (> 3 day threshold)
-	const freshTime = now - (1 * 24 * 60 * 60 * 1000); // 1 day ago (< 3 day threshold)
+	const staleTime = now - 4 * 24 * 60 * 60 * 1000; // 4 days ago (> 3 day threshold)
+	const freshTime = now - 1 * 24 * 60 * 60 * 1000; // 1 day ago (< 3 day threshold)
 
 	it("deletes stale telemetry .jsonl files", () => {
 		const root = createTempRoot();
@@ -125,16 +125,8 @@ describe("TP-168: Age sweep covers all artifact types", () => {
 
 	it("deletes stale worker-conversation-*.jsonl files", () => {
 		const root = createTempRoot();
-		createFileWithMtime(
-			join(root, ".pi", "worker-conversation-batch123-lane1.jsonl"),
-			"[]",
-			staleTime,
-		);
-		createFileWithMtime(
-			join(root, ".pi", "worker-conversation-batch456-lane2.jsonl"),
-			"[]",
-			freshTime,
-		);
+		createFileWithMtime(join(root, ".pi", "worker-conversation-batch123-lane1.jsonl"), "[]", staleTime);
+		createFileWithMtime(join(root, ".pi", "worker-conversation-batch456-lane2.jsonl"), "[]", freshTime);
 
 		const result = sweepStaleArtifacts(root, inactiveDeps(now));
 		assert.equal(result.staleFilesDeleted, 1);
@@ -144,16 +136,8 @@ describe("TP-168: Age sweep covers all artifact types", () => {
 
 	it("deletes stale lane-state-*.json files", () => {
 		const root = createTempRoot();
-		createFileWithMtime(
-			join(root, ".pi", "lane-state-batch123-lane1.json"),
-			"{}",
-			staleTime,
-		);
-		createFileWithMtime(
-			join(root, ".pi", "lane-state-batch456-lane2.json"),
-			"{}",
-			freshTime,
-		);
+		createFileWithMtime(join(root, ".pi", "lane-state-batch123-lane1.json"), "{}", staleTime);
+		createFileWithMtime(join(root, ".pi", "lane-state-batch456-lane2.json"), "{}", freshTime);
 
 		const result = sweepStaleArtifacts(root, inactiveDeps(now));
 		assert.equal(result.staleFilesDeleted, 1);
@@ -163,11 +147,7 @@ describe("TP-168: Age sweep covers all artifact types", () => {
 
 	it("skips sweep when batch is active", () => {
 		const root = createTempRoot();
-		createFileWithMtime(
-			join(root, ".pi", "lane-state-batch123.json"),
-			"{}",
-			staleTime,
-		);
+		createFileWithMtime(join(root, ".pi", "lane-state-batch123.json"), "{}", staleTime);
 
 		const result = sweepStaleArtifacts(root, {
 			isBatchActive: () => true,
@@ -184,18 +164,10 @@ describe("TP-168: Age sweep covers all artifact types", () => {
 		mkdirSync(telDir, { recursive: true });
 
 		// File just barely within threshold (2 days ago)
-		const withinTime = now - (2 * 24 * 60 * 60 * 1000);
+		const withinTime = now - 2 * 24 * 60 * 60 * 1000;
 		createFileWithMtime(join(telDir, "recent.jsonl"), "data", withinTime);
-		createFileWithMtime(
-			join(root, ".pi", "worker-conversation-recent.jsonl"),
-			"[]",
-			withinTime,
-		);
-		createFileWithMtime(
-			join(root, ".pi", "lane-state-recent.json"),
-			"{}",
-			withinTime,
-		);
+		createFileWithMtime(join(root, ".pi", "worker-conversation-recent.jsonl"), "[]", withinTime);
+		createFileWithMtime(join(root, ".pi", "lane-state-recent.json"), "{}", withinTime);
 
 		const result = sweepStaleArtifacts(root, inactiveDeps(now));
 		assert.equal(result.staleFilesDeleted, 0);

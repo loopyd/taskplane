@@ -181,4 +181,3 @@ describe("dashboard parseTelemetryFilename (source extraction)", () => {
 });
 
 // ── 5. Functional tests — generateTelemetryPaths ────────────────────
-

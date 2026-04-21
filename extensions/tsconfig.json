@@ -9,6 +9,7 @@
     "skipLibCheck": true,
     "allowImportingTsExtensions": true,
     "noImplicitAny": false,
+    "ignoreDeprecations": "6.0",
     "typeRoots": ["../web/node_modules/@types"],
     "baseUrl": "."
   },

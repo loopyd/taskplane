@@ -6,24 +6,127 @@ import { existsSync, readdirSync, readFileSync, renameSync, unlinkSync } from "f
 import { join, resolve } from "path";
 
 import { formatDiscoveryResults, runDiscovery } from "./discovery.ts";
-import { buildReviewerEnv, buildWorkerExcludeEnv, computeTransitiveDependents, execLog, executeLaneV2, executeWave, killV2LaneAgents, resolveCanonicalTaskPaths } from "./execution.ts";
+import {
+	buildReviewerEnv,
+	buildWorkerExcludeEnv,
+	computeTransitiveDependents,
+	execLog,
+	executeLaneV2,
+	executeWave,
+	killV2LaneAgents,
+	resolveCanonicalTaskPaths,
+} from "./execution.ts";
 import type { RuntimeBackend } from "./execution.ts";
 import type { MonitorUpdateCallback } from "./execution.ts";
 // classifyExit no longer called directly — Tier 0 uses exitDiagnostic.classification
 // from the diagnostic-reports pipeline (populated by assembleDiagnosticInput).
 import { getCurrentBranch, runGit } from "./git.ts";
 import { killAllMergeAgentsV2, mergeWaveByRepo, MergeHealthMonitor } from "./merge.ts";
-import { applyMergeRetryLoop, computeCleanupGatePolicy, computeMergeFailurePolicy, extractFailedRepoId, formatRepoMergeSummary, ORCH_MESSAGES } from "./messages.ts";
+import {
+	applyMergeRetryLoop,
+	computeCleanupGatePolicy,
+	computeMergeFailurePolicy,
+	extractFailedRepoId,
+	formatRepoMergeSummary,
+	ORCH_MESSAGES,
+} from "./messages.ts";
 import type { CleanupGateRepoFailure } from "./messages.ts";
 import { assembleDiagnosticInput, emitDiagnosticReports } from "./diagnostic-reports.ts";
 import { resolveOperatorId } from "./naming.ts";
-import { applyPartialProgressToOutcomes, buildTier0EventBase, deleteBatchState, emitEngineEvent, emitTier0Event, loadBatchHistory, loadBatchState, persistRuntimeState, saveBatchHistory, seedPendingOutcomesForAllocatedLanes, syncTaskOutcomesFromMonitor, upsertTaskOutcome } from "./persistence.ts";
-import { readRegistrySnapshot, isTerminalStatus, isProcessAlive as registryIsProcessAlive } from "./process-registry.ts";
-import { buildBatchProgressSnapshot, buildEngineEventBase, buildSegmentId, buildSupervisorSegmentFrontierSnapshot, defaultResilienceState, FATAL_DISCOVERY_CODES, generateBatchId, TIER0_RETRYABLE_CLASSIFICATIONS, TIER0_RETRY_BUDGETS, tier0ScopeKey, tier0WaveScopeKey } from "./types.ts";
-import type { AllocatedLane, AllocatedTask, BatchHistorySummary, BatchTaskSummary, BatchWaveSummary, DiscoveryResult, EngineEventCallback, EscalationContext, LaneExecutionResult, LaneTaskOutcome, MergeWaveResult, OrchBatchPhase, OrchBatchRuntimeState, OrchestratorConfig, ParsedTask, PersistedSegmentRecord, SegmentExpansionRequest, SupervisorAlert, SupervisorAlertCallback, TaskRunnerConfig, TaskSegmentPlan, TaskSegmentPlanMap, TaskSegmentNode, Tier0EscalationPattern, Tier0RecoveryPattern, TokenCounts, WaveExecutionResult, WorkspaceConfig } from "./types.ts";
-import { buildDependencyGraph, computeWaveAssignments, resolveBaseBranch, resolveRepoRoot, validateGraph } from "./waves.ts";
-import { deleteBranchBestEffort, forceCleanupWorktree, formatPreflightResults, listWorktrees, preserveFailedLaneProgress, preserveSkippedLaneProgress, removeAllWorktrees, removeWorktree, runPreflight, safeResetWorktree, sleepSync } from "./worktree.ts";
-import { runPreflightCleanup, formatPreflightCleanup, enforceTelemetrySizeCap, formatSizeCap, cleanupPriorBatchArtifacts, formatPriorBatchCleanup } from "./cleanup.ts";
+import {
+	applyPartialProgressToOutcomes,
+	buildTier0EventBase,
+	deleteBatchState,
+	emitEngineEvent,
+	emitTier0Event,
+	loadBatchHistory,
+	loadBatchState,
+	persistRuntimeState,
+	saveBatchHistory,
+	seedPendingOutcomesForAllocatedLanes,
+	syncTaskOutcomesFromMonitor,
+	upsertTaskOutcome,
+} from "./persistence.ts";
+import {
+	readRegistrySnapshot,
+	isTerminalStatus,
+	isProcessAlive as registryIsProcessAlive,
+} from "./process-registry.ts";
+import {
+	buildBatchProgressSnapshot,
+	buildEngineEventBase,
+	buildSegmentId,
+	buildSupervisorSegmentFrontierSnapshot,
+	defaultResilienceState,
+	FATAL_DISCOVERY_CODES,
+	generateBatchId,
+	TIER0_RETRYABLE_CLASSIFICATIONS,
+	TIER0_RETRY_BUDGETS,
+	tier0ScopeKey,
+	tier0WaveScopeKey,
+} from "./types.ts";
+import type {
+	AllocatedLane,
+	AllocatedTask,
+	BatchHistorySummary,
+	BatchTaskSummary,
+	BatchWaveSummary,
+	DiscoveryResult,
+	EngineEventCallback,
+	EscalationContext,
+	LaneExecutionResult,
+	LaneTaskOutcome,
+	MergeWaveResult,
+	OrchBatchPhase,
+	OrchBatchRuntimeState,
+	OrchestratorConfig,
+	ParsedTask,
+	PersistedSegmentRecord,
+	SegmentExpansionRequest,
+	SupervisorAlert,
+	SupervisorAlertCallback,
+	TaskRunnerConfig,
+	TaskSegmentPlan,
+	TaskSegmentPlanMap,
+	TaskSegmentNode,
+	Tier0EscalationPattern,
+	Tier0RecoveryPattern,
+	TokenCounts,
+	WaveExecutionResult,
+	WorkspaceConfig,
+} from "./types.ts";
+import {
+	buildDependencyGraph,
+	computeWaveAssignments,
+	resolveBaseBranch,
+	resolveRepoRoot,
+	validateGraph,
+} from "./waves.ts";
+import {
+	deleteBranchBestEffort,
+	forceCleanupWorktree,
+	formatPreflightResults,
+	listWorktrees,
+	preserveFailedLaneProgress,
+	preserveSkippedLaneProgress,
+	removeAllWorktrees,
+	removeWorktree,
+	runPreflight,
+	safeResetWorktree,
+	sleepSync,
+} from "./worktree.ts";
+import {
+	runPreflightCleanup,
+	formatPreflightCleanup,
+	enforceTelemetrySizeCap,
+	formatSizeCap,
+	cleanupPriorBatchArtifacts,
+	formatPriorBatchCleanup,
+	sweepStaleArtifacts,
+	formatPreflightSweep,
+	rotateSupervisorLogs,
+	formatLogRotation,
+} from "./cleanup.ts";
 
 // ── Tier 0: Automatic Recovery Helpers (TP-039) ─────────────────────
 
@@ -47,7 +150,9 @@ function emitTier0Escalation(
 	lastError: string,
 	affectedTasks: string[],
 	suggestion: string,
-	extra?: Partial<Pick<import("./persistence.ts").Tier0Event, "taskId" | "laneNumber" | "repoId" | "classification" | "scopeKey">>,
+	extra?: Partial<
+		Pick<import("./persistence.ts").Tier0Event, "taskId" | "laneNumber" | "repoId" | "classification" | "scopeKey">
+	>,
 ): void {
 	const escalation: EscalationContext = {
 		pattern,
@@ -107,8 +212,9 @@ export function resolveBatchHistoryTaskTokens(
 		if (v2) return v2;
 	}
 
-	const bySession = legacyLaneTokensByKey.get(outcome.sessionName)
-		|| legacyLaneTokensByKey.get(outcome.sessionName?.replace(/-(?:worker|reviewer)$/, ""));
+	const bySession =
+		legacyLaneTokensByKey.get(outcome.sessionName) ||
+		legacyLaneTokensByKey.get(outcome.sessionName?.replace(/-(?:worker|reviewer)$/, ""));
 	if (bySession) return bySession;
 
 	if (laneNumber > 0) {
@@ -142,7 +248,10 @@ function buildSegmentDependencyMap(plan: TaskSegmentPlan): Map<string, string[]>
 		depsBySegmentId.get(edge.toSegmentId)!.push(edge.fromSegmentId);
 	}
 	for (const [segmentId, deps] of depsBySegmentId.entries()) {
-		depsBySegmentId.set(segmentId, [...new Set(deps)].sort((a, b) => a.localeCompare(b)));
+		depsBySegmentId.set(
+			segmentId,
+			[...new Set(deps)].sort((a, b) => a.localeCompare(b)),
+		);
 	}
 	return depsBySegmentId;
 }
@@ -205,7 +314,12 @@ function parseSegmentExpansionRequestPayload(payload: unknown): SegmentExpansion
 	if (typeof candidate.requestId !== "string" || !candidate.requestId.trim()) return null;
 	if (typeof candidate.taskId !== "string" || !candidate.taskId.trim()) return null;
 	if (typeof candidate.fromSegmentId !== "string" || !candidate.fromSegmentId.trim()) return null;
-	if (!Array.isArray(candidate.requestedRepoIds) || candidate.requestedRepoIds.length === 0 || candidate.requestedRepoIds.some((repoId) => typeof repoId !== "string" || !repoId.trim())) return null;
+	if (
+		!Array.isArray(candidate.requestedRepoIds) ||
+		candidate.requestedRepoIds.length === 0 ||
+		candidate.requestedRepoIds.some((repoId) => typeof repoId !== "string" || !repoId.trim())
+	)
+		return null;
 	if (typeof candidate.rationale !== "string") return null;
 	if (candidate.placement !== "after-current" && candidate.placement !== "end") return null;
 	if (!Array.isArray(candidate.edges)) return null;
@@ -276,7 +390,10 @@ function parseSegmentExpansionRequests(filePaths: string[]): {
 	return { valid, malformed };
 }
 
-function markSegmentExpansionRequestFile(filePath: string, stateSuffix: "invalid" | "discarded" | "rejected" | "processed"): boolean {
+function markSegmentExpansionRequestFile(
+	filePath: string,
+	stateSuffix: "invalid" | "discarded" | "rejected" | "processed",
+): boolean {
 	try {
 		renameSync(filePath, `${filePath}.${stateSuffix}`);
 		return true;
@@ -440,7 +557,10 @@ function buildOutgoingBySegmentId(dependsOnBySegmentId: Map<string, string[]>): 
 		}
 	}
 	for (const [segmentId, outgoing] of outgoingBySegmentId.entries()) {
-		outgoingBySegmentId.set(segmentId, [...new Set(outgoing)].sort((a, b) => a.localeCompare(b)));
+		outgoingBySegmentId.set(
+			segmentId,
+			[...new Set(outgoing)].sort((a, b) => a.localeCompare(b)),
+		);
 	}
 	return outgoingBySegmentId;
 }
@@ -464,9 +584,7 @@ function recomputeNextPendingSegmentIndex(segmentState: SegmentFrontierTaskState
 	const nextPendingIndex = segmentState.orderedSegments.findIndex((segment) => {
 		return segmentState.statusBySegmentId.get(segment.segmentId) === "pending";
 	});
-	segmentState.nextSegmentIndex = nextPendingIndex >= 0
-		? nextPendingIndex
-		: segmentState.orderedSegments.length;
+	segmentState.nextSegmentIndex = nextPendingIndex >= 0 ? nextPendingIndex : segmentState.orderedSegments.length;
 }
 
 function hasTaskInFutureSegmentRounds(segmentRounds: string[][], fromIndex: number, taskId: string): boolean {
@@ -495,10 +613,7 @@ export function scheduleContinuationSegmentRound(
 	return continuationWave;
 }
 
-function buildRepoMaxSequenceByRepo(
-	orderedSegments: TaskSegmentNode[],
-	taskId: string,
-): Map<string, number> {
+function buildRepoMaxSequenceByRepo(orderedSegments: TaskSegmentNode[], taskId: string): Map<string, number> {
 	const maxSequenceByRepo = new Map<string, number>();
 	for (const segment of orderedSegments) {
 		const repoId = segment.repoId;
@@ -535,7 +650,10 @@ export function applySegmentExpansionMutation(
 
 	const dependencyMap = new Map<string, string[]>();
 	for (const [segmentId, deps] of segmentState.dependsOnBySegmentId.entries()) {
-		dependencyMap.set(segmentId, [...new Set(deps)].sort((a, b) => a.localeCompare(b)));
+		dependencyMap.set(
+			segmentId,
+			[...new Set(deps)].sort((a, b) => a.localeCompare(b)),
+		);
 	}
 	for (const segmentId of existingNodeById.keys()) {
 		if (!dependencyMap.has(segmentId)) {
@@ -764,9 +882,7 @@ export function upsertPendingExpandedSegmentRecords(
 		}
 
 		const dependsOnSegmentIds = segmentState.dependsOnBySegmentId.get(segmentId) ?? [];
-		const nextExpandedFrom = insertedSegmentIdSet.has(segmentId)
-			? expandedFrom
-			: existing?.expandedFrom;
+		const nextExpandedFrom = insertedSegmentIdSet.has(segmentId) ? expandedFrom : existing?.expandedFrom;
 		const nextExpansionRequestId = insertedSegmentIdSet.has(segmentId)
 			? expansionRequestId
 			: existing?.expansionRequestId;
@@ -795,21 +911,21 @@ export function upsertPendingExpandedSegmentRecords(
 		}
 
 		const recordChanged =
-			existing.taskId !== next.taskId
-			|| existing.repoId !== next.repoId
-			|| existing.status !== next.status
-			|| existing.laneId !== next.laneId
-			|| existing.sessionName !== next.sessionName
-			|| existing.worktreePath !== next.worktreePath
-			|| existing.branch !== next.branch
-			|| existing.startedAt !== next.startedAt
-			|| existing.endedAt !== next.endedAt
-			|| existing.retries !== next.retries
-			|| existing.exitReason !== next.exitReason
-			|| existing.dependsOnSegmentIds.length !== next.dependsOnSegmentIds.length
-			|| existing.dependsOnSegmentIds.some((depSegmentId, idx) => depSegmentId !== next.dependsOnSegmentIds[idx])
-			|| existing.expandedFrom !== next.expandedFrom
-			|| existing.expansionRequestId !== next.expansionRequestId;
+			existing.taskId !== next.taskId ||
+			existing.repoId !== next.repoId ||
+			existing.status !== next.status ||
+			existing.laneId !== next.laneId ||
+			existing.sessionName !== next.sessionName ||
+			existing.worktreePath !== next.worktreePath ||
+			existing.branch !== next.branch ||
+			existing.startedAt !== next.startedAt ||
+			existing.endedAt !== next.endedAt ||
+			existing.retries !== next.retries ||
+			existing.exitReason !== next.exitReason ||
+			existing.dependsOnSegmentIds.length !== next.dependsOnSegmentIds.length ||
+			existing.dependsOnSegmentIds.some((depSegmentId, idx) => depSegmentId !== next.dependsOnSegmentIds[idx]) ||
+			existing.expandedFrom !== next.expandedFrom ||
+			existing.expansionRequestId !== next.expansionRequestId;
 
 		if (recordChanged) {
 			Object.assign(existing, next);
@@ -874,9 +990,7 @@ function upsertRunningSegmentRecord(
 	const existing = segmentRecords.find((record) => record.segmentId === activeSegmentId);
 	const now = Date.now();
 
-	const restarted = !!existing
-		&& existing.status !== "running"
-		&& existing.startedAt !== null;
+	const restarted = !!existing && existing.status !== "running" && existing.startedAt !== null;
 
 	const next: PersistedSegmentRecord = {
 		segmentId: activeSegmentId,
@@ -887,20 +1001,12 @@ function upsertRunningSegmentRecord(
 		sessionName: lane.laneSessionId,
 		worktreePath: lane.worktreePath,
 		branch: lane.branch,
-		startedAt: existing?.status === "running"
-			? existing.startedAt
-			: (existing?.startedAt ?? now),
+		startedAt: existing?.status === "running" ? existing.startedAt : (existing?.startedAt ?? now),
 		endedAt: null,
-		retries: existing
-			? existing.retries + (restarted ? 1 : 0)
-			: 0,
-		exitReason: existing?.status === "running"
-			? existing.exitReason
-			: "Segment running",
+		retries: existing ? existing.retries + (restarted ? 1 : 0) : 0,
+		exitReason: existing?.status === "running" ? existing.exitReason : "Segment running",
 		dependsOnSegmentIds,
-		exitDiagnostic: existing?.status === "running"
-			? existing.exitDiagnostic
-			: undefined,
+		exitDiagnostic: existing?.status === "running" ? existing.exitDiagnostic : undefined,
 		expandedFrom: existing?.expandedFrom,
 		expansionRequestId: existing?.expansionRequestId,
 	};
@@ -911,22 +1017,22 @@ function upsertRunningSegmentRecord(
 	}
 
 	const changed =
-		existing.taskId !== next.taskId
-		|| existing.repoId !== next.repoId
-		|| existing.status !== next.status
-		|| existing.laneId !== next.laneId
-		|| existing.sessionName !== next.sessionName
-		|| existing.worktreePath !== next.worktreePath
-		|| existing.branch !== next.branch
-		|| existing.startedAt !== next.startedAt
-		|| existing.endedAt !== next.endedAt
-		|| existing.retries !== next.retries
-		|| existing.exitReason !== next.exitReason
-		|| existing.dependsOnSegmentIds.length !== next.dependsOnSegmentIds.length
-		|| existing.dependsOnSegmentIds.some((segmentId, idx) => segmentId !== next.dependsOnSegmentIds[idx])
-		|| existing.exitDiagnostic !== next.exitDiagnostic
-		|| existing.expandedFrom !== next.expandedFrom
-		|| existing.expansionRequestId !== next.expansionRequestId;
+		existing.taskId !== next.taskId ||
+		existing.repoId !== next.repoId ||
+		existing.status !== next.status ||
+		existing.laneId !== next.laneId ||
+		existing.sessionName !== next.sessionName ||
+		existing.worktreePath !== next.worktreePath ||
+		existing.branch !== next.branch ||
+		existing.startedAt !== next.startedAt ||
+		existing.endedAt !== next.endedAt ||
+		existing.retries !== next.retries ||
+		existing.exitReason !== next.exitReason ||
+		existing.dependsOnSegmentIds.length !== next.dependsOnSegmentIds.length ||
+		existing.dependsOnSegmentIds.some((segmentId, idx) => segmentId !== next.dependsOnSegmentIds[idx]) ||
+		existing.exitDiagnostic !== next.exitDiagnostic ||
+		existing.expandedFrom !== next.expandedFrom ||
+		existing.expansionRequestId !== next.expansionRequestId;
 
 	if (changed) {
 		Object.assign(existing, next);
@@ -950,9 +1056,7 @@ function upsertTerminalSegmentRecord(
 	const existing = segmentRecords.find((record) => record.segmentId === segmentId);
 	const now = Date.now();
 	const dependsOnSegmentIds = segmentState.dependsOnBySegmentId.get(segmentId) ?? [];
-	const nextExitDiagnostic = status === "failed"
-		? (outcome?.exitDiagnostic ?? existing?.exitDiagnostic)
-		: undefined;
+	const nextExitDiagnostic = status === "failed" ? (outcome?.exitDiagnostic ?? existing?.exitDiagnostic) : undefined;
 
 	const next: PersistedSegmentRecord = {
 		segmentId,
@@ -966,11 +1070,9 @@ function upsertTerminalSegmentRecord(
 		startedAt: existing?.startedAt ?? outcome?.startTime ?? now,
 		endedAt: outcome?.endTime ?? now,
 		retries: existing?.retries ?? 0,
-		exitReason: outcome?.exitReason ?? (status === "succeeded"
-			? "Segment completed"
-			: status === "failed"
-			? "Segment failed"
-			: "Segment skipped"),
+		exitReason:
+			outcome?.exitReason ??
+			(status === "succeeded" ? "Segment completed" : status === "failed" ? "Segment failed" : "Segment skipped"),
 		dependsOnSegmentIds,
 		exitDiagnostic: nextExitDiagnostic,
 		expandedFrom: existing?.expandedFrom,
@@ -983,22 +1085,22 @@ function upsertTerminalSegmentRecord(
 	}
 
 	const changed =
-		existing.taskId !== next.taskId
-		|| existing.repoId !== next.repoId
-		|| existing.status !== next.status
-		|| existing.laneId !== next.laneId
-		|| existing.sessionName !== next.sessionName
-		|| existing.worktreePath !== next.worktreePath
-		|| existing.branch !== next.branch
-		|| existing.startedAt !== next.startedAt
-		|| existing.endedAt !== next.endedAt
-		|| existing.retries !== next.retries
-		|| existing.exitReason !== next.exitReason
-		|| existing.dependsOnSegmentIds.length !== next.dependsOnSegmentIds.length
-		|| existing.dependsOnSegmentIds.some((depSegmentId, idx) => depSegmentId !== next.dependsOnSegmentIds[idx])
-		|| existing.exitDiagnostic !== next.exitDiagnostic
-		|| existing.expandedFrom !== next.expandedFrom
-		|| existing.expansionRequestId !== next.expansionRequestId;
+		existing.taskId !== next.taskId ||
+		existing.repoId !== next.repoId ||
+		existing.status !== next.status ||
+		existing.laneId !== next.laneId ||
+		existing.sessionName !== next.sessionName ||
+		existing.worktreePath !== next.worktreePath ||
+		existing.branch !== next.branch ||
+		existing.startedAt !== next.startedAt ||
+		existing.endedAt !== next.endedAt ||
+		existing.retries !== next.retries ||
+		existing.exitReason !== next.exitReason ||
+		existing.dependsOnSegmentIds.length !== next.dependsOnSegmentIds.length ||
+		existing.dependsOnSegmentIds.some((depSegmentId, idx) => depSegmentId !== next.dependsOnSegmentIds[idx]) ||
+		existing.exitDiagnostic !== next.exitDiagnostic ||
+		existing.expandedFrom !== next.expandedFrom ||
+		existing.expansionRequestId !== next.expansionRequestId;
 
 	if (changed) {
 		Object.assign(existing, next);
@@ -1056,7 +1158,7 @@ export function linearizeTaskSegmentPlan(plan: TaskSegmentPlan): TaskSegmentNode
 
 	const ready: TaskSegmentNode[] = plan.segments
 		.filter((segment) => (indegree.get(segment.segmentId) ?? 0) === 0)
-		.sort((a, b) => (a.order - b.order) || a.segmentId.localeCompare(b.segmentId));
+		.sort((a, b) => a.order - b.order || a.segmentId.localeCompare(b.segmentId));
 
 	const ordered: TaskSegmentNode[] = [];
 	while (ready.length > 0) {
@@ -1069,7 +1171,7 @@ export function linearizeTaskSegmentPlan(plan: TaskSegmentPlan): TaskSegmentNode
 				const depNode = nodeById.get(dep);
 				if (depNode) {
 					ready.push(depNode);
-					ready.sort((a, b) => (a.order - b.order) || a.segmentId.localeCompare(b.segmentId));
+					ready.sort((a, b) => a.order - b.order || a.segmentId.localeCompare(b.segmentId));
 				}
 			}
 		}
@@ -1077,7 +1179,7 @@ export function linearizeTaskSegmentPlan(plan: TaskSegmentPlan): TaskSegmentNode
 
 	// Defensive fallback: malformed/cyclic plans retain deterministic segment order.
 	if (ordered.length !== plan.segments.length) {
-		return [...plan.segments].sort((a, b) => (a.order - b.order) || a.segmentId.localeCompare(b.segmentId));
+		return [...plan.segments].sort((a, b) => a.order - b.order || a.segmentId.localeCompare(b.segmentId));
 	}
 
 	return ordered;
@@ -1127,8 +1229,8 @@ export function resolveDisplayWaveNumber(
 	fallbackTotal?: number,
 ): { displayWave: number; displayTotal: number } {
 	const taskWaveIdx = roundToTaskWave?.[roundIdx];
-	const displayWave = (taskWaveIdx != null) ? taskWaveIdx + 1 : roundIdx + 1;
-	const displayTotal = taskLevelWaveCount ?? fallbackTotal ?? (roundIdx + 1);
+	const displayWave = taskWaveIdx != null ? taskWaveIdx + 1 : roundIdx + 1;
+	const displayTotal = taskLevelWaveCount ?? fallbackTotal ?? roundIdx + 1;
 	return { displayWave, displayTotal };
 }
 
@@ -1163,16 +1265,16 @@ export function buildSegmentFrontierWaves(
 			// Resolve packetTaskPath to absolute so it works from any repo's worktree.
 			// task.taskFolder is relative to workspace root (e.g., "shared-libs/task-management/.../TP-004").
 			// When a segment executes in a different repo, the lane worktree won't contain this path.
-			task.packetTaskPath = workspaceRoot
-				? resolve(workspaceRoot, task.taskFolder)
-				: task.taskFolder;
+			task.packetTaskPath = workspaceRoot ? resolve(workspaceRoot, task.taskFolder) : task.taskFolder;
 		}
 
 		taskStateById.set(taskId, {
 			taskId,
 			orderedSegments,
 			nextSegmentIndex: 0,
-			statusBySegmentId: new Map(orderedSegments.map((segment) => [segment.segmentId, "pending" as SegmentLifecycleStatus])),
+			statusBySegmentId: new Map(
+				orderedSegments.map((segment) => [segment.segmentId, "pending" as SegmentLifecycleStatus]),
+			),
 			dependsOnBySegmentId,
 			terminalStatus: "pending",
 		});
@@ -1264,7 +1366,7 @@ async function attemptWorkerCrashRetry(
 		if (!lane) continue;
 
 		// Find the task outcome to get exit info
-		const outcome = allTaskOutcomes.find(o => o.taskId === taskId);
+		const outcome = allTaskOutcomes.find((o) => o.taskId === taskId);
 		if (!outcome) continue;
 
 		// Use the canonical exit diagnostic classification when available.
@@ -1275,7 +1377,9 @@ async function attemptWorkerCrashRetry(
 		const classification = outcome.exitDiagnostic?.classification;
 
 		if (!classification) {
-			execLog("batch", batchState.batchId,
+			execLog(
+				"batch",
+				batchState.batchId,
 				`tier0: task ${taskId} has no exit diagnostic classification — skipping auto-retry (conservative)`,
 			);
 			continue;
@@ -1283,7 +1387,9 @@ async function attemptWorkerCrashRetry(
 
 		// Check if retryable
 		if (!TIER0_RETRYABLE_CLASSIFICATIONS.has(classification)) {
-			execLog("batch", batchState.batchId,
+			execLog(
+				"batch",
+				batchState.batchId,
 				`tier0: task ${taskId} exit classification "${classification}" is not retryable — skipping`,
 			);
 			continue;
@@ -1291,7 +1397,9 @@ async function attemptWorkerCrashRetry(
 
 		// model_access_error is handled by attemptModelFallbackRetry() — skip here
 		if (classification === "model_access_error") {
-			execLog("batch", batchState.batchId,
+			execLog(
+				"batch",
+				batchState.batchId,
 				`tier0: task ${taskId} classified as model_access_error — deferring to model fallback handler`,
 			);
 			continue;
@@ -1301,13 +1409,22 @@ async function attemptWorkerCrashRetry(
 		const scopeKey = tier0ScopeKey("worker_crash", taskId, waveIdx);
 		const currentCount = batchState.resilience.retryCountByScope[scopeKey] ?? 0;
 		if (currentCount >= budget.maxRetries) {
-			execLog("batch", batchState.batchId,
+			execLog(
+				"batch",
+				batchState.batchId,
 				`tier0: task ${taskId} retry budget exhausted (${currentCount}/${budget.maxRetries}) — skipping`,
 				{ scopeKey },
 			);
 			// Emit exhausted event
 			emitTier0Event(stateRoot, {
-				...buildTier0EventBase("tier0_recovery_exhausted", batchState.batchId, waveIdx, "worker_crash", currentCount, budget.maxRetries),
+				...buildTier0EventBase(
+					"tier0_recovery_exhausted",
+					batchState.batchId,
+					waveIdx,
+					"worker_crash",
+					currentCount,
+					budget.maxRetries,
+				),
 				taskId,
 				laneNumber: lane.laneNumber,
 				repoId: lane.repoId ?? null,
@@ -1317,8 +1434,15 @@ async function attemptWorkerCrashRetry(
 				affectedTaskIds: [taskId],
 				suggestion: `Task ${taskId} failed with ${classification} and exhausted ${budget.maxRetries} retry attempt(s). Consider investigating the root cause or manually re-running the task.`,
 			});
-			emitTier0Escalation(stateRoot, batchState.batchId, waveIdx, "worker_crash", currentCount, budget.maxRetries,
-				`Retry budget exhausted for task ${taskId} (${classification})`, [taskId],
+			emitTier0Escalation(
+				stateRoot,
+				batchState.batchId,
+				waveIdx,
+				"worker_crash",
+				currentCount,
+				budget.maxRetries,
+				`Retry budget exhausted for task ${taskId} (${classification})`,
+				[taskId],
 				`Task ${taskId} failed with ${classification} and exhausted ${budget.maxRetries} retry attempt(s). Consider investigating the root cause or manually re-running the task.`,
 				{ taskId, laneNumber: lane.laneNumber, repoId: lane.repoId ?? null, classification, scopeKey },
 			);
@@ -1329,7 +1453,9 @@ async function attemptWorkerCrashRetry(
 		batchState.resilience.retryCountByScope[scopeKey] = currentCount + 1;
 		retriedCount++;
 
-		execLog("batch", batchState.batchId,
+		execLog(
+			"batch",
+			batchState.batchId,
 			`tier0: retrying task ${taskId} (worker_crash, attempt ${currentCount + 1}/${budget.maxRetries}, classification=${classification})`,
 			{ scopeKey, classification },
 		);
@@ -1340,7 +1466,14 @@ async function attemptWorkerCrashRetry(
 
 		// Emit attempt event
 		emitTier0Event(stateRoot, {
-			...buildTier0EventBase("tier0_recovery_attempt", batchState.batchId, waveIdx, "worker_crash", currentCount + 1, budget.maxRetries),
+			...buildTier0EventBase(
+				"tier0_recovery_attempt",
+				batchState.batchId,
+				waveIdx,
+				"worker_crash",
+				currentCount + 1,
+				budget.maxRetries,
+			),
 			taskId,
 			laneNumber: lane.laneNumber,
 			repoId: lane.repoId ?? null,
@@ -1355,7 +1488,7 @@ async function attemptWorkerCrashRetry(
 		}
 
 		// Find the specific AllocatedTask
-		const allocatedTask = lane.tasks.find(t => t.taskId === taskId);
+		const allocatedTask = lane.tasks.find((t) => t.taskId === taskId);
 		if (!allocatedTask) continue;
 
 		// Re-execute: create a single-task lane config for executeLane
@@ -1365,9 +1498,7 @@ async function attemptWorkerCrashRetry(
 		};
 
 		const isWsMode = !!workspaceConfig;
-		const wsRoot = workspaceConfig
-			? resolve(workspaceConfig.configPath, "..", "..")
-			: undefined;
+		const wsRoot = workspaceConfig ? resolve(workspaceConfig.configPath, "..", "..") : undefined;
 
 		try {
 			// Use a fresh pause signal for the retry — the batch pauseSignal
@@ -1381,7 +1512,11 @@ async function attemptWorkerCrashRetry(
 				retryPauseSignal,
 				wsRoot,
 				isWsMode,
-				{ ORCH_BATCH_ID: batchState.batchId, ...buildReviewerEnv(runnerConfig?.reviewer), ...buildWorkerExcludeEnv(runnerConfig?.workerExcludeExtensions) }, // TP-089: ensure mailbox works for retries
+				{
+					ORCH_BATCH_ID: batchState.batchId,
+					...buildReviewerEnv(runnerConfig?.reviewer),
+					...buildWorkerExcludeEnv(runnerConfig?.workerExcludeExtensions),
+				}, // TP-089: ensure mailbox works for retries
 			);
 
 			const retryOutcome = retryResult.tasks[0];
@@ -1395,7 +1530,7 @@ async function attemptWorkerCrashRetry(
 
 				// Update lane results — replace the failed task outcome
 				for (const lr of waveResult.laneResults) {
-					const taskIdx = lr.tasks.findIndex(t => t.taskId === taskId);
+					const taskIdx = lr.tasks.findIndex((t) => t.taskId === taskId);
 					if (taskIdx !== -1) {
 						lr.tasks[taskIdx] = retryOutcome;
 						break;
@@ -1405,18 +1540,19 @@ async function attemptWorkerCrashRetry(
 				// Update allTaskOutcomes
 				upsertTaskOutcome(allTaskOutcomes, retryOutcome);
 
-				execLog("batch", batchState.batchId,
-					`tier0: task ${taskId} retry succeeded`,
-					{ scopeKey },
-				);
-				onNotify(
-					`✅ Tier 0: Task ${taskId} retry succeeded`,
-					"info",
-				);
+				execLog("batch", batchState.batchId, `tier0: task ${taskId} retry succeeded`, { scopeKey });
+				onNotify(`✅ Tier 0: Task ${taskId} retry succeeded`, "info");
 
 				// Emit success event
 				emitTier0Event(stateRoot, {
-					...buildTier0EventBase("tier0_recovery_success", batchState.batchId, waveIdx, "worker_crash", currentCount + 1, budget.maxRetries),
+					...buildTier0EventBase(
+						"tier0_recovery_success",
+						batchState.batchId,
+						waveIdx,
+						"worker_crash",
+						currentCount + 1,
+						budget.maxRetries,
+					),
 					taskId,
 					laneNumber: lane.laneNumber,
 					repoId: lane.repoId ?? null,
@@ -1429,16 +1565,23 @@ async function attemptWorkerCrashRetry(
 				if (retryOutcome) {
 					upsertTaskOutcome(allTaskOutcomes, retryOutcome);
 				}
-				execLog("batch", batchState.batchId,
-					`tier0: task ${taskId} retry failed again`,
-					{ scopeKey, exitReason: retryOutcome?.exitReason },
-				);
+				execLog("batch", batchState.batchId, `tier0: task ${taskId} retry failed again`, {
+					scopeKey,
+					exitReason: retryOutcome?.exitReason,
+				});
 
 				// Emit exhausted event (retry failed and budget now consumed)
 				const retryFailError = retryOutcome?.exitReason ?? `Task ${taskId} retry failed again`;
 				const retryFailSuggestion = `Task ${taskId} failed again after retry (${classification}). The failure may be persistent — investigate task logs.`;
 				emitTier0Event(stateRoot, {
-					...buildTier0EventBase("tier0_recovery_exhausted", batchState.batchId, waveIdx, "worker_crash", currentCount + 1, budget.maxRetries),
+					...buildTier0EventBase(
+						"tier0_recovery_exhausted",
+						batchState.batchId,
+						waveIdx,
+						"worker_crash",
+						currentCount + 1,
+						budget.maxRetries,
+					),
 					taskId,
 					laneNumber: lane.laneNumber,
 					repoId: lane.repoId ?? null,
@@ -1448,23 +1591,35 @@ async function attemptWorkerCrashRetry(
 					affectedTaskIds: [taskId],
 					suggestion: retryFailSuggestion,
 				});
-				emitTier0Escalation(stateRoot, batchState.batchId, waveIdx, "worker_crash", currentCount + 1, budget.maxRetries,
-					retryFailError, [taskId], retryFailSuggestion,
+				emitTier0Escalation(
+					stateRoot,
+					batchState.batchId,
+					waveIdx,
+					"worker_crash",
+					currentCount + 1,
+					budget.maxRetries,
+					retryFailError,
+					[taskId],
+					retryFailSuggestion,
 					{ taskId, laneNumber: lane.laneNumber, repoId: lane.repoId ?? null, classification, scopeKey },
 				);
 			}
 		} catch (err: unknown) {
 			failedRetries.push(taskId);
 			const errMsg = err instanceof Error ? err.message : String(err);
-			execLog("batch", batchState.batchId,
-				`tier0: task ${taskId} retry threw error: ${errMsg}`,
-				{ scopeKey },
-			);
+			execLog("batch", batchState.batchId, `tier0: task ${taskId} retry threw error: ${errMsg}`, { scopeKey });
 
 			// Emit exhausted event for exception during retry
 			const exceptionSuggestion = `Task ${taskId} retry threw an exception: ${errMsg}. Investigate the execution environment.`;
 			emitTier0Event(stateRoot, {
-				...buildTier0EventBase("tier0_recovery_exhausted", batchState.batchId, waveIdx, "worker_crash", currentCount + 1, budget.maxRetries),
+				...buildTier0EventBase(
+					"tier0_recovery_exhausted",
+					batchState.batchId,
+					waveIdx,
+					"worker_crash",
+					currentCount + 1,
+					budget.maxRetries,
+				),
 				taskId,
 				laneNumber: lane.laneNumber,
 				repoId: lane.repoId ?? null,
@@ -1474,8 +1629,16 @@ async function attemptWorkerCrashRetry(
 				affectedTaskIds: [taskId],
 				suggestion: exceptionSuggestion,
 			});
-			emitTier0Escalation(stateRoot, batchState.batchId, waveIdx, "worker_crash", currentCount + 1, budget.maxRetries,
-				errMsg, [taskId], exceptionSuggestion,
+			emitTier0Escalation(
+				stateRoot,
+				batchState.batchId,
+				waveIdx,
+				"worker_crash",
+				currentCount + 1,
+				budget.maxRetries,
+				errMsg,
+				[taskId],
+				exceptionSuggestion,
 				{ taskId, laneNumber: lane.laneNumber, repoId: lane.repoId ?? null, classification, scopeKey },
 			);
 		}
@@ -1557,7 +1720,7 @@ async function attemptModelFallbackRetry(
 		const lane = taskToLane.get(taskId);
 		if (!lane) continue;
 
-		const outcome = allTaskOutcomes.find(o => o.taskId === taskId);
+		const outcome = allTaskOutcomes.find((o) => o.taskId === taskId);
 		if (!outcome) continue;
 
 		const classification = outcome.exitDiagnostic?.classification;
@@ -1567,12 +1730,21 @@ async function attemptModelFallbackRetry(
 		const scopeKey = tier0ScopeKey("model_fallback", taskId, waveIdx);
 		const currentCount = batchState.resilience.retryCountByScope[scopeKey] ?? 0;
 		if (currentCount >= budget.maxRetries) {
-			execLog("batch", batchState.batchId,
+			execLog(
+				"batch",
+				batchState.batchId,
 				`tier0: task ${taskId} model fallback retry budget exhausted (${currentCount}/${budget.maxRetries})`,
 				{ scopeKey },
 			);
 			emitTier0Event(stateRoot, {
-				...buildTier0EventBase("tier0_recovery_exhausted", batchState.batchId, waveIdx, "model_fallback", currentCount, budget.maxRetries),
+				...buildTier0EventBase(
+					"tier0_recovery_exhausted",
+					batchState.batchId,
+					waveIdx,
+					"model_fallback",
+					currentCount,
+					budget.maxRetries,
+				),
 				taskId,
 				laneNumber: lane.laneNumber,
 				repoId: lane.repoId ?? null,
@@ -1582,8 +1754,15 @@ async function attemptModelFallbackRetry(
 				affectedTaskIds: [taskId],
 				suggestion: `Task ${taskId} failed with model_access_error and model fallback retry exhausted. Check API key validity and model availability.`,
 			});
-			emitTier0Escalation(stateRoot, batchState.batchId, waveIdx, "model_fallback", currentCount, budget.maxRetries,
-				`Model fallback retry budget exhausted for task ${taskId}`, [taskId],
+			emitTier0Escalation(
+				stateRoot,
+				batchState.batchId,
+				waveIdx,
+				"model_fallback",
+				currentCount,
+				budget.maxRetries,
+				`Model fallback retry budget exhausted for task ${taskId}`,
+				[taskId],
 				`Task ${taskId} failed with model_access_error and model fallback retry exhausted. Check API key validity and model availability.`,
 				{ taskId, laneNumber: lane.laneNumber, repoId: lane.repoId ?? null, classification, scopeKey },
 			);
@@ -1595,18 +1774,24 @@ async function attemptModelFallbackRetry(
 		retriedCount++;
 
 		const failedModel = outcome.exitDiagnostic?.errorMessage || "configured model";
-		execLog("batch", batchState.batchId,
+		execLog(
+			"batch",
+			batchState.batchId,
 			`tier0: model fallback — retrying task ${taskId} without explicit model (${failedModel} unavailable)`,
 			{ scopeKey, classification },
 		);
-		onNotify(
-			`🔄 Model fallback: Retrying task ${taskId} with session model (${failedModel} unavailable)`,
-			"info",
-		);
+		onNotify(`🔄 Model fallback: Retrying task ${taskId} with session model (${failedModel} unavailable)`, "info");
 
 		// Emit attempt event
 		emitTier0Event(stateRoot, {
-			...buildTier0EventBase("tier0_recovery_attempt", batchState.batchId, waveIdx, "model_fallback", currentCount + 1, budget.maxRetries),
+			...buildTier0EventBase(
+				"tier0_recovery_attempt",
+				batchState.batchId,
+				waveIdx,
+				"model_fallback",
+				currentCount + 1,
+				budget.maxRetries,
+			),
 			taskId,
 			laneNumber: lane.laneNumber,
 			repoId: lane.repoId ?? null,
@@ -1621,7 +1806,7 @@ async function attemptModelFallbackRetry(
 		}
 
 		// Find the specific AllocatedTask
-		const allocatedTask = lane.tasks.find(t => t.taskId === taskId);
+		const allocatedTask = lane.tasks.find((t) => t.taskId === taskId);
 		if (!allocatedTask) continue;
 
 		// Re-execute with model fallback env var
@@ -1631,16 +1816,19 @@ async function attemptModelFallbackRetry(
 		};
 
 		const isWsMode = !!workspaceConfig;
-		const wsRoot = workspaceConfig
-			? resolve(workspaceConfig.configPath, "..", "..")
-			: undefined;
+		const wsRoot = workspaceConfig ? resolve(workspaceConfig.configPath, "..", "..") : undefined;
 
 		try {
 			const retryPauseSignal = { paused: false };
 			// Pass TASKPLANE_MODEL_FALLBACK=1 as extra env var to signal
 			// the task-runner to use the session model instead of configured model.
 			// TP-089: Also include ORCH_BATCH_ID so mailbox steering works for retries.
-			const modelFallbackEnv = { TASKPLANE_MODEL_FALLBACK: "1", ORCH_BATCH_ID: batchState.batchId, ...buildReviewerEnv(runnerConfig?.reviewer), ...buildWorkerExcludeEnv(runnerConfig?.workerExcludeExtensions) };
+			const modelFallbackEnv = {
+				TASKPLANE_MODEL_FALLBACK: "1",
+				ORCH_BATCH_ID: batchState.batchId,
+				...buildReviewerEnv(runnerConfig?.reviewer),
+				...buildWorkerExcludeEnv(runnerConfig?.workerExcludeExtensions),
+			};
 			const retryResult = await executeLaneV2(
 				retryLane,
 				orchConfig,
@@ -1662,7 +1850,7 @@ async function attemptModelFallbackRetry(
 
 				// Update lane results
 				for (const lr of waveResult.laneResults) {
-					const taskIdx = lr.tasks.findIndex(t => t.taskId === taskId);
+					const taskIdx = lr.tasks.findIndex((t) => t.taskId === taskId);
 					if (taskIdx !== -1) {
 						lr.tasks[taskIdx] = retryOutcome;
 						break;
@@ -1671,17 +1859,20 @@ async function attemptModelFallbackRetry(
 
 				upsertTaskOutcome(allTaskOutcomes, retryOutcome);
 
-				execLog("batch", batchState.batchId,
-					`tier0: task ${taskId} model fallback retry succeeded`,
-					{ scopeKey },
-				);
-				onNotify(
-					`✅ Model fallback: Task ${taskId} succeeded with session model`,
-					"info",
-				);
+				execLog("batch", batchState.batchId, `tier0: task ${taskId} model fallback retry succeeded`, {
+					scopeKey,
+				});
+				onNotify(`✅ Model fallback: Task ${taskId} succeeded with session model`, "info");
 
 				emitTier0Event(stateRoot, {
-					...buildTier0EventBase("tier0_recovery_success", batchState.batchId, waveIdx, "model_fallback", currentCount + 1, budget.maxRetries),
+					...buildTier0EventBase(
+						"tier0_recovery_success",
+						batchState.batchId,
+						waveIdx,
+						"model_fallback",
+						currentCount + 1,
+						budget.maxRetries,
+					),
 					taskId,
 					laneNumber: lane.laneNumber,
 					repoId: lane.repoId ?? null,
@@ -1694,14 +1885,21 @@ async function attemptModelFallbackRetry(
 				if (retryOutcome) {
 					upsertTaskOutcome(allTaskOutcomes, retryOutcome);
 				}
-				execLog("batch", batchState.batchId,
-					`tier0: task ${taskId} model fallback retry failed`,
-					{ scopeKey, exitReason: retryOutcome?.exitReason },
-				);
+				execLog("batch", batchState.batchId, `tier0: task ${taskId} model fallback retry failed`, {
+					scopeKey,
+					exitReason: retryOutcome?.exitReason,
+				});
 
 				const retryFailError = retryOutcome?.exitReason ?? `Task ${taskId} model fallback retry failed`;
 				emitTier0Event(stateRoot, {
-					...buildTier0EventBase("tier0_recovery_exhausted", batchState.batchId, waveIdx, "model_fallback", currentCount + 1, budget.maxRetries),
+					...buildTier0EventBase(
+						"tier0_recovery_exhausted",
+						batchState.batchId,
+						waveIdx,
+						"model_fallback",
+						currentCount + 1,
+						budget.maxRetries,
+					),
 					taskId,
 					laneNumber: lane.laneNumber,
 					repoId: lane.repoId ?? null,
@@ -1711,8 +1909,15 @@ async function attemptModelFallbackRetry(
 					affectedTaskIds: [taskId],
 					suggestion: `Task ${taskId} failed even with session model fallback. Investigate task logs.`,
 				});
-				emitTier0Escalation(stateRoot, batchState.batchId, waveIdx, "model_fallback", currentCount + 1, budget.maxRetries,
-					retryFailError, [taskId],
+				emitTier0Escalation(
+					stateRoot,
+					batchState.batchId,
+					waveIdx,
+					"model_fallback",
+					currentCount + 1,
+					budget.maxRetries,
+					retryFailError,
+					[taskId],
 					`Task ${taskId} failed even with session model fallback. Investigate task logs.`,
 					{ taskId, laneNumber: lane.laneNumber, repoId: lane.repoId ?? null, classification, scopeKey },
 				);
@@ -1720,12 +1925,18 @@ async function attemptModelFallbackRetry(
 		} catch (err: unknown) {
 			failedRetries.push(taskId);
 			const errMsg = err instanceof Error ? err.message : String(err);
-			execLog("batch", batchState.batchId,
-				`tier0: task ${taskId} model fallback retry threw error: ${errMsg}`,
-				{ scopeKey },
-			);
+			execLog("batch", batchState.batchId, `tier0: task ${taskId} model fallback retry threw error: ${errMsg}`, {
+				scopeKey,
+			});
 			emitTier0Event(stateRoot, {
-				...buildTier0EventBase("tier0_recovery_exhausted", batchState.batchId, waveIdx, "model_fallback", currentCount + 1, budget.maxRetries),
+				...buildTier0EventBase(
+					"tier0_recovery_exhausted",
+					batchState.batchId,
+					waveIdx,
+					"model_fallback",
+					currentCount + 1,
+					budget.maxRetries,
+				),
 				taskId,
 				laneNumber: lane.laneNumber,
 				repoId: lane.repoId ?? null,
@@ -1735,8 +1946,15 @@ async function attemptModelFallbackRetry(
 				affectedTaskIds: [taskId],
 				suggestion: `Model fallback retry for task ${taskId} threw an exception: ${errMsg}`,
 			});
-			emitTier0Escalation(stateRoot, batchState.batchId, waveIdx, "model_fallback", currentCount + 1, budget.maxRetries,
-				errMsg, [taskId],
+			emitTier0Escalation(
+				stateRoot,
+				batchState.batchId,
+				waveIdx,
+				"model_fallback",
+				currentCount + 1,
+				budget.maxRetries,
+				errMsg,
+				[taskId],
 				`Model fallback retry for task ${taskId} threw an exception: ${errMsg}`,
 				{ taskId, laneNumber: lane.laneNumber, repoId: lane.repoId ?? null, classification, scopeKey },
 			);
@@ -1796,22 +2014,39 @@ async function attemptStaleWorktreeRecovery(
 	const currentCount = batchState.resilience.retryCountByScope[scopeKey] ?? 0;
 
 	if (currentCount >= budget.maxRetries) {
-		execLog("batch", batchState.batchId,
+		execLog(
+			"batch",
+			batchState.batchId,
 			`tier0: stale worktree retry budget exhausted (${currentCount}/${budget.maxRetries})`,
 			{ scopeKey },
 		);
 		const staleExhaustedError = waveResult.allocationError.message;
 		const staleExhaustedSuggestion = `Stale worktree cleanup exhausted ${budget.maxRetries} retry(s). Manually remove worktrees and prune git state.`;
 		emitTier0Event(stateRoot, {
-			...buildTier0EventBase("tier0_recovery_exhausted", batchState.batchId, waveIdx, "stale_worktree", currentCount, budget.maxRetries),
+			...buildTier0EventBase(
+				"tier0_recovery_exhausted",
+				batchState.batchId,
+				waveIdx,
+				"stale_worktree",
+				currentCount,
+				budget.maxRetries,
+			),
 			repoId: null, // wave-scoped
 			error: staleExhaustedError,
 			scopeKey,
 			affectedTaskIds: waveTasks,
 			suggestion: staleExhaustedSuggestion,
 		});
-		emitTier0Escalation(stateRoot, batchState.batchId, waveIdx, "stale_worktree", currentCount, budget.maxRetries,
-			staleExhaustedError, waveTasks, staleExhaustedSuggestion,
+		emitTier0Escalation(
+			stateRoot,
+			batchState.batchId,
+			waveIdx,
+			"stale_worktree",
+			currentCount,
+			budget.maxRetries,
+			staleExhaustedError,
+			waveTasks,
+			staleExhaustedSuggestion,
 			{ repoId: null, scopeKey },
 		);
 		return null;
@@ -1819,14 +2054,23 @@ async function attemptStaleWorktreeRecovery(
 
 	batchState.resilience.retryCountByScope[scopeKey] = currentCount + 1;
 
-	execLog("batch", batchState.batchId,
+	execLog(
+		"batch",
+		batchState.batchId,
 		`tier0: attempting stale worktree recovery (attempt ${currentCount + 1}/${budget.maxRetries})`,
 		{ scopeKey, allocationError: waveResult.allocationError.message },
 	);
 
 	// Emit attempt event
 	emitTier0Event(stateRoot, {
-		...buildTier0EventBase("tier0_recovery_attempt", batchState.batchId, waveIdx, "stale_worktree", currentCount + 1, budget.maxRetries),
+		...buildTier0EventBase(
+			"tier0_recovery_attempt",
+			batchState.batchId,
+			waveIdx,
+			"stale_worktree",
+			currentCount + 1,
+			budget.maxRetries,
+		),
 		repoId: null, // wave-scoped: allocation failure may span multiple repos
 		classification: waveResult.allocationError.code,
 		cooldownMs: budget.cooldownMs,
@@ -1863,9 +2107,7 @@ async function attemptStaleWorktreeRecovery(
 	}
 
 	// Retry the wave execution
-	execLog("batch", batchState.batchId,
-		`tier0: retrying wave ${waveIdx + 1} after stale worktree cleanup`,
-	);
+	execLog("batch", batchState.batchId, `tier0: retrying wave ${waveIdx + 1} after stale worktree cleanup`);
 
 	const retryResult = await executeWave(
 		waveTasks,
@@ -1889,12 +2131,15 @@ async function attemptStaleWorktreeRecovery(
 			tools: runnerConfig?.reviewer?.tools || "",
 			excludeExtensions: runnerConfig?.reviewer?.excludeExtensions ?? [],
 		},
-		runnerConfig?.workerExcludeExtensions ?? [],
+		{
+			model: runnerConfig?.worker?.model || "",
+			thinking: runnerConfig?.worker?.thinking || "",
+			tools: runnerConfig?.worker?.tools || "",
+		},
 	);
 
 	return retryResult;
 }
-
 
 export interface RuntimeBackendSelection {
 	backend: RuntimeBackend;
@@ -1917,8 +2162,7 @@ export function selectRuntimeBackend(
 	const isSingleTask = rawWaves.length === 1 && rawWaves[0]?.length === 1;
 	const isRepoMode = !workspaceConfig;
 	const argTokens = args.trim().split(/\s+/).filter(Boolean);
-	const isDirectPromptTarget =
-		argTokens.length === 1 && /PROMPT\.md$/i.test(argTokens[0]);
+	const isDirectPromptTarget = argTokens.length === 1 && /PROMPT\.md$/i.test(argTokens[0]);
 
 	// TP-108: Runtime V2 for all repo-mode batches.
 	// TP-109: Workspace mode also uses V2 now that packet-home paths are
@@ -2004,20 +2248,40 @@ export async function executeOrchBatch(
 		if (terminalEventEmitted) return;
 		terminalEventEmitted = true;
 		if (batchState.phase === "completed" || batchState.phase === "failed") {
-			emitEvent(stateRoot, {
-				...buildEngineEventBase("batch_complete", batchState.batchId, batchState.currentWaveIndex, batchState.phase),
-				succeededTasks: batchState.succeededTasks,
-				failedTasks: batchState.failedTasks,
-				skippedTasks: batchState.skippedTasks,
-				blockedTasks: batchState.blockedTasks,
-				batchDurationMs: batchState.endedAt ? batchState.endedAt - batchState.startedAt : undefined,
-			}, onEngineEvent);
+			emitEvent(
+				stateRoot,
+				{
+					...buildEngineEventBase(
+						"batch_complete",
+						batchState.batchId,
+						batchState.currentWaveIndex,
+						batchState.phase,
+					),
+					succeededTasks: batchState.succeededTasks,
+					failedTasks: batchState.failedTasks,
+					skippedTasks: batchState.skippedTasks,
+					blockedTasks: batchState.blockedTasks,
+					batchDurationMs: batchState.endedAt ? batchState.endedAt - batchState.startedAt : undefined,
+				},
+				onEngineEvent,
+			);
 		} else if (batchState.phase === "paused" || batchState.phase === "stopped") {
-			emitEvent(stateRoot, {
-				...buildEngineEventBase("batch_paused", batchState.batchId, batchState.currentWaveIndex, batchState.phase),
-				reason: reason || (batchState.errors.length > 0 ? batchState.errors[batchState.errors.length - 1] : "paused"),
-				failedTasks: batchState.failedTasks,
-			}, onEngineEvent);
+			emitEvent(
+				stateRoot,
+				{
+					...buildEngineEventBase(
+						"batch_paused",
+						batchState.batchId,
+						batchState.currentWaveIndex,
+						batchState.phase,
+					),
+					reason:
+						reason ||
+						(batchState.errors.length > 0 ? batchState.errors[batchState.errors.length - 1] : "paused"),
+					failedTasks: batchState.failedTasks,
+				},
+				onEngineEvent,
+			);
 		}
 	};
 
@@ -2099,7 +2363,9 @@ export async function executeOrchBatch(
 					if (state && state.phase !== "completed" && state.phase !== "failed" && state.phase !== "stopped") {
 						return true;
 					}
-				} catch { /* state unreadable — safe to sweep */ }
+				} catch {
+					/* state unreadable — safe to sweep */
+				}
 				return false;
 			},
 			now: () => Date.now(),
@@ -2162,14 +2428,12 @@ export async function executeOrchBatch(
 				"info",
 			);
 		}
-		const hasStrictErrors = fatalErrors.some(
-			(e) => e.code === "TASK_ROUTING_STRICT",
-		);
+		const hasStrictErrors = fatalErrors.some((e) => e.code === "TASK_ROUTING_STRICT");
 		if (hasStrictErrors) {
 			onNotify(
 				"💡 Strict routing is enabled (routing.strict: true). Every task must declare an explicit execution target.\n" +
-				"   Add a `## Execution Target` section with `Repo: <id>` to each task's PROMPT.md.\n" +
-				"   To disable strict routing, set `routing.strict: false` in workspace config.",
+					"   Add a `## Execution Target` section with `Repo: <id>` to each task's PROMPT.md.\n" +
+					"   To disable strict routing, set `routing.strict: false` in workspace config.",
 				"info",
 			);
 		}
@@ -2194,7 +2458,7 @@ export async function executeOrchBatch(
 	if (!validation.valid) {
 		batchState.phase = "failed";
 		batchState.endedAt = Date.now();
-		const errMsgs = validation.errors.map(e => `[${e.code}] ${e.message}`).join("\n");
+		const errMsgs = validation.errors.map((e) => `[${e.code}] ${e.message}`).join("\n");
 		batchState.errors.push(`Graph validation failed:\n${errMsgs}`);
 		onNotify(`❌ Dependency graph errors:\n${errMsgs}`, "error");
 		emitTerminalEvent();
@@ -2202,18 +2466,13 @@ export async function executeOrchBatch(
 	}
 
 	// Compute waves + segment plans (task-level waves with additive segment metadata)
-	const waveComputation = computeWaveAssignments(
-		discovery.pending,
-		discovery.completed,
-		orchConfig,
-		{
-			workspaceRepoIds: workspaceConfig ? workspaceConfig.repos.keys() : undefined,
-		},
-	);
+	const waveComputation = computeWaveAssignments(discovery.pending, discovery.completed, orchConfig, {
+		workspaceRepoIds: workspaceConfig ? workspaceConfig.repos.keys() : undefined,
+	});
 	if (waveComputation.errors.length > 0) {
 		batchState.phase = "failed";
 		batchState.endedAt = Date.now();
-		const errMsgs = waveComputation.errors.map(e => `[${e.code}] ${e.message}`).join("\n");
+		const errMsgs = waveComputation.errors.map((e) => `[${e.code}] ${e.message}`).join("\n");
 		batchState.errors.push(`Wave computation failed:\n${errMsgs}`);
 		onNotify(`❌ Wave computation errors:\n${errMsgs}`, "error");
 		emitTerminalEvent();
@@ -2266,7 +2525,10 @@ export async function executeOrchBatch(
 			const repoBranch = getCurrentBranch(rRoot) || "HEAD";
 			const result = runGit(["branch", orchBranch, repoBranch], rRoot);
 			if (result.ok) {
-				execLog("batch", batchState.batchId, `created orch branch in ${repoId}`, { orchBranch, base: repoBranch });
+				execLog("batch", batchState.batchId, `created orch branch in ${repoId}`, {
+					orchBranch,
+					base: repoBranch,
+				});
 			} else {
 				const errDetail = result.stderr || result.stdout || "unknown error";
 				execLog("batch", batchState.batchId, `failed to create orch branch in ${repoId}: ${errDetail}`);
@@ -2278,7 +2540,10 @@ export async function executeOrchBatch(
 				break;
 			}
 		}
-		if (orchBranchFailed) { emitTerminalEvent(); return; }
+		if (orchBranchFailed) {
+			emitTerminalEvent();
+			return;
+		}
 	} else {
 		const branchResult = runGit(["branch", orchBranch, batchState.baseBranch], repoRoot);
 		if (!branchResult.ok) {
@@ -2295,16 +2560,21 @@ export async function executeOrchBatch(
 	batchState.orchBranch = orchBranch;
 
 	// TP-166: Report task-level wave count, not segment round count
-	onNotify(
-		ORCH_MESSAGES.orchStarting(batchState.batchId, taskLevelWaveCount, batchState.totalTasks),
-		"info",
-	);
+	onNotify(ORCH_MESSAGES.orchStarting(batchState.batchId, taskLevelWaveCount, batchState.totalTasks), "info");
 
 	// ── Phase 2: Wave Execution Loop ─────────────────────────────
 	batchState.phase = "executing";
 
 	// ── TS-009: Persist state on batch start (after wave computation) ──
-	persistRuntimeState("batch-start", batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discoveryRef, stateRoot);
+	persistRuntimeState(
+		"batch-start",
+		batchState,
+		wavePlan,
+		latestAllocatedLanes,
+		allTaskOutcomes,
+		discoveryRef,
+		stateRoot,
+	);
 
 	// ── TP-105: Runtime V2 backend selection ────────────────────
 	// Use Runtime V2 (no-TMUX lane-runner) when ALL conditions are met:
@@ -2328,10 +2598,21 @@ export async function executeOrchBatch(
 			execLog("batch", batchState.batchId, `batch paused before wave ${waveIdx + 1}`);
 			{
 				const { displayWave } = resolveDisplayWaveNumber(waveIdx, roundToTaskWave, taskLevelWaveCount);
-				onNotify(`⏸️  Batch paused before wave ${displayWave}. Resume not yet implemented (TS-009).`, "warning");
+				onNotify(
+					`⏸️  Batch paused before wave ${displayWave}. Resume not yet implemented (TS-009).`,
+					"warning",
+				);
 			}
 			// ── TS-009: Persist state on pause ──
-			persistRuntimeState("pause-before-wave", batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discoveryRef, stateRoot);
+			persistRuntimeState(
+				"pause-before-wave",
+				batchState,
+				wavePlan,
+				latestAllocatedLanes,
+				allTaskOutcomes,
+				discoveryRef,
+				stateRoot,
+			);
 			// TP-040: Emit batch_paused event (via terminal helper for dedup)
 			emitTerminalEvent(`Paused before wave ${waveIdx + 1}`);
 			break;
@@ -2340,7 +2621,15 @@ export async function executeOrchBatch(
 		batchState.currentWaveIndex = waveIdx;
 
 		// ── TS-009: Persist state on wave index change ──
-		persistRuntimeState("wave-index-change", batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discoveryRef, stateRoot);
+		persistRuntimeState(
+			"wave-index-change",
+			batchState,
+			wavePlan,
+			latestAllocatedLanes,
+			allTaskOutcomes,
+			discoveryRef,
+			stateRoot,
+		);
 
 		// Filter wave tasks against blocked + terminal task sets, then bind the
 		// next active segment for each surviving task.
@@ -2385,15 +2674,25 @@ export async function executeOrchBatch(
 		}
 
 		if (blockedInWave.length > 0) {
-			execLog("batch", batchState.batchId, `wave ${waveIdx + 1}: skipping ${blockedInWave.length} blocked task(s)`, {
-				blocked: blockedInWave.join(","),
-			});
+			execLog(
+				"batch",
+				batchState.batchId,
+				`wave ${waveIdx + 1}: skipping ${blockedInWave.length} blocked task(s)`,
+				{
+					blocked: blockedInWave.join(","),
+				},
+			);
 			batchState.blockedTasks += blockedInWave.length;
 		}
 		if (terminalInWave.length > 0) {
-			execLog("batch", batchState.batchId, `wave ${waveIdx + 1}: skipping ${terminalInWave.length} terminal task(s)`, {
-				terminal: terminalInWave.join(","),
-			});
+			execLog(
+				"batch",
+				batchState.batchId,
+				`wave ${waveIdx + 1}: skipping ${terminalInWave.length} terminal task(s)`,
+				{
+					terminal: terminalInWave.join(","),
+				},
+			);
 		}
 
 		if (waveTasks.length === 0) {
@@ -2404,7 +2703,15 @@ export async function executeOrchBatch(
 		const handleWaveMonitorUpdate: MonitorUpdateCallback = (monitorState) => {
 			const changed = syncTaskOutcomesFromMonitor(monitorState, allTaskOutcomes);
 			if (changed) {
-				persistRuntimeState("task-transition", batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discoveryRef, stateRoot);
+				persistRuntimeState(
+					"task-transition",
+					batchState,
+					wavePlan,
+					latestAllocatedLanes,
+					allTaskOutcomes,
+					discoveryRef,
+					stateRoot,
+				);
 			}
 			onMonitorUpdate?.(monitorState);
 		};
@@ -2415,13 +2722,20 @@ export async function executeOrchBatch(
 			batchState.currentLanes = lanes;
 
 			// TP-166: Use task-level wave number for operator display
-			const { displayWave, displayTotal } = resolveDisplayWaveNumber(waveIdx, roundToTaskWave, taskLevelWaveCount);
-			onNotify(
-				ORCH_MESSAGES.orchWaveStart(displayWave, displayTotal, waveTasks.length, lanes.length),
-				"info",
+			const { displayWave, displayTotal } = resolveDisplayWaveNumber(
+				waveIdx,
+				roundToTaskWave,
+				taskLevelWaveCount,
 			);
+			onNotify(ORCH_MESSAGES.orchWaveStart(displayWave, displayTotal, waveTasks.length, lanes.length), "info");
 			// TP-148: Build per-task segment context for the wave_start event
-			const waveSegmentContext: Array<{ taskId: string; segmentIndex: number; totalSegments: number; repoId: string; segmentId: string }> = [];
+			const waveSegmentContext: Array<{
+				taskId: string;
+				segmentIndex: number;
+				totalSegments: number;
+				repoId: string;
+				segmentId: string;
+			}> = [];
 			for (const taskId of waveTasks) {
 				const segState = segmentStateByTask.get(taskId);
 				if (segState && segState.orderedSegments.length > 1) {
@@ -2438,12 +2752,16 @@ export async function executeOrchBatch(
 					}
 				}
 			}
-			emitEvent(stateRoot, {
-				...buildEngineEventBase("wave_start", batchState.batchId, waveIdx, batchState.phase),
-				taskIds: waveTasks,
-				laneCount: lanes.length,
-				...(waveSegmentContext.length > 0 ? { segmentContext: waveSegmentContext } : {}),
-			}, onEngineEvent);
+			emitEvent(
+				stateRoot,
+				{
+					...buildEngineEventBase("wave_start", batchState.batchId, waveIdx, batchState.phase),
+					taskIds: waveTasks,
+					laneCount: lanes.length,
+					...(waveSegmentContext.length > 0 ? { segmentContext: waveSegmentContext } : {}),
+				},
+				onEngineEvent,
+			);
 			// TP-029: Track repos from newly allocated lanes for cleanup coverage
 			for (const lane of lanes) {
 				const laneRepoRoot = resolveRepoRoot(lane.repoId, repoRoot, workspaceConfig);
@@ -2456,7 +2774,8 @@ export async function executeOrchBatch(
 					const task = discovery.pending.get(laneTask.taskId);
 					const segmentState = segmentStateByTask.get(laneTask.taskId);
 					if (!task || !segmentState) continue;
-					startedSegments = upsertRunningSegmentRecord(batchState, task, segmentState, lane) || startedSegments;
+					startedSegments =
+						upsertRunningSegmentRecord(batchState, task, segmentState, lane) || startedSegments;
 				}
 			}
 			if (seededPendingOutcomes || startedSegments) {
@@ -2494,7 +2813,11 @@ export async function executeOrchBatch(
 				tools: runnerConfig?.reviewer?.tools || "",
 				excludeExtensions: runnerConfig?.reviewer?.excludeExtensions ?? [],
 			},
-			runnerConfig?.workerExcludeExtensions ?? [],
+			{
+				model: runnerConfig?.worker?.model || "",
+				thinking: runnerConfig?.worker?.thinking || "",
+				tools: runnerConfig?.worker?.tools || "",
+			},
 		);
 
 		// ── TP-039: Tier 0 — Stale worktree recovery ────────────
@@ -2531,24 +2854,48 @@ export async function executeOrchBatch(
 				const staleCount = batchState.resilience?.retryCountByScope[staleScopeKey] ?? 1;
 				if (staleRecovered) {
 					emitTier0Event(stateRoot, {
-						...buildTier0EventBase("tier0_recovery_success", batchState.batchId, waveIdx, "stale_worktree", staleCount, TIER0_RETRY_BUDGETS.stale_worktree.maxRetries),
+						...buildTier0EventBase(
+							"tier0_recovery_success",
+							batchState.batchId,
+							waveIdx,
+							"stale_worktree",
+							staleCount,
+							TIER0_RETRY_BUDGETS.stale_worktree.maxRetries,
+						),
 						repoId: null, // wave-scoped
 						resolution: `Stale worktree cleanup succeeded — wave ${waveIdx + 1} re-executed successfully`,
 						scopeKey: staleScopeKey,
 					});
 				} else {
-					const staleRetryError = retryResult.allocationError?.message ?? "Allocation failed again after cleanup";
-					const staleRetrySuggestion = "Stale worktree cleanup did not resolve the allocation failure. Manually inspect and remove worktrees.";
+					const staleRetryError =
+						retryResult.allocationError?.message ?? "Allocation failed again after cleanup";
+					const staleRetrySuggestion =
+						"Stale worktree cleanup did not resolve the allocation failure. Manually inspect and remove worktrees.";
 					emitTier0Event(stateRoot, {
-						...buildTier0EventBase("tier0_recovery_exhausted", batchState.batchId, waveIdx, "stale_worktree", staleCount, TIER0_RETRY_BUDGETS.stale_worktree.maxRetries),
+						...buildTier0EventBase(
+							"tier0_recovery_exhausted",
+							batchState.batchId,
+							waveIdx,
+							"stale_worktree",
+							staleCount,
+							TIER0_RETRY_BUDGETS.stale_worktree.maxRetries,
+						),
 						repoId: null, // wave-scoped
 						error: staleRetryError,
 						scopeKey: staleScopeKey,
 						affectedTaskIds: waveTasks,
 						suggestion: staleRetrySuggestion,
 					});
-					emitTier0Escalation(stateRoot, batchState.batchId, waveIdx, "stale_worktree", staleCount, TIER0_RETRY_BUDGETS.stale_worktree.maxRetries,
-						staleRetryError, waveTasks, staleRetrySuggestion,
+					emitTier0Escalation(
+						stateRoot,
+						batchState.batchId,
+						waveIdx,
+						"stale_worktree",
+						staleCount,
+						TIER0_RETRY_BUDGETS.stale_worktree.maxRetries,
+						staleRetryError,
+						waveTasks,
+						staleRetrySuggestion,
 						{ repoId: null, scopeKey: staleScopeKey },
 					);
 				}
@@ -2561,7 +2908,8 @@ export async function executeOrchBatch(
 		batchState.currentLanes = []; // Clear current lanes after wave completes
 
 		// ── TS-009: Accumulate task outcomes from this wave ──
-		latestAllocatedLanes = waveResult.allocatedLanes;
+		latestAllocatedLanes = waveResult.allocatedLanes ?? [];
+		// Defensive: ensure we never have undefined lanes (TP-204 fix)
 		for (const lr of waveResult.laneResults) {
 			for (const taskOutcome of lr.tasks) {
 				upsertTaskOutcome(allTaskOutcomes, taskOutcome);
@@ -2589,17 +2937,22 @@ export async function executeOrchBatch(
 			if (modelFallbackOutcome.succeededRetries.length > 0) {
 				// Recompute blocked tasks after model fallback successes
 				if (waveResult.policyApplied === "skip-dependents" && waveResult.failedTaskIds.length > 0) {
-					const recomputed = computeTransitiveDependents(
-						new Set(waveResult.failedTaskIds),
-						depGraph,
-					);
+					const recomputed = computeTransitiveDependents(new Set(waveResult.failedTaskIds), depGraph);
 					waveResult.blockedTaskIds = [...recomputed].sort();
 				} else if (waveResult.failedTaskIds.length === 0) {
 					waveResult.blockedTaskIds = [];
 				}
 			}
 			if (modelFallbackOutcome.retriedCount > 0) {
-				persistRuntimeState("tier0-model-fallback", batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discoveryRef, stateRoot);
+				persistRuntimeState(
+					"tier0-model-fallback",
+					batchState,
+					wavePlan,
+					latestAllocatedLanes,
+					allTaskOutcomes,
+					discoveryRef,
+					stateRoot,
+				);
 			}
 		}
 
@@ -2626,10 +2979,7 @@ export async function executeOrchBatch(
 				// attemptWorkerCrashRetry already updated waveResult.failedTaskIds
 				// and waveResult.succeededTaskIds in-place.
 				if (waveResult.policyApplied === "skip-dependents" && waveResult.failedTaskIds.length > 0) {
-					const recomputed = computeTransitiveDependents(
-						new Set(waveResult.failedTaskIds),
-						depGraph,
-					);
+					const recomputed = computeTransitiveDependents(new Set(waveResult.failedTaskIds), depGraph);
 					waveResult.blockedTaskIds = [...recomputed].sort();
 				} else if (waveResult.failedTaskIds.length === 0) {
 					// All failures recovered — no blocked tasks
@@ -2638,7 +2988,15 @@ export async function executeOrchBatch(
 			}
 			if (retryOutcome.retriedCount > 0) {
 				// Persist updated state after retries
-				persistRuntimeState("tier0-worker-retry", batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discoveryRef, stateRoot);
+				persistRuntimeState(
+					"tier0-worker-retry",
+					batchState,
+					wavePlan,
+					latestAllocatedLanes,
+					allTaskOutcomes,
+					discoveryRef,
+					stateRoot,
+				);
 			}
 
 			// If stop-wave had paused the batch but Tier 0 retry recovered all
@@ -2646,18 +3004,13 @@ export async function executeOrchBatch(
 			// proceed. attemptWorkerCrashRetry already set stoppedEarly=false
 			// and overallStatus="succeeded" on the waveResult (R002-4 fix).
 			if (
-				waveResult.failedTaskIds.length === 0
-				&& batchState.pauseSignal.paused
-				&& waveResult.policyApplied === "stop-wave"
+				waveResult.failedTaskIds.length === 0 &&
+				batchState.pauseSignal.paused &&
+				waveResult.policyApplied === "stop-wave"
 			) {
 				batchState.pauseSignal.paused = false;
-				execLog("batch", batchState.batchId,
-					`tier0: all failed tasks recovered — clearing stop-wave pause`,
-				);
-				onNotify(
-					`✅ Tier 0: All failed tasks recovered — batch continuing past stop-wave`,
-					"info",
-				);
+				execLog("batch", batchState.batchId, `tier0: all failed tasks recovered — clearing stop-wave pause`);
+				onNotify(`✅ Tier 0: All failed tasks recovered — batch continuing past stop-wave`, "info");
 			}
 		}
 
@@ -2685,28 +3038,48 @@ export async function executeOrchBatch(
 			const activeSegmentId = outcome?.segmentId ?? task.activeSegmentId;
 			if (activeSegmentId) {
 				segmentState.statusBySegmentId.set(activeSegmentId, "succeeded");
-				upsertTerminalSegmentRecord(batchState, task, segmentState, activeSegmentId, "succeeded", outcome, laneByTaskId.get(taskId));
+				upsertTerminalSegmentRecord(
+					batchState,
+					task,
+					segmentState,
+					activeSegmentId,
+					"succeeded",
+					outcome,
+					laneByTaskId.get(taskId),
+				);
 
 				const workerAgentId = resolveTaskWorkerAgentId(taskId, allTaskOutcomes, laneByTaskId, agentIdPrefix);
 				if (workerAgentId) {
-					const pendingExpansionFiles = listPendingSegmentExpansionRequestFiles(stateRoot, batchState.batchId, workerAgentId);
+					const pendingExpansionFiles = listPendingSegmentExpansionRequestFiles(
+						stateRoot,
+						batchState.batchId,
+						workerAgentId,
+					);
 					if (pendingExpansionFiles.length > 0) {
 						const parsedRequests = parseSegmentExpansionRequests(pendingExpansionFiles);
 						for (const malformed of parsedRequests.malformed) {
 							const renamed = markSegmentExpansionRequestFile(malformed.filePath, "invalid");
-							execLog("batch", batchState.batchId, `segment expansion request malformed (${renamed ? "renamed to .invalid" : "rename failed"})`, {
-								taskId,
-								agentId: workerAgentId,
-								segmentId: activeSegmentId,
-								filePath: malformed.filePath,
-								reason: malformed.reason,
-							});
+							execLog(
+								"batch",
+								batchState.batchId,
+								`segment expansion request malformed (${renamed ? "renamed to .invalid" : "rename failed"})`,
+								{
+									taskId,
+									agentId: workerAgentId,
+									segmentId: activeSegmentId,
+									filePath: malformed.filePath,
+									reason: malformed.reason,
+								},
+							);
 						}
-						const orderedRequests = [...parsedRequests.valid].sort((a, b) => a.request.requestId.localeCompare(b.request.requestId));
-						const scopedRequests = orderedRequests.filter((pendingRequest) => (
-							pendingRequest.request.taskId === taskId
-							&& pendingRequest.request.fromSegmentId === activeSegmentId
-						));
+						const orderedRequests = [...parsedRequests.valid].sort((a, b) =>
+							a.request.requestId.localeCompare(b.request.requestId),
+						);
+						const scopedRequests = orderedRequests.filter(
+							(pendingRequest) =>
+								pendingRequest.request.taskId === taskId &&
+								pendingRequest.request.fromSegmentId === activeSegmentId,
+						);
 						let rejectedCount = 0;
 						let acceptedCount = 0;
 						for (const pendingRequest of scopedRequests) {
@@ -2722,13 +3095,30 @@ export async function executeOrchBatch(
 								processedSegmentExpansionRequestIds,
 							);
 							if (!processingResult.ok) {
+								const rejectionReason =
+									"reason" in processingResult ? processingResult.reason : "unknown";
 								rejectedCount += 1;
 								processedSegmentExpansionRequestIds.add(requestId);
-								const recordedRequestId = recordProcessedSegmentExpansionRequestId(batchState, requestId, "failed");
+								const recordedRequestId = recordProcessedSegmentExpansionRequestId(
+									batchState,
+									requestId,
+									"failed",
+								);
 								if (recordedRequestId) {
-									persistRuntimeState("segment-expansion-rejected", batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discoveryRef, stateRoot);
+									persistRuntimeState(
+										"segment-expansion-rejected",
+										batchState,
+										wavePlan,
+										latestAllocatedLanes,
+										allTaskOutcomes,
+										discoveryRef,
+										stateRoot,
+									);
 								}
-								const renamedRejected = markSegmentExpansionRequestFile(pendingRequest.filePath, "rejected");
+								const renamedRejected = markSegmentExpansionRequestFile(
+									pendingRequest.filePath,
+									"rejected",
+								);
 								emitAlert({
 									category: "segment-expansion-rejected",
 									summary:
@@ -2736,14 +3126,14 @@ export async function executeOrchBatch(
 										`  Task: ${taskId}\n` +
 										`  Segment: ${activeSegmentId}\n` +
 										`  Request: ${requestId}\n` +
-										`  Reason: ${processingResult.reason}\n` +
+										`  Reason: ${rejectionReason}\n` +
 										`  File state: ${renamedRejected ? ".rejected" : "rename failed"}`,
 									context: {
 										taskId,
 										segmentId: activeSegmentId,
 										agentId: workerAgentId,
 										expansionRequestId: requestId,
-										exitReason: processingResult.reason,
+										exitReason: rejectionReason,
 									},
 								});
 								continue;
@@ -2769,7 +3159,11 @@ export async function executeOrchBatch(
 								requestId,
 								batchState.orchBranch,
 							);
-							const recordedRequestId = recordProcessedSegmentExpansionRequestId(batchState, requestId, "succeeded");
+							const recordedRequestId = recordProcessedSegmentExpansionRequestId(
+								batchState,
+								requestId,
+								"succeeded",
+							);
 
 							// TP-145 hardening: if .DONE was prematurely created by the
 							// completing segment (because it was the last segment at that
@@ -2785,29 +3179,53 @@ export async function executeOrchBatch(
 								const lane = laneByTaskId.get(taskId);
 								const doneDir = lane
 									? resolveCanonicalTaskPaths(
-										task.taskFolder,
-										lane.worktreePath,
-										repoRoot,
-										!!workspaceConfig,
-									).taskFolderResolved
+											task.taskFolder,
+											lane.worktreePath,
+											repoRoot,
+											!!workspaceConfig,
+										).taskFolderResolved
 									: task.packetTaskPath || task.taskFolder;
 								if (doneDir) {
 									const donePath = join(doneDir, ".DONE");
 									if (existsSync(donePath)) {
 										try {
 											unlinkSync(donePath);
-											execLog("batch", batchState.batchId, "removed premature .DONE after segment expansion", {
-												taskId, donePath, requestId,
-											});
-										} catch { /* non-fatal */ }
+											execLog(
+												"batch",
+												batchState.batchId,
+												"removed premature .DONE after segment expansion",
+												{
+													taskId,
+													donePath,
+													requestId,
+												},
+											);
+										} catch {
+											/* non-fatal */
+										}
 									}
 								}
 							}
 
-							if (persistedInsertedSegments || recordedRequestId || mutation.insertedSegmentIds.length > 0) {
-								persistRuntimeState("segment-expansion-approved", batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discoveryRef, stateRoot);
+							if (
+								persistedInsertedSegments ||
+								recordedRequestId ||
+								mutation.insertedSegmentIds.length > 0
+							) {
+								persistRuntimeState(
+									"segment-expansion-approved",
+									batchState,
+									wavePlan,
+									latestAllocatedLanes,
+									allTaskOutcomes,
+									discoveryRef,
+									stateRoot,
+								);
 							}
-							const renamedProcessed = markSegmentExpansionRequestFile(pendingRequest.filePath, "processed");
+							const renamedProcessed = markSegmentExpansionRequestFile(
+								pendingRequest.filePath,
+								"processed",
+							);
 							emitAlert({
 								category: "segment-expansion-approved",
 								summary:
@@ -2828,17 +3246,22 @@ export async function executeOrchBatch(
 							});
 							acceptedCount += 1;
 						}
-						execLog("batch", batchState.batchId, `segment ${activeSegmentId} completed with ${pendingExpansionFiles.length} pending expansion request(s)`, {
-							taskId,
-							agentId: workerAgentId,
-							segmentId: activeSegmentId,
-							acceptedCount,
-							rejectedCount,
-							validRequests: parsedRequests.valid.length,
-							scopedRequests: scopedRequests.length,
-							ignoredRequests: orderedRequests.length - scopedRequests.length,
-							malformedRequests: parsedRequests.malformed.length,
-						});
+						execLog(
+							"batch",
+							batchState.batchId,
+							`segment ${activeSegmentId} completed with ${pendingExpansionFiles.length} pending expansion request(s)`,
+							{
+								taskId,
+								agentId: workerAgentId,
+								segmentId: activeSegmentId,
+								acceptedCount,
+								rejectedCount,
+								validRequests: parsedRequests.valid.length,
+								scopedRequests: scopedRequests.length,
+								ignoredRequests: orderedRequests.length - scopedRequests.length,
+								malformedRequests: parsedRequests.malformed.length,
+							},
+						);
 					}
 				}
 			}
@@ -2854,7 +3277,11 @@ export async function executeOrchBatch(
 			}
 		}
 		if (continuationTaskIds.size > 0) {
-			const continuationWave = scheduleContinuationSegmentRound(runtimeSegmentRounds, waveIdx, continuationTaskIds);
+			const continuationWave = scheduleContinuationSegmentRound(
+				runtimeSegmentRounds,
+				waveIdx,
+				continuationTaskIds,
+			);
 			// TP-166: Maintain roundToTaskWave mapping for the inserted continuation round.
 			// The continuation belongs to the same task-level wave as the current round.
 			const parentTaskWave = roundToTaskWave[waveIdx] ?? 0;
@@ -2875,11 +3302,23 @@ export async function executeOrchBatch(
 			const activeSegmentId = failOutcome?.segmentId ?? task.activeSegmentId;
 			if (activeSegmentId) {
 				segmentState.statusBySegmentId.set(activeSegmentId, "failed");
-				upsertTerminalSegmentRecord(batchState, task, segmentState, activeSegmentId, "failed", failOutcome, laneByTaskId.get(taskId));
+				upsertTerminalSegmentRecord(
+					batchState,
+					task,
+					segmentState,
+					activeSegmentId,
+					"failed",
+					failOutcome,
+					laneByTaskId.get(taskId),
+				);
 
 				const workerAgentId = resolveTaskWorkerAgentId(taskId, allTaskOutcomes, laneByTaskId, agentIdPrefix);
 				if (workerAgentId) {
-					const pendingExpansionFiles = listPendingSegmentExpansionRequestFiles(stateRoot, batchState.batchId, workerAgentId);
+					const pendingExpansionFiles = listPendingSegmentExpansionRequestFiles(
+						stateRoot,
+						batchState.batchId,
+						workerAgentId,
+					);
 					if (pendingExpansionFiles.length > 0) {
 						const parsedRequests = parseSegmentExpansionRequests(pendingExpansionFiles);
 						for (const malformed of parsedRequests.malformed) {
@@ -2889,12 +3328,27 @@ export async function executeOrchBatch(
 						let discardedCount = 0;
 						let ignoredCount = 0;
 						for (const requestFile of parsedRequests.valid) {
-							if (requestFile.request.taskId === taskId && requestFile.request.fromSegmentId === activeSegmentId) {
+							if (
+								requestFile.request.taskId === taskId &&
+								requestFile.request.fromSegmentId === activeSegmentId
+							) {
 								const requestId = requestFile.request.requestId;
 								processedSegmentExpansionRequestIds.add(requestId);
-								const recordedRequestId = recordProcessedSegmentExpansionRequestId(batchState, requestId, "skipped");
+								const recordedRequestId = recordProcessedSegmentExpansionRequestId(
+									batchState,
+									requestId,
+									"skipped",
+								);
 								if (recordedRequestId) {
-									persistRuntimeState("segment-expansion-discarded", batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discoveryRef, stateRoot);
+									persistRuntimeState(
+										"segment-expansion-discarded",
+										batchState,
+										wavePlan,
+										latestAllocatedLanes,
+										allTaskOutcomes,
+										discoveryRef,
+										stateRoot,
+									);
 								}
 								if (markSegmentExpansionRequestFile(requestFile.filePath, "discarded")) {
 									discardedCount += 1;
@@ -2903,14 +3357,19 @@ export async function executeOrchBatch(
 							}
 							ignoredCount += 1;
 						}
-						execLog("batch", batchState.batchId, `segment ${activeSegmentId} failed with ${pendingExpansionFiles.length} pending expansion request(s)`, {
-							taskId,
-							agentId: workerAgentId,
-							segmentId: activeSegmentId,
-							discardedCount,
-							ignoredCount,
-							malformedCount: parsedRequests.malformed.length,
-						});
+						execLog(
+							"batch",
+							batchState.batchId,
+							`segment ${activeSegmentId} failed with ${pendingExpansionFiles.length} pending expansion request(s)`,
+							{
+								taskId,
+								agentId: workerAgentId,
+								segmentId: activeSegmentId,
+								discardedCount,
+								ignoredCount,
+								malformedCount: parsedRequests.malformed.length,
+							},
+						);
 						if (discardedCount > 0) {
 							emitAlert({
 								category: "segment-expansion-rejected",
@@ -2945,7 +3404,15 @@ export async function executeOrchBatch(
 			if (activeSegmentId) {
 				segmentState.statusBySegmentId.set(activeSegmentId, "skipped");
 				const outcome = allTaskOutcomes.find((candidate) => candidate.taskId === taskId);
-				upsertTerminalSegmentRecord(batchState, task, segmentState, activeSegmentId, "skipped", outcome, laneByTaskId.get(taskId));
+				upsertTerminalSegmentRecord(
+					batchState,
+					task,
+					segmentState,
+					activeSegmentId,
+					"skipped",
+					outcome,
+					laneByTaskId.get(taskId),
+				);
 			}
 			task.activeSegmentId = null;
 			segmentState.terminalStatus = "skipped";
@@ -2971,31 +3438,37 @@ export async function executeOrchBatch(
 		// ── TP-040: Emit task_complete / task_failed events ──────
 		// Emitted after Tier 0 retry so events reflect final status.
 		for (const taskId of waveResult.succeededTaskIds) {
-			const outcome = allTaskOutcomes.find(o => o.taskId === taskId);
-			emitEvent(stateRoot, {
-				...buildEngineEventBase("task_complete", batchState.batchId, waveIdx, batchState.phase),
-				taskId,
-				durationMs: outcome?.startTime && outcome?.endTime
-					? outcome.endTime - outcome.startTime
-					: undefined,
-				outcome: "succeeded",
-			}, onEngineEvent);
+			const outcome = allTaskOutcomes.find((o) => o.taskId === taskId);
+			emitEvent(
+				stateRoot,
+				{
+					...buildEngineEventBase("task_complete", batchState.batchId, waveIdx, batchState.phase),
+					taskId,
+					durationMs:
+						outcome?.startTime && outcome?.endTime ? outcome.endTime - outcome.startTime : undefined,
+					outcome: "succeeded",
+				},
+				onEngineEvent,
+			);
 		}
 		for (const taskId of waveResult.failedTaskIds) {
-			const outcome = allTaskOutcomes.find(o => o.taskId === taskId);
-			emitEvent(stateRoot, {
-				...buildEngineEventBase("task_failed", batchState.batchId, waveIdx, batchState.phase),
-				taskId,
-				durationMs: outcome?.startTime && outcome?.endTime
-					? outcome.endTime - outcome.startTime
-					: undefined,
-				reason: outcome?.exitReason || "unknown",
-				partialProgress: (outcome?.partialProgressCommits ?? 0) > 0,
-			}, onEngineEvent);
+			const outcome = allTaskOutcomes.find((o) => o.taskId === taskId);
+			emitEvent(
+				stateRoot,
+				{
+					...buildEngineEventBase("task_failed", batchState.batchId, waveIdx, batchState.phase),
+					taskId,
+					durationMs:
+						outcome?.startTime && outcome?.endTime ? outcome.endTime - outcome.startTime : undefined,
+					reason: outcome?.exitReason || "unknown",
+					partialProgress: (outcome?.partialProgressCommits ?? 0) > 0,
+				},
+				onEngineEvent,
+			);
 
 			// ── TP-076: Emit supervisor alert for task failure ──────
-			const laneForTask = latestAllocatedLanes.find(l => l.tasks.some(t => t.taskId === taskId));
-			const allocatedTask = laneForTask?.tasks.find(t => t.taskId === taskId)?.task;
+			const laneForTask = latestAllocatedLanes.find((l) => l.tasks.some((t) => t.taskId === taskId));
+			const allocatedTask = laneForTask?.tasks.find((t) => t.taskId === taskId)?.task;
 			const exitReason = outcome?.exitReason || "unknown";
 			const hasPartialProgress = (outcome?.partialProgressCommits ?? 0) > 0;
 			const segmentFrontier = buildSupervisorSegmentFrontierSnapshot(
@@ -3005,16 +3478,13 @@ export async function executeOrchBatch(
 				batchState.segments,
 				outcome?.segmentId,
 			);
-			const segmentId = outcome?.segmentId
-				?? allocatedTask?.activeSegmentId
-				?? segmentFrontier?.activeSegmentId
-				?? undefined;
+			const segmentId =
+				outcome?.segmentId ?? allocatedTask?.activeSegmentId ?? segmentFrontier?.activeSegmentId ?? undefined;
 			const repoId = segmentId
-				? (segmentFrontier?.segments.find((segment) => segment.segmentId === segmentId)?.repoId ?? laneForTask?.repoId)
+				? (segmentFrontier?.segments.find((segment) => segment.segmentId === segmentId)?.repoId ??
+					laneForTask?.repoId)
 				: laneForTask?.repoId;
-			const segmentSummary = segmentId
-				? `  Segment: ${segmentId}${repoId ? ` (repo: ${repoId})` : ""}\n`
-				: "";
+			const segmentSummary = segmentId ? `  Segment: ${segmentId}${repoId ? ` (repo: ${repoId})` : ""}\n` : "";
 			const frontierSummary = segmentFrontier
 				? `  Segment frontier: ${segmentFrontier.terminalSegments}/${segmentFrontier.totalSegments} terminal\n`
 				: "";
@@ -3049,11 +3519,23 @@ export async function executeOrchBatch(
 		}
 
 		// ── TS-009: Persist state after wave execution ──
-		persistRuntimeState("wave-execution-complete", batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discoveryRef, stateRoot);
+		persistRuntimeState(
+			"wave-execution-complete",
+			batchState,
+			wavePlan,
+			latestAllocatedLanes,
+			allTaskOutcomes,
+			discoveryRef,
+			stateRoot,
+		);
 
 		const elapsedSec = Math.round((waveResult.endedAt - waveResult.startedAt) / 1000);
 		{
-			const { displayWave: completeDisplayWave } = resolveDisplayWaveNumber(waveIdx, roundToTaskWave, taskLevelWaveCount);
+			const { displayWave: completeDisplayWave } = resolveDisplayWaveNumber(
+				waveIdx,
+				roundToTaskWave,
+				taskLevelWaveCount,
+			);
 			onNotify(
 				ORCH_MESSAGES.orchWaveComplete(
 					completeDisplayWave,
@@ -3075,7 +3557,15 @@ export async function executeOrchBatch(
 			if (waveResult.policyApplied === "stop-all") {
 				batchState.phase = "stopped";
 				// ── TS-009: Persist state on stop-all ──
-				persistRuntimeState("stop-all", batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discoveryRef, stateRoot);
+				persistRuntimeState(
+					"stop-all",
+					batchState,
+					wavePlan,
+					latestAllocatedLanes,
+					allTaskOutcomes,
+					discoveryRef,
+					stateRoot,
+				);
 				onNotify(ORCH_MESSAGES.orchBatchStopped(batchState.batchId, "stop-all"), "error");
 				// TP-040: Emit batch_paused event (via terminal helper for dedup)
 				emitTerminalEvent(`Stopped by stop-all policy at wave ${waveIdx + 1}`);
@@ -3084,7 +3574,15 @@ export async function executeOrchBatch(
 			if (waveResult.policyApplied === "stop-wave") {
 				batchState.phase = "stopped";
 				// ── TS-009: Persist state on stop-wave ──
-				persistRuntimeState("stop-wave", batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discoveryRef, stateRoot);
+				persistRuntimeState(
+					"stop-wave",
+					batchState,
+					wavePlan,
+					latestAllocatedLanes,
+					allTaskOutcomes,
+					discoveryRef,
+					stateRoot,
+				);
 				onNotify(ORCH_MESSAGES.orchBatchStopped(batchState.batchId, "stop-wave"), "error");
 				// TP-040: Emit batch_paused event (via terminal helper for dedup)
 				emitTerminalEvent(`Stopped by stop-wave policy at wave ${waveIdx + 1}`);
@@ -3102,11 +3600,9 @@ export async function executeOrchBatch(
 		for (const lr of waveResult.laneResults) {
 			laneOutcomeByNumber.set(lr.laneNumber, lr);
 		}
-		const mixedOutcomeLanes = waveResult.laneResults.filter(lr => {
-			const hasSucceeded = lr.tasks.some(t => t.status === "succeeded");
-			const hasHardFailure = lr.tasks.some(
-				t => t.status === "failed" || t.status === "stalled",
-			);
+		const mixedOutcomeLanes = waveResult.laneResults.filter((lr) => {
+			const hasSucceeded = lr.tasks.some((t) => t.status === "succeeded");
+			const hasHardFailure = lr.tasks.some((t) => t.status === "failed" || t.status === "stalled");
 			return hasSucceeded && hasHardFailure;
 		});
 
@@ -3121,58 +3617,85 @@ export async function executeOrchBatch(
 			if (!lane.worktreePath || !existsSync(lane.worktreePath)) continue;
 			const laneOutcome = laneOutcomeByNumber.get(lane.laneNumber);
 			if (!laneOutcome) continue;
-			const hasSucceeded = laneOutcome.tasks.some(t => t.status === "succeeded");
-			const hasSkipped = laneOutcome.tasks.some(t => t.status === "skipped");
+			const hasSucceeded = laneOutcome.tasks.some((t) => t.status === "succeeded");
+			const hasSkipped = laneOutcome.tasks.some((t) => t.status === "skipped");
 			// Auto-commit merge candidates (succeeded) and skipped-task lanes
 			if (!hasSucceeded && !hasSkipped) continue;
 			try {
 				const addResult = runGit(["add", "-A"], lane.worktreePath);
 				if (!addResult.ok) {
-					execLog("merge", batchState.batchId, `safety-net: git add failed in ${lane.laneId}`, { stderr: addResult.stderr });
+					execLog("merge", batchState.batchId, `safety-net: git add failed in ${lane.laneId}`, {
+						stderr: addResult.stderr,
+					});
 					continue;
 				}
 				const statusResult = runGit(["status", "--porcelain"], lane.worktreePath);
 				if (!statusResult.ok || !statusResult.stdout?.trim()) continue;
-				const taskIds = lane.tasks.map(t => t.taskId).join(", ");
+				const taskIds = lane.tasks.map((t) => t.taskId).join(", ");
 				const commitResult = runGit(
 					["commit", "-m", `safety-net: uncommitted artifacts for ${taskIds}`],
 					lane.worktreePath,
 				);
 				if (commitResult.ok) {
-					execLog("merge", batchState.batchId, `safety-net: auto-committed uncommitted files in ${lane.laneId}`, {
-						worktree: lane.worktreePath,
-						taskIds,
-						files: statusResult.stdout.trim(),
-					});
+					execLog(
+						"merge",
+						batchState.batchId,
+						`safety-net: auto-committed uncommitted files in ${lane.laneId}`,
+						{
+							worktree: lane.worktreePath,
+							taskIds,
+							files: statusResult.stdout.trim(),
+						},
+					);
 				} else {
-					execLog("merge", batchState.batchId, `safety-net: commit failed in ${lane.laneId}`, { stderr: commitResult.stderr });
+					execLog("merge", batchState.batchId, `safety-net: commit failed in ${lane.laneId}`, {
+						stderr: commitResult.stderr,
+					});
 				}
 			} catch (err: any) {
-				execLog("merge", batchState.batchId, `safety-net: unexpected error in ${lane.laneId}`, { error: err?.message });
+				execLog("merge", batchState.batchId, `safety-net: unexpected error in ${lane.laneId}`, {
+					error: err?.message,
+				});
 			}
 		}
 
 		if (succeededSegmentTaskIdsForMerge.length > 0) {
-			const mergeableLaneCount = waveResult.allocatedLanes.filter(lane => {
+			const mergeableLaneCount = waveResult.allocatedLanes.filter((lane) => {
 				const outcome = laneOutcomeByNumber.get(lane.laneNumber);
 				if (!outcome) return false;
-				const hasSucceeded = outcome.tasks.some(t => t.status === "succeeded");
-				const hasHardFailure = outcome.tasks.some(
-					t => t.status === "failed" || t.status === "stalled",
-				);
+				const hasSucceeded = outcome.tasks.some((t) => t.status === "succeeded");
+				const hasHardFailure = outcome.tasks.some((t) => t.status === "failed" || t.status === "stalled");
 				return hasSucceeded && !hasHardFailure;
 			}).length;
 
 			if (mergeableLaneCount > 0) {
 				batchState.phase = "merging";
 				// ── TS-009: Persist state on executing→merging transition ──
-				persistRuntimeState("merge-start", batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discoveryRef, stateRoot);
-				onNotify(ORCH_MESSAGES.orchMergeStart(resolveDisplayWaveNumber(waveIdx, roundToTaskWave, taskLevelWaveCount).displayWave, mergeableLaneCount), "info");
+				persistRuntimeState(
+					"merge-start",
+					batchState,
+					wavePlan,
+					latestAllocatedLanes,
+					allTaskOutcomes,
+					discoveryRef,
+					stateRoot,
+				);
+				onNotify(
+					ORCH_MESSAGES.orchMergeStart(
+						resolveDisplayWaveNumber(waveIdx, roundToTaskWave, taskLevelWaveCount).displayWave,
+						mergeableLaneCount,
+					),
+					"info",
+				);
 				// TP-040: Emit merge_start event
-				emitEvent(stateRoot, {
-					...buildEngineEventBase("merge_start", batchState.batchId, waveIdx, batchState.phase),
-					laneCount: mergeableLaneCount,
-				}, onEngineEvent);
+				emitEvent(
+					stateRoot,
+					{
+						...buildEngineEventBase("merge_start", batchState.batchId, waveIdx, batchState.phase),
+						laneCount: mergeableLaneCount,
+					},
+					onEngineEvent,
+				);
 
 				// TP-056: Start merge health monitor during merge phase
 				const mergeHealthMonitor = new MergeHealthMonitor({
@@ -3215,7 +3738,15 @@ export async function executeOrchBatch(
 				batchState.mergeResults.push(mergeResult);
 
 				// Persist state after merge so dashboard shows wave merge results
-				persistRuntimeState("merge-complete", batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discoveryRef, stateRoot);
+				persistRuntimeState(
+					"merge-complete",
+					batchState,
+					wavePlan,
+					latestAllocatedLanes,
+					allTaskOutcomes,
+					discoveryRef,
+					stateRoot,
+				);
 
 				// Emit per-lane merge notifications
 				for (const lr of mergeResult.laneResults) {
@@ -3225,9 +3756,19 @@ export async function executeOrchBatch(
 					if (lr.error) {
 						onNotify(ORCH_MESSAGES.orchMergeLaneFailed(lr.laneNumber, lr.error), "error");
 					} else if (lr.result?.status === "SUCCESS") {
-						onNotify(ORCH_MESSAGES.orchMergeLaneSuccess(lr.laneNumber, lr.result.merge_commit, durationSec), "info");
+						onNotify(
+							ORCH_MESSAGES.orchMergeLaneSuccess(lr.laneNumber, lr.result.merge_commit, durationSec),
+							"info",
+						);
 					} else if (lr.result?.status === "CONFLICT_RESOLVED") {
-						onNotify(ORCH_MESSAGES.orchMergeLaneConflictResolved(lr.laneNumber, lr.result.conflicts.length, durationSec), "info");
+						onNotify(
+							ORCH_MESSAGES.orchMergeLaneConflictResolved(
+								lr.laneNumber,
+								lr.result.conflicts.length,
+								durationSec,
+							),
+							"info",
+						);
 					} else if (lr.result?.status === "CONFLICT_UNRESOLVED" || lr.result?.status === "BUILD_FAILURE") {
 						onNotify(ORCH_MESSAGES.orchMergeLaneFailed(lr.laneNumber, lr.result.status), "error");
 					}
@@ -3236,13 +3777,18 @@ export async function executeOrchBatch(
 				// If any lane has mixed outcomes, do not silently discard succeeded work.
 				// Force merge failure handling so state is preserved for manual resolution.
 				if (mixedOutcomeLanes.length > 0) {
-					const mixedIds = mixedOutcomeLanes.map(l => `lane-${l.laneNumber}`).join(", ");
+					const mixedIds = mixedOutcomeLanes.map((l) => `lane-${l.laneNumber}`).join(", ");
 					const failureReason =
 						`Lane(s) ${mixedIds} contain both succeeded and failed tasks. ` +
 						`Automatic partial-branch merge is disabled to avoid dropping succeeded commits.`;
-					execLog("merge", `W${waveIdx + 1}`, "mixed-outcome lanes detected — escalating to merge failure handling", {
-						mixedLaneIds: mixedIds,
-					});
+					execLog(
+						"merge",
+						`W${waveIdx + 1}`,
+						"mixed-outcome lanes detected — escalating to merge failure handling",
+						{
+							mixedLaneIds: mixedIds,
+						},
+					);
 					mergeResult = {
 						...mergeResult,
 						status: "partial",
@@ -3257,33 +3803,49 @@ export async function executeOrchBatch(
 				// Emit overall merge result notification
 				// TP-032 R006-3: Exclude verification_new_failure lanes from success count
 				const mergedCount = mergeResult.laneResults.filter(
-					r => !r.error && (r.result?.status === "SUCCESS" || r.result?.status === "CONFLICT_RESOLVED"),
+					(r) => !r.error && (r.result?.status === "SUCCESS" || r.result?.status === "CONFLICT_RESOLVED"),
 				).length;
 				const mergeTotalSec = Math.round(mergeResult.totalDurationMs / 1000);
 
 				if (mergeResult.status === "succeeded") {
-					const { displayWave: mergeDisplayWave } = resolveDisplayWaveNumber(waveIdx, roundToTaskWave, taskLevelWaveCount);
+					const { displayWave: mergeDisplayWave } = resolveDisplayWaveNumber(
+						waveIdx,
+						roundToTaskWave,
+						taskLevelWaveCount,
+					);
 					onNotify(ORCH_MESSAGES.orchMergeComplete(mergeDisplayWave, mergedCount, mergeTotalSec), "info");
 
 					// TP-040: Emit merge_success event
-					emitEvent(stateRoot, {
-						...buildEngineEventBase("merge_success", batchState.batchId, waveIdx, batchState.phase),
-						laneCount: mergedCount,
-						durationMs: mergeResult.totalDurationMs,
-						totalWaves: taskLevelWaveCount,
-					}, onEngineEvent);
+					emitEvent(
+						stateRoot,
+						{
+							...buildEngineEventBase("merge_success", batchState.batchId, waveIdx, batchState.phase),
+							laneCount: mergedCount,
+							durationMs: mergeResult.totalDurationMs,
+							totalWaves: taskLevelWaveCount,
+						},
+						onEngineEvent,
+					);
 				} else {
 					onNotify(
-						ORCH_MESSAGES.orchMergeFailed(resolveDisplayWaveNumber(waveIdx, roundToTaskWave, taskLevelWaveCount).displayWave, mergeResult.failedLane ?? 0, mergeResult.failureReason || "unknown"),
+						ORCH_MESSAGES.orchMergeFailed(
+							resolveDisplayWaveNumber(waveIdx, roundToTaskWave, taskLevelWaveCount).displayWave,
+							mergeResult.failedLane ?? 0,
+							mergeResult.failureReason || "unknown",
+						),
 						"error",
 					);
 
 					// TP-040: Emit merge_failed event
-					emitEvent(stateRoot, {
-						...buildEngineEventBase("merge_failed", batchState.batchId, waveIdx, batchState.phase),
-						laneNumber: mergeResult.failedLane ?? undefined,
-						error: mergeResult.failureReason || "unknown",
-					}, onEngineEvent);
+					emitEvent(
+						stateRoot,
+						{
+							...buildEngineEventBase("merge_failed", batchState.batchId, waveIdx, batchState.phase),
+							laneNumber: mergeResult.failedLane ?? undefined,
+							error: mergeResult.failureReason || "unknown",
+						},
+						onEngineEvent,
+					);
 
 					// Emit repo-divergence summary when partial is caused by cross-repo outcome differences
 					if (mergeResult.status === "partial") {
@@ -3297,9 +3859,17 @@ export async function executeOrchBatch(
 				// Restore phase to executing (may be overridden below by failure handling)
 				batchState.phase = "executing";
 				// ── TS-009: Persist state after merge (merging→executing) ──
-				persistRuntimeState("merge-complete", batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discoveryRef, stateRoot);
+				persistRuntimeState(
+					"merge-complete",
+					batchState,
+					wavePlan,
+					latestAllocatedLanes,
+					allTaskOutcomes,
+					discoveryRef,
+					stateRoot,
+				);
 			} else if (mixedOutcomeLanes.length > 0) {
-				const mixedIds = mixedOutcomeLanes.map(l => `lane-${l.laneNumber}`).join(", ");
+				const mixedIds = mixedOutcomeLanes.map((l) => `lane-${l.laneNumber}`).join(", ");
 				mergeResult = {
 					waveIndex: waveIdx + 1,
 					status: "partial",
@@ -3314,24 +3884,44 @@ export async function executeOrchBatch(
 				// Downstream retry/update paths assume the current wave has an entry.
 				allMergeResults.push(mergeResult);
 				batchState.mergeResults.push(mergeResult);
+				const failedLane = mergeResult.failedLane ?? mixedOutcomeLanes[0].laneNumber;
+				const failureReason = mergeResult.failureReason ?? "unknown";
 				onNotify(
-					ORCH_MESSAGES.orchMergeFailed(resolveDisplayWaveNumber(waveIdx, roundToTaskWave, taskLevelWaveCount).displayWave, mergeResult.failedLane, mergeResult.failureReason || "unknown"),
+					ORCH_MESSAGES.orchMergeFailed(
+						resolveDisplayWaveNumber(waveIdx, roundToTaskWave, taskLevelWaveCount).displayWave,
+						failedLane,
+						failureReason,
+					),
 					"error",
 				);
 
 				// TP-040 R002: Emit merge_failed for mixed-outcome/no-mergeable-lane path
-				emitEvent(stateRoot, {
-					...buildEngineEventBase("merge_failed", batchState.batchId, waveIdx, batchState.phase),
-					laneNumber: mergeResult.failedLane,
-					error: mergeResult.failureReason,
-				}, onEngineEvent);
+				emitEvent(
+					stateRoot,
+					{
+						...buildEngineEventBase("merge_failed", batchState.batchId, waveIdx, batchState.phase),
+						laneNumber: mergeResult.failedLane ?? undefined,
+						error: mergeResult.failureReason ?? undefined,
+					},
+					onEngineEvent,
+				);
 			} else {
 				// No mergeable lanes and no mixed outcomes (e.g., only skipped tasks)
-				onNotify(ORCH_MESSAGES.orchMergeSkipped(resolveDisplayWaveNumber(waveIdx, roundToTaskWave, taskLevelWaveCount).displayWave), "info");
+				onNotify(
+					ORCH_MESSAGES.orchMergeSkipped(
+						resolveDisplayWaveNumber(waveIdx, roundToTaskWave, taskLevelWaveCount).displayWave,
+					),
+					"info",
+				);
 			}
 		} else {
 			// No succeeded tasks — skip merge entirely
-			onNotify(ORCH_MESSAGES.orchMergeSkipped(resolveDisplayWaveNumber(waveIdx, roundToTaskWave, taskLevelWaveCount).displayWave), "info");
+			onNotify(
+				ORCH_MESSAGES.orchMergeSkipped(
+					resolveDisplayWaveNumber(waveIdx, roundToTaskWave, taskLevelWaveCount).displayWave,
+				),
+				"info",
+			);
 		}
 
 		// ── TP-033: Safe-stop on rollback failure ─────────────────
@@ -3346,25 +3936,38 @@ export async function executeOrchBatch(
 				? ` WARNING: ${mergeResult.persistenceErrors!.length} transaction record(s) failed to persist — recovery file(s) may be missing.`
 				: "";
 
-			execLog("batch", batchState.batchId, "SAFE-STOP: verification rollback failed — forcing paused regardless of policy", {
-				waveIndex: waveIdx,
-				configPolicy: orchConfig.failure.on_merge_failure,
-				...(hasPersistErrors ? { persistenceErrors: mergeResult.persistenceErrors } : {}),
-			});
+			execLog(
+				"batch",
+				batchState.batchId,
+				"SAFE-STOP: verification rollback failed — forcing paused regardless of policy",
+				{
+					waveIndex: waveIdx,
+					configPolicy: orchConfig.failure.on_merge_failure,
+					...(hasPersistErrors ? { persistenceErrors: mergeResult.persistenceErrors } : {}),
+				},
+			);
 
 			batchState.phase = "paused";
 			batchState.errors.push(
 				`Safe-stop at wave ${waveIdx + 1}: verification rollback failed. ` +
-				`Merge worktree and temp branch preserved for recovery. ` +
-				`Check transaction records in .pi/verification/ for recovery commands.` +
-				persistWarning
+					`Merge worktree and temp branch preserved for recovery. ` +
+					`Check transaction records in .pi/verification/ for recovery commands.` +
+					persistWarning,
 			);
-			persistRuntimeState("merge-rollback-safe-stop", batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discoveryRef, stateRoot);
+			persistRuntimeState(
+				"merge-rollback-safe-stop",
+				batchState,
+				wavePlan,
+				latestAllocatedLanes,
+				allTaskOutcomes,
+				discoveryRef,
+				stateRoot,
+			);
 			onNotify(
 				`🛑 Safe-stop: verification rollback failed at wave ${waveIdx + 1}. ` +
-				`Batch force-paused. Merge worktree preserved for manual recovery. ` +
-				`See .pi/verification/ transaction records for recovery commands.` +
-				persistWarning,
+					`Batch force-paused. Merge worktree preserved for manual recovery. ` +
+					`See .pi/verification/ transaction records for recovery commands.` +
+					persistWarning,
 				"error",
 			);
 
@@ -3432,7 +4035,16 @@ export async function executeOrchBatch(
 							selectedBackend,
 						);
 					},
-					persist: (trigger) => persistRuntimeState(trigger, batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discoveryRef, stateRoot),
+					persist: (trigger) =>
+						persistRuntimeState(
+							trigger,
+							batchState,
+							wavePlan,
+							latestAllocatedLanes,
+							allTaskOutcomes,
+							discoveryRef,
+							stateRoot,
+						),
 					log: (message, details) => execLog("batch", batchState.batchId, message, details),
 					notify: (message, level) => onNotify(message, level),
 					updateMergeResult: (result) => {
@@ -3445,7 +4057,14 @@ export async function executeOrchBatch(
 					// with accurate classification/attempt data from the retry decision.
 					onRetryAttempt: (decision) => {
 						emitTier0Event(stateRoot, {
-							...buildTier0EventBase("tier0_recovery_attempt", batchState.batchId, waveIdx, "merge_timeout", decision.currentAttempt, decision.maxAttempts),
+							...buildTier0EventBase(
+								"tier0_recovery_attempt",
+								batchState.batchId,
+								waveIdx,
+								"merge_timeout",
+								decision.currentAttempt,
+								decision.maxAttempts,
+							),
 							laneNumber: mergeFailedLane,
 							repoId: mergeRepoId,
 							classification: decision.classification,
@@ -3458,11 +4077,26 @@ export async function executeOrchBatch(
 			if (retryOutcome.kind === "retry_succeeded") {
 				mergeResult = retryOutcome.mergeResult;
 				batchState.phase = "executing";
-				persistRuntimeState("merge-retry-succeeded", batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discoveryRef, stateRoot);
+				persistRuntimeState(
+					"merge-retry-succeeded",
+					batchState,
+					wavePlan,
+					latestAllocatedLanes,
+					allTaskOutcomes,
+					discoveryRef,
+					stateRoot,
+				);
 
 				// Emit merge retry success event
 				emitTier0Event(stateRoot, {
-					...buildTier0EventBase("tier0_recovery_success", batchState.batchId, waveIdx, "merge_timeout", retryOutcome.lastDecision.currentAttempt, retryOutcome.lastDecision.maxAttempts),
+					...buildTier0EventBase(
+						"tier0_recovery_success",
+						batchState.batchId,
+						waveIdx,
+						"merge_timeout",
+						retryOutcome.lastDecision.currentAttempt,
+						retryOutcome.lastDecision.maxAttempts,
+					),
 					laneNumber: mergeFailedLane,
 					repoId: mergeRepoId,
 					classification: retryOutcome.classification ?? undefined,
@@ -3475,7 +4109,15 @@ export async function executeOrchBatch(
 				mergeResult = retryOutcome.mergeResult;
 				batchState.phase = "paused";
 				batchState.errors.push(retryOutcome.errorMessage);
-				persistRuntimeState("merge-rollback-safe-stop", batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discoveryRef, stateRoot);
+				persistRuntimeState(
+					"merge-rollback-safe-stop",
+					batchState,
+					wavePlan,
+					latestAllocatedLanes,
+					allTaskOutcomes,
+					discoveryRef,
+					stateRoot,
+				);
 				onNotify(retryOutcome.notifyMessage, "error");
 
 				// ── TP-076: Emit supervisor alert for merge safe-stop ──
@@ -3500,9 +4142,17 @@ export async function executeOrchBatch(
 				});
 
 				// Emit merge safe-stop event (treated as exhausted — no further automatic recovery possible)
-				const mergeSafeStopSuggestion = "Merge rollback failed — batch force-paused for manual recovery. Check .pi/verification/ for recovery commands.";
+				const mergeSafeStopSuggestion =
+					"Merge rollback failed — batch force-paused for manual recovery. Check .pi/verification/ for recovery commands.";
 				emitTier0Event(stateRoot, {
-					...buildTier0EventBase("tier0_recovery_exhausted", batchState.batchId, waveIdx, "merge_timeout", retryOutcome.lastDecision.currentAttempt, retryOutcome.lastDecision.maxAttempts),
+					...buildTier0EventBase(
+						"tier0_recovery_exhausted",
+						batchState.batchId,
+						waveIdx,
+						"merge_timeout",
+						retryOutcome.lastDecision.currentAttempt,
+						retryOutcome.lastDecision.maxAttempts,
+					),
 					laneNumber: mergeFailedLane,
 					repoId: mergeRepoId,
 					classification: retryOutcome.classification ?? undefined,
@@ -3510,10 +4160,22 @@ export async function executeOrchBatch(
 					scopeKey: retryOutcome.scopeKey,
 					suggestion: mergeSafeStopSuggestion,
 				});
-				emitTier0Escalation(stateRoot, batchState.batchId, waveIdx, "merge_timeout",
-					retryOutcome.lastDecision.currentAttempt, retryOutcome.lastDecision.maxAttempts,
-					retryOutcome.errorMessage, [], mergeSafeStopSuggestion,
-					{ laneNumber: mergeFailedLane, repoId: mergeRepoId, classification: retryOutcome.classification ?? undefined, scopeKey: retryOutcome.scopeKey },
+				emitTier0Escalation(
+					stateRoot,
+					batchState.batchId,
+					waveIdx,
+					"merge_timeout",
+					retryOutcome.lastDecision.currentAttempt,
+					retryOutcome.lastDecision.maxAttempts,
+					retryOutcome.errorMessage,
+					[],
+					mergeSafeStopSuggestion,
+					{
+						laneNumber: mergeFailedLane,
+						repoId: mergeRepoId,
+						classification: retryOutcome.classification ?? undefined,
+						scopeKey: retryOutcome.scopeKey,
+					},
 				);
 
 				preserveWorktreesForResume = true;
@@ -3522,7 +4184,8 @@ export async function executeOrchBatch(
 				// TP-033 R006-2: Force paused regardless of on_merge_failure config.
 				// Retry exhaustion takes precedence over config policy.
 				mergeResult = retryOutcome.mergeResult;
-				const exhaustionMsg = retryOutcome.errorMessage +
+				const exhaustionMsg =
+					retryOutcome.errorMessage +
 					` [${retryOutcome.classification ?? "unknown"} ${retryOutcome.lastDecision.currentAttempt}/${retryOutcome.lastDecision.maxAttempts}, scope=${retryOutcome.scopeKey}]`;
 
 				execLog("batch", batchState.batchId, `merge retry exhausted — forcing paused`, {
@@ -3535,7 +4198,14 @@ export async function executeOrchBatch(
 				// Emit merge retry exhausted event
 				const mergeExhaustedSuggestion = `Merge retry exhausted (${retryOutcome.classification ?? "unknown"}) after ${retryOutcome.lastDecision.currentAttempt} attempt(s). Investigate merge failure and retry manually.`;
 				emitTier0Event(stateRoot, {
-					...buildTier0EventBase("tier0_recovery_exhausted", batchState.batchId, waveIdx, "merge_timeout", retryOutcome.lastDecision.currentAttempt, retryOutcome.lastDecision.maxAttempts),
+					...buildTier0EventBase(
+						"tier0_recovery_exhausted",
+						batchState.batchId,
+						waveIdx,
+						"merge_timeout",
+						retryOutcome.lastDecision.currentAttempt,
+						retryOutcome.lastDecision.maxAttempts,
+					),
 					laneNumber: mergeFailedLane,
 					repoId: mergeRepoId,
 					classification: retryOutcome.classification ?? undefined,
@@ -3543,15 +4213,35 @@ export async function executeOrchBatch(
 					scopeKey: retryOutcome.scopeKey,
 					suggestion: mergeExhaustedSuggestion,
 				});
-				emitTier0Escalation(stateRoot, batchState.batchId, waveIdx, "merge_timeout",
-					retryOutcome.lastDecision.currentAttempt, retryOutcome.lastDecision.maxAttempts,
-					exhaustionMsg, [], mergeExhaustedSuggestion,
-					{ laneNumber: mergeFailedLane, repoId: mergeRepoId, classification: retryOutcome.classification ?? undefined, scopeKey: retryOutcome.scopeKey },
+				emitTier0Escalation(
+					stateRoot,
+					batchState.batchId,
+					waveIdx,
+					"merge_timeout",
+					retryOutcome.lastDecision.currentAttempt,
+					retryOutcome.lastDecision.maxAttempts,
+					exhaustionMsg,
+					[],
+					mergeExhaustedSuggestion,
+					{
+						laneNumber: mergeFailedLane,
+						repoId: mergeRepoId,
+						classification: retryOutcome.classification ?? undefined,
+						scopeKey: retryOutcome.scopeKey,
+					},
 				);
 
 				batchState.phase = "paused";
 				batchState.errors.push(exhaustionMsg);
-				persistRuntimeState("merge-retry-exhausted", batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discoveryRef, stateRoot);
+				persistRuntimeState(
+					"merge-retry-exhausted",
+					batchState,
+					wavePlan,
+					latestAllocatedLanes,
+					allTaskOutcomes,
+					discoveryRef,
+					stateRoot,
+				);
 				onNotify(retryOutcome.notifyMessage, "error");
 
 				// ── TP-076: Emit supervisor alert for merge retry exhausted ──
@@ -3586,11 +4276,24 @@ export async function executeOrchBatch(
 					? ` [not retriable: ${retryOutcome.classification}, scope=${retryOutcome.scopeKey}]`
 					: "";
 
-				execLog("batch", batchState.batchId, `merge failure — applying ${policyResult.policy} policy${classNote}`, policyResult.logDetails);
+				execLog(
+					"batch",
+					batchState.batchId,
+					`merge failure — applying ${policyResult.policy} policy${classNote}`,
+					policyResult.logDetails,
+				);
 
 				batchState.phase = policyResult.targetPhase;
 				batchState.errors.push(policyResult.errorMessage + classNote);
-				persistRuntimeState(policyResult.persistTrigger, batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discoveryRef, stateRoot);
+				persistRuntimeState(
+					policyResult.persistTrigger,
+					batchState,
+					wavePlan,
+					latestAllocatedLanes,
+					allTaskOutcomes,
+					discoveryRef,
+					stateRoot,
+				);
 				onNotify(policyResult.notifyMessage + classNote, policyResult.notifyLevel);
 
 				// ── TP-076: Emit supervisor alert for merge failure (no-retry policy) ──
@@ -3642,30 +4345,46 @@ export async function executeOrchBatch(
 					let targetBranch = batchState.orchBranch;
 					if (repoId && perRepoRoot !== repoRoot) {
 						try {
-							targetBranch = resolveBaseBranch(repoId, perRepoRoot, batchState.orchBranch, workspaceConfig);
-						} catch { /* fall back to orchBranch */ }
+							targetBranch = resolveBaseBranch(
+								repoId,
+								perRepoRoot,
+								batchState.orchBranch,
+								workspaceConfig,
+							);
+						} catch {
+							/* fall back to orchBranch */
+						}
 					}
 					return { repoRoot: perRepoRoot, targetBranch };
 				},
 			);
 			ppUnsafeBranches = ppResult.unsafeBranches;
-			if (ppResult.results.some(r => r.saved)) {
-				execLog("batch", batchState.batchId,
-					`preserved partial progress for ${ppResult.results.filter(r => r.saved).length} failed task(s) before inter-wave reset`);
+			if (ppResult.results.some((r) => r.saved)) {
+				execLog(
+					"batch",
+					batchState.batchId,
+					`preserved partial progress for ${ppResult.results.filter((r) => r.saved).length} failed task(s) before inter-wave reset`,
+				);
 			}
 			// Log per-task warnings for failed preservation attempts
 			for (const r of ppResult.results) {
 				if (!r.saved && (r.commitCount > 0 || r.error)) {
-					execLog("batch", batchState.batchId,
+					execLog(
+						"batch",
+						batchState.batchId,
 						`WARNING: Failed to preserve partial progress for task ${r.taskId} ` +
-						`(${r.commitCount} commit(s) at risk on lane branch)`,
-						{ taskId: r.taskId, commitCount: r.commitCount, error: r.error ?? "unknown" });
+							`(${r.commitCount} commit(s) at risk on lane branch)`,
+						{ taskId: r.taskId, commitCount: r.commitCount, error: r.error ?? "unknown" },
+					);
 				}
 			}
 			if (ppUnsafeBranches.size > 0) {
-				execLog("batch", batchState.batchId,
+				execLog(
+					"batch",
+					batchState.batchId,
 					`WARNING: ${ppUnsafeBranches.size} lane branch(es) could not be preserved — skipping reset for those lanes to prevent commit loss`,
-					{ unsafeBranches: [...ppUnsafeBranches] });
+					{ unsafeBranches: [...ppUnsafeBranches] },
+				);
 			}
 			// TP-028: Stamp task outcomes with partial progress data for persistence
 			applyPartialProgressToOutcomes(ppResult, allTaskOutcomes);
@@ -3681,8 +4400,15 @@ export async function executeOrchBatch(
 					let targetBranch = batchState.orchBranch;
 					if (repoId && perRepoRoot !== repoRoot) {
 						try {
-							targetBranch = resolveBaseBranch(repoId, perRepoRoot, batchState.orchBranch, workspaceConfig);
-						} catch { /* fall back to orchBranch */ }
+							targetBranch = resolveBaseBranch(
+								repoId,
+								perRepoRoot,
+								batchState.orchBranch,
+								workspaceConfig,
+							);
+						} catch {
+							/* fall back to orchBranch */
+						}
 					}
 					return { repoRoot: perRepoRoot, targetBranch };
 				},
@@ -3691,9 +4417,12 @@ export async function executeOrchBatch(
 			for (const branch of skippedPpResult.unsafeBranches) {
 				ppUnsafeBranches.add(branch);
 			}
-			if (skippedPpResult.results.some(r => r.saved)) {
-				execLog("batch", batchState.batchId,
-					`preserved partial progress for ${skippedPpResult.results.filter(r => r.saved).length} skipped task(s) before inter-wave reset`);
+			if (skippedPpResult.results.some((r) => r.saved)) {
+				execLog(
+					"batch",
+					batchState.batchId,
+					`preserved partial progress for ${skippedPpResult.results.filter((r) => r.saved).length} skipped task(s) before inter-wave reset`,
+				);
 			}
 			// Stamp skipped task outcomes with partial progress data
 			applyPartialProgressToOutcomes(skippedPpResult, allTaskOutcomes);
@@ -3725,7 +4454,12 @@ export async function executeOrchBatch(
 					targetBranch = batchState.orchBranch;
 				} else {
 					try {
-						targetBranch = resolveBaseBranch(perRepoId, perRepoRoot, batchState.orchBranch, workspaceConfig);
+						targetBranch = resolveBaseBranch(
+							perRepoId,
+							perRepoRoot,
+							batchState.orchBranch,
+							workspaceConfig,
+						);
 					} catch {
 						// If resolution fails, fall back to orchBranch (reset will
 						// fail gracefully and trigger worktree removal)
@@ -3737,9 +4471,12 @@ export async function executeOrchBatch(
 					// TP-028: Skip reset for worktrees whose lane branch has
 					// unsaved partial progress (preservation failed with commits)
 					if (ppUnsafeBranches.has(wt.branch)) {
-						execLog("batch", batchState.batchId,
+						execLog(
+							"batch",
+							batchState.batchId,
 							`skipping worktree reset for lane ${wt.laneNumber} — branch "${wt.branch}" has unsaved partial progress`,
-							{ path: wt.path, branch: wt.branch });
+							{ path: wt.path, branch: wt.branch },
+						);
 						continue;
 					}
 
@@ -3753,12 +4490,21 @@ export async function executeOrchBatch(
 						// If reset fails, remove this worktree so the next wave can recreate it cleanly.
 						try {
 							removeWorktree(wt, perRepoRoot);
-							execLog("batch", batchState.batchId, `removed unrecoverable worktree for lane ${wt.laneNumber}`);
+							execLog(
+								"batch",
+								batchState.batchId,
+								`removed unrecoverable worktree for lane ${wt.laneNumber}`,
+							);
 						} catch (removeErr: unknown) {
-							execLog("batch", batchState.batchId, `removeWorktree failed for lane ${wt.laneNumber}, attempting force cleanup`, {
-								error: removeErr instanceof Error ? removeErr.message : String(removeErr),
-								path: wt.path,
-							});
+							execLog(
+								"batch",
+								batchState.batchId,
+								`removeWorktree failed for lane ${wt.laneNumber}, attempting force cleanup`,
+								{
+									error: removeErr instanceof Error ? removeErr.message : String(removeErr),
+									path: wt.path,
+								},
+							);
 							// Last resort: force-remove the directory and prune git worktree state.
 							forceCleanupWorktree(wt, perRepoRoot, batchState.batchId);
 							// Track this worktree for the cleanup gate — it may still be registered
@@ -3775,7 +4521,10 @@ export async function executeOrchBatch(
 
 			if (totalResetWorktrees > 0) {
 				onNotify(
-					ORCH_MESSAGES.orchWorktreeReset(resolveDisplayWaveNumber(waveIdx, roundToTaskWave, taskLevelWaveCount).displayWave, totalResetWorktrees),
+					ORCH_MESSAGES.orchWorktreeReset(
+						resolveDisplayWaveNumber(waveIdx, roundToTaskWave, taskLevelWaveCount).displayWave,
+						totalResetWorktrees,
+					),
 					"info",
 				);
 			}
@@ -3790,9 +4539,9 @@ export async function executeOrchBatch(
 			if (failedRemovalWorktrees.size > 0) {
 				for (const [perRepoRoot, { repoId: perRepoId, paths: failedPaths }] of failedRemovalWorktrees) {
 					const remaining = listWorktrees(resetPrefix, perRepoRoot, resetOpId, batchState.batchId);
-					const remainingPaths = new Set(remaining.map(wt => wt.path));
+					const remainingPaths = new Set(remaining.map((wt) => wt.path));
 					// Only report worktrees that were targeted for removal but are still registered
-					const stale = failedPaths.filter(p => remainingPaths.has(p));
+					const stale = failedPaths.filter((p) => remainingPaths.has(p));
 					if (stale.length > 0) {
 						cleanupGateFailures.push({
 							repoRoot: perRepoRoot,
@@ -3820,15 +4569,27 @@ export async function executeOrchBatch(
 				if (cleanupRetryCount < cleanupBudget.maxRetries) {
 					batchState.resilience.retryCountByScope[cleanupScopeKey] = cleanupRetryCount + 1;
 
-					execLog("batch", batchState.batchId,
+					execLog(
+						"batch",
+						batchState.batchId,
 						`tier0: retrying cleanup gate (attempt ${cleanupRetryCount + 1}/${cleanupBudget.maxRetries})`,
-						{ cleanupScopeKey, staleCount: cleanupGateFailures.reduce((n, f) => n + f.staleWorktrees.length, 0) },
+						{
+							cleanupScopeKey,
+							staleCount: cleanupGateFailures.reduce((n, f) => n + f.staleWorktrees.length, 0),
+						},
 					);
 
 					// Emit attempt event
 					const staleWorktreeCount = cleanupGateFailures.reduce((n, f) => n + f.staleWorktrees.length, 0);
 					emitTier0Event(stateRoot, {
-						...buildTier0EventBase("tier0_recovery_attempt", batchState.batchId, waveIdx, "cleanup_gate", cleanupRetryCount + 1, cleanupBudget.maxRetries),
+						...buildTier0EventBase(
+							"tier0_recovery_attempt",
+							batchState.batchId,
+							waveIdx,
+							"cleanup_gate",
+							cleanupRetryCount + 1,
+							cleanupBudget.maxRetries,
+						),
 						repoId: null, // wave-scoped: cleanup gate spans all repos
 						classification: `stale_worktrees:${staleWorktreeCount}`,
 						cooldownMs: cleanupBudget.cooldownMs,
@@ -3855,8 +4616,8 @@ export async function executeOrchBatch(
 					const retriedGateFailures: CleanupGateRepoFailure[] = [];
 					for (const failure of cleanupGateFailures) {
 						const remaining = listWorktrees(resetPrefix, failure.repoRoot, resetOpId, batchState.batchId);
-						const remainingPaths = new Set(remaining.map(wt => wt.path));
-						const stillStale = failure.staleWorktrees.filter(p => remainingPaths.has(p));
+						const remainingPaths = new Set(remaining.map((wt) => wt.path));
+						const stillStale = failure.staleWorktrees.filter((p) => remainingPaths.has(p));
 						if (stillStale.length > 0) {
 							retriedGateFailures.push({
 								repoRoot: failure.repoRoot,
@@ -3867,30 +4628,46 @@ export async function executeOrchBatch(
 					}
 
 					if (retriedGateFailures.length === 0) {
-						execLog("batch", batchState.batchId,
+						execLog(
+							"batch",
+							batchState.batchId,
 							`tier0: cleanup gate retry succeeded — all stale worktrees removed`,
 							{ cleanupScopeKey },
 						);
-						onNotify(
-							`✅ Tier 0: Cleanup gate retry succeeded at wave ${waveIdx + 1} — continuing`,
-							"info",
-						);
+						onNotify(`✅ Tier 0: Cleanup gate retry succeeded at wave ${waveIdx + 1} — continuing`, "info");
 
 						// Emit success event
 						emitTier0Event(stateRoot, {
-							...buildTier0EventBase("tier0_recovery_success", batchState.batchId, waveIdx, "cleanup_gate", cleanupRetryCount + 1, cleanupBudget.maxRetries),
+							...buildTier0EventBase(
+								"tier0_recovery_success",
+								batchState.batchId,
+								waveIdx,
+								"cleanup_gate",
+								cleanupRetryCount + 1,
+								cleanupBudget.maxRetries,
+							),
 							repoId: null, // wave-scoped
 							resolution: `Cleanup gate retry succeeded — all stale worktrees removed at wave ${waveIdx + 1}`,
 							scopeKey: cleanupScopeKey,
 						});
 
-						persistRuntimeState("tier0-cleanup-retry-success", batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discoveryRef, stateRoot);
+						persistRuntimeState(
+							"tier0-cleanup-retry-success",
+							batchState,
+							wavePlan,
+							latestAllocatedLanes,
+							allTaskOutcomes,
+							discoveryRef,
+							stateRoot,
+						);
 						// Fall through to continue the wave loop (don't break)
 					} else {
 						// Retry failed — fall through to pausing
 						const gatePolicyResult = computeCleanupGatePolicy(waveIdx, retriedGateFailures);
 
-						execLog("batch", batchState.batchId,
+						execLog(
+							"batch",
+							batchState.batchId,
 							`tier0: cleanup gate retry failed — still ${retriedGateFailures.reduce((n, f) => n + f.staleWorktrees.length, 0)} stale worktree(s), pausing batch`,
 							gatePolicyResult.logDetails,
 						);
@@ -3898,24 +4675,47 @@ export async function executeOrchBatch(
 						const stillStaleCount = retriedGateFailures.reduce((n, f) => n + f.staleWorktrees.length, 0);
 						const cleanupRetryError = `Cleanup gate retry failed — ${stillStaleCount} stale worktree(s) remain`;
 						const cleanupRetrySuggestion = `Post-merge cleanup retry did not remove all stale worktrees. Manually remove the remaining ${stillStaleCount} worktree(s) and prune git state.`;
-						const cleanupRetryAffected = retriedGateFailures.flatMap(f => f.staleWorktrees);
+						const cleanupRetryAffected = retriedGateFailures.flatMap((f) => f.staleWorktrees);
 						// Emit exhausted event (retry attempted but failed)
 						emitTier0Event(stateRoot, {
-							...buildTier0EventBase("tier0_recovery_exhausted", batchState.batchId, waveIdx, "cleanup_gate", cleanupRetryCount + 1, cleanupBudget.maxRetries),
+							...buildTier0EventBase(
+								"tier0_recovery_exhausted",
+								batchState.batchId,
+								waveIdx,
+								"cleanup_gate",
+								cleanupRetryCount + 1,
+								cleanupBudget.maxRetries,
+							),
 							repoId: null, // wave-scoped
 							error: cleanupRetryError,
 							scopeKey: cleanupScopeKey,
 							affectedTaskIds: cleanupRetryAffected,
 							suggestion: cleanupRetrySuggestion,
 						});
-						emitTier0Escalation(stateRoot, batchState.batchId, waveIdx, "cleanup_gate", cleanupRetryCount + 1, cleanupBudget.maxRetries,
-							cleanupRetryError, cleanupRetryAffected, cleanupRetrySuggestion,
+						emitTier0Escalation(
+							stateRoot,
+							batchState.batchId,
+							waveIdx,
+							"cleanup_gate",
+							cleanupRetryCount + 1,
+							cleanupBudget.maxRetries,
+							cleanupRetryError,
+							cleanupRetryAffected,
+							cleanupRetrySuggestion,
 							{ repoId: null, scopeKey: cleanupScopeKey },
 						);
 
 						batchState.phase = gatePolicyResult.targetPhase;
 						batchState.errors.push(gatePolicyResult.errorMessage);
-						persistRuntimeState(gatePolicyResult.persistTrigger, batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discoveryRef, stateRoot);
+						persistRuntimeState(
+							gatePolicyResult.persistTrigger,
+							batchState,
+							wavePlan,
+							latestAllocatedLanes,
+							allTaskOutcomes,
+							discoveryRef,
+							stateRoot,
+						);
 						onNotify(gatePolicyResult.notifyMessage, gatePolicyResult.notifyLevel);
 						preserveWorktreesForResume = true;
 						break;
@@ -3924,28 +4724,56 @@ export async function executeOrchBatch(
 					// Cleanup retry budget exhausted — pause immediately
 					const gatePolicyResult = computeCleanupGatePolicy(waveIdx, cleanupGateFailures);
 
-					execLog("batch", batchState.batchId, `cleanup gate failed — pausing batch (retry budget exhausted)`, gatePolicyResult.logDetails);
+					execLog(
+						"batch",
+						batchState.batchId,
+						`cleanup gate failed — pausing batch (retry budget exhausted)`,
+						gatePolicyResult.logDetails,
+					);
 
 					// Emit exhausted event (budget already consumed from prior waves)
 					const cleanupBudgetError = `Cleanup gate retry budget exhausted (${cleanupRetryCount}/${cleanupBudget.maxRetries})`;
 					const cleanupBudgetSuggestion = `Cleanup gate retry budget was already consumed. Manually remove stale worktrees and prune git state.`;
-					const cleanupBudgetAffected = cleanupGateFailures.flatMap(f => f.staleWorktrees);
+					const cleanupBudgetAffected = cleanupGateFailures.flatMap((f) => f.staleWorktrees);
 					emitTier0Event(stateRoot, {
-						...buildTier0EventBase("tier0_recovery_exhausted", batchState.batchId, waveIdx, "cleanup_gate", cleanupRetryCount, cleanupBudget.maxRetries),
+						...buildTier0EventBase(
+							"tier0_recovery_exhausted",
+							batchState.batchId,
+							waveIdx,
+							"cleanup_gate",
+							cleanupRetryCount,
+							cleanupBudget.maxRetries,
+						),
 						repoId: null, // wave-scoped
 						error: cleanupBudgetError,
 						scopeKey: cleanupScopeKey,
 						affectedTaskIds: cleanupBudgetAffected,
 						suggestion: cleanupBudgetSuggestion,
 					});
-					emitTier0Escalation(stateRoot, batchState.batchId, waveIdx, "cleanup_gate", cleanupRetryCount, cleanupBudget.maxRetries,
-						cleanupBudgetError, cleanupBudgetAffected, cleanupBudgetSuggestion,
+					emitTier0Escalation(
+						stateRoot,
+						batchState.batchId,
+						waveIdx,
+						"cleanup_gate",
+						cleanupRetryCount,
+						cleanupBudget.maxRetries,
+						cleanupBudgetError,
+						cleanupBudgetAffected,
+						cleanupBudgetSuggestion,
 						{ repoId: null, scopeKey: cleanupScopeKey },
 					);
 
 					batchState.phase = gatePolicyResult.targetPhase;
 					batchState.errors.push(gatePolicyResult.errorMessage);
-					persistRuntimeState(gatePolicyResult.persistTrigger, batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discoveryRef, stateRoot);
+					persistRuntimeState(
+						gatePolicyResult.persistTrigger,
+						batchState,
+						wavePlan,
+						latestAllocatedLanes,
+						allTaskOutcomes,
+						discoveryRef,
+						stateRoot,
+					);
 					onNotify(gatePolicyResult.notifyMessage, gatePolicyResult.notifyLevel);
 					preserveWorktreesForResume = true;
 					break;
@@ -3966,7 +4794,7 @@ export async function executeOrchBatch(
 		try {
 			const lanesDir = join(piDir, "runtime", batchState.batchId, "lanes");
 			if (existsSync(lanesDir)) {
-				const files = readdirSync(lanesDir).filter(f => f.startsWith("lane-") && f.endsWith(".json"));
+				const files = readdirSync(lanesDir).filter((f) => f.startsWith("lane-") && f.endsWith(".json"));
 				for (const f of files) {
 					try {
 						const snap = JSON.parse(readFileSync(join(lanesDir, f), "utf-8"));
@@ -3981,14 +4809,18 @@ export async function executeOrchBatch(
 							cacheWrite: (w.cacheWriteTokens || 0) + (r.cacheWriteTokens || 0),
 							costUsd: (w.costUsd || 0) + (r.costUsd || 0),
 						});
-					} catch { /* skip invalid files */ }
+					} catch {
+						/* skip invalid files */
+					}
 				}
 			}
-		} catch { /* runtime dir may not exist */ }
+		} catch {
+			/* runtime dir may not exist */
+		}
 
 		// Legacy fallback: lane-state-*.json sidecars (pre-V2).
 		try {
-			const files = readdirSync(piDir).filter(f => f.startsWith("lane-state-") && f.endsWith(".json"));
+			const files = readdirSync(piDir).filter((f) => f.startsWith("lane-state-") && f.endsWith(".json"));
 			for (const f of files) {
 				try {
 					const raw = readFileSync(join(piDir, f), "utf-8").trim();
@@ -4003,38 +4835,48 @@ export async function executeOrchBatch(
 							costUsd: data.workerCostUsd || 0,
 						});
 					}
-				} catch { /* skip invalid files */ }
+				} catch {
+					/* skip invalid files */
+				}
 			}
-		} catch { /* .pi dir may not exist */ }
+		} catch {
+			/* .pi dir may not exist */
+		}
 
 		// Build per-task summaries from allTaskOutcomes + wave plan
 		const taskSummaries: BatchTaskSummary[] = allTaskOutcomes.map((to) => {
 			// Find which wave and lane this task ran in
 			let wave = 0;
 			for (let wi = 0; wi < wavePlan.length; wi++) {
-				if (wavePlan[wi].includes(to.taskId)) { wave = wi + 1; break; }
+				if (wavePlan[wi].includes(to.taskId)) {
+					wave = wi + 1;
+					break;
+				}
 			}
-			const lane = to.laneNumber
-				?? (() => {
+			const lane =
+				to.laneNumber ??
+				(() => {
 					const laneMatch = to.sessionName?.match(/lane-(\d+)/);
 					return laneMatch ? parseInt(laneMatch[1], 10) : 0;
 				})();
 
 			// Compute duration from start/end times
-			const durationMs = (to.startTime && to.endTime) ? (to.endTime - to.startTime) : 0;
+			const durationMs = to.startTime && to.endTime ? to.endTime - to.startTime : 0;
 
 			// TP-116: Resolve tokens from outcome telemetry first; only fallback for legacy outcomes.
-			const tokens = resolveBatchHistoryTaskTokens(
-				to,
-				lane,
-				v2LaneTokensByNumber,
-				legacyLaneTokensByKey,
-			);
+			const tokens = resolveBatchHistoryTaskTokens(to, lane, v2LaneTokensByNumber, legacyLaneTokensByKey);
 
 			// TP-171: Map outcome status to valid BatchTaskSummary status.
 			// Non-terminal statuses ("running", "pending") can appear if batch
 			// was paused/aborted mid-wave. Map them to appropriate history values.
-			const validStatuses: Set<string> = new Set(["succeeded", "failed", "skipped", "blocked", "stalled", "pending"]);
+			const validStatuses: Set<string> = new Set([
+				"succeeded",
+				"failed",
+				"skipped",
+				"blocked",
+				"stalled",
+				"pending",
+			]);
 			const historyStatus: BatchTaskSummary["status"] = validStatuses.has(to.status)
 				? (to.status as BatchTaskSummary["status"])
 				: "pending"; // "running" or unknown → "pending" in history
@@ -4054,7 +4896,7 @@ export async function executeOrchBatch(
 		// TP-147: Ensure ALL tasks from the wave plan are represented in history.
 		// Tasks that never got allocated (blocked by upstream failures, never started)
 		// won't have entries in allTaskOutcomes. Add them with appropriate status.
-		const coveredTaskIds = new Set(taskSummaries.map(t => t.taskId));
+		const coveredTaskIds = new Set(taskSummaries.map((t) => t.taskId));
 		for (let wi = 0; wi < wavePlan.length; wi++) {
 			for (const taskId of wavePlan[wi]) {
 				if (coveredTaskIds.has(taskId)) continue;
@@ -4077,8 +4919,8 @@ export async function executeOrchBatch(
 
 		// Build per-wave summaries
 		const waveSummaries: BatchWaveSummary[] = wavePlan.map((taskIds, wi) => {
-			const waveTasks = taskSummaries.filter(t => t.wave === wi + 1);
-			const mergeResult = batchState.mergeResults.find(mr => mr.waveIndex === wi + 1);
+			const waveTasks = taskSummaries.filter((t) => t.wave === wi + 1);
+			const mergeResult = batchState.mergeResults.find((mr) => mr.waveIndex === wi + 1);
 			const waveTokens: TokenCounts = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, costUsd: 0 };
 			for (const t of waveTasks) {
 				waveTokens.input += t.tokens.input;
@@ -4111,7 +4953,9 @@ export async function executeOrchBatch(
 		// (phase hasn't been set to "completed" yet at this point in the flow).
 		const historyStatus: "completed" | "partial" | "failed" | "aborted" =
 			batchState.failedTasks > 0
-				? (batchState.succeededTasks > 0 ? "partial" : "failed")
+				? batchState.succeededTasks > 0
+					? "partial"
+					: "failed"
 				: batchState.succeededTasks > 0
 					? "completed"
 					: "aborted";
@@ -4121,9 +4965,12 @@ export async function executeOrchBatch(
 		// and log a warning if it diverges from batchState.totalTasks.
 		const actualTotalTasks = taskSummaries.length;
 		if (actualTotalTasks !== batchState.totalTasks) {
-			execLog("batch", batchState.batchId,
+			execLog(
+				"batch",
+				batchState.batchId,
 				`WARNING: totalTasks mismatch — batchState.totalTasks=${batchState.totalTasks}, ` +
-				`taskSummaries.length=${actualTotalTasks}. Using taskSummaries.length for history.`);
+					`taskSummaries.length=${actualTotalTasks}. Using taskSummaries.length for history.`,
+			);
 		}
 
 		const summary: BatchHistorySummary = {
@@ -4152,9 +4999,11 @@ export async function executeOrchBatch(
 	// TP-031 (R006): This check MUST run before cleanup so that worktrees
 	// survive when failedTasks > 0. Without this, cleanup deletes worktrees
 	// before the batch is marked "paused", breaking resumability.
-	if (!preserveWorktreesForResume &&
+	if (
+		!preserveWorktreesForResume &&
 		((batchState.phase as OrchBatchPhase) === "executing" || (batchState.phase as OrchBatchPhase) === "merging") &&
-		batchState.failedTasks > 0) {
+		batchState.failedTasks > 0
+	) {
 		preserveWorktreesForResume = true;
 		execLog("batch", batchState.batchId, "pre-cleanup: failedTasks > 0 detected, preserving worktrees for resume");
 	}
@@ -4180,7 +5029,11 @@ export async function executeOrchBatch(
 
 		let performedAgentCleanup = false;
 		if (lingeringLaneSessions.size > 0) {
-			execLog("batch", batchState.batchId, `killing ${lingeringLaneSessions.size} lingering lane agent session(s) before cleanup`);
+			execLog(
+				"batch",
+				batchState.batchId,
+				`killing ${lingeringLaneSessions.size} lingering lane agent session(s) before cleanup`,
+			);
 			for (const sessionName of lingeringLaneSessions) {
 				killV2LaneAgents(sessionName, {
 					stateRoot,
@@ -4205,18 +5058,25 @@ export async function executeOrchBatch(
 		const piDir = join(stateRoot, ".pi");
 		try {
 			const sidecarFiles = readdirSync(piDir).filter(
-				f => f.startsWith("lane-state-") ||
+				(f) =>
+					f.startsWith("lane-state-") ||
 					f.startsWith("worker-conversation-") ||
 					f.startsWith("merge-result-") ||
 					f.startsWith("merge-request-"),
 			);
 			for (const f of sidecarFiles) {
-				try { unlinkSync(join(piDir, f)); } catch { /* best effort */ }
+				try {
+					unlinkSync(join(piDir, f));
+				} catch {
+					/* best effort */
+				}
 			}
 			if (sidecarFiles.length > 0) {
 				execLog("batch", batchState.batchId, `cleaned up ${sidecarFiles.length} sidecar file(s)`);
 			}
-		} catch { /* .pi dir may not exist */ }
+		} catch {
+			/* .pi dir may not exist */
+		}
 
 		// ── TP-028: Preserve partial progress before terminal cleanup ──
 		// Save failed task commits as named branches before worktree removal
@@ -4234,25 +5094,38 @@ export async function executeOrchBatch(
 					let targetBranch = batchState.orchBranch;
 					if (repoId && perRepoRoot !== repoRoot) {
 						try {
-							targetBranch = resolveBaseBranch(repoId, perRepoRoot, batchState.orchBranch, workspaceConfig);
-						} catch { /* fall back to orchBranch */ }
+							targetBranch = resolveBaseBranch(
+								repoId,
+								perRepoRoot,
+								batchState.orchBranch,
+								workspaceConfig,
+							);
+						} catch {
+							/* fall back to orchBranch */
+						}
 					}
 					return { repoRoot: perRepoRoot, targetBranch };
 				},
 			);
-			if (ppResult.results.some(r => r.saved)) {
-				execLog("batch", batchState.batchId,
-					`preserved partial progress for ${ppResult.results.filter(r => r.saved).length} failed task(s) before terminal cleanup`);
+			if (ppResult.results.some((r) => r.saved)) {
+				execLog(
+					"batch",
+					batchState.batchId,
+					`preserved partial progress for ${ppResult.results.filter((r) => r.saved).length} failed task(s) before terminal cleanup`,
+				);
 			}
 			// Log warnings for failed preservation attempts — at terminal cleanup
 			// we cannot skip deletion (batch is ending), but operators need to know
 			// that commits may become unreachable via reflog only.
 			for (const r of ppResult.results) {
 				if (!r.saved && (r.commitCount > 0 || r.error)) {
-					execLog("batch", batchState.batchId,
+					execLog(
+						"batch",
+						batchState.batchId,
 						`WARNING: Failed to preserve partial progress for task ${r.taskId} ` +
-						`(${r.commitCount} commit(s) may become unreachable after cleanup)`,
-						{ taskId: r.taskId, commitCount: r.commitCount, error: r.error ?? "unknown" });
+							`(${r.commitCount} commit(s) may become unreachable after cleanup)`,
+						{ taskId: r.taskId, commitCount: r.commitCount, error: r.error ?? "unknown" },
+					);
 				}
 			}
 			// TP-028: Stamp task outcomes with partial progress data for persistence
@@ -4269,22 +5142,35 @@ export async function executeOrchBatch(
 					let targetBranch = batchState.orchBranch;
 					if (repoId && perRepoRoot !== repoRoot) {
 						try {
-							targetBranch = resolveBaseBranch(repoId, perRepoRoot, batchState.orchBranch, workspaceConfig);
-						} catch { /* fall back to orchBranch */ }
+							targetBranch = resolveBaseBranch(
+								repoId,
+								perRepoRoot,
+								batchState.orchBranch,
+								workspaceConfig,
+							);
+						} catch {
+							/* fall back to orchBranch */
+						}
 					}
 					return { repoRoot: perRepoRoot, targetBranch };
 				},
 			);
-			if (skippedPpResult.results.some(r => r.saved)) {
-				execLog("batch", batchState.batchId,
-					`preserved partial progress for ${skippedPpResult.results.filter(r => r.saved).length} skipped task(s) before terminal cleanup`);
+			if (skippedPpResult.results.some((r) => r.saved)) {
+				execLog(
+					"batch",
+					batchState.batchId,
+					`preserved partial progress for ${skippedPpResult.results.filter((r) => r.saved).length} skipped task(s) before terminal cleanup`,
+				);
 			}
 			for (const r of skippedPpResult.results) {
 				if (!r.saved && (r.commitCount > 0 || r.error)) {
-					execLog("batch", batchState.batchId,
+					execLog(
+						"batch",
+						batchState.batchId,
 						`WARNING: Failed to preserve partial progress for skipped task ${r.taskId} ` +
-						`(${r.commitCount} commit(s) may become unreachable after cleanup)`,
-						{ taskId: r.taskId, commitCount: r.commitCount, error: r.error ?? "unknown" });
+							`(${r.commitCount} commit(s) may become unreachable after cleanup)`,
+						{ taskId: r.taskId, commitCount: r.commitCount, error: r.error ?? "unknown" },
+					);
 				}
 			}
 			applyPartialProgressToOutcomes(skippedPpResult, allTaskOutcomes);
@@ -4312,7 +5198,14 @@ export async function executeOrchBatch(
 					targetBranch = undefined;
 				}
 			}
-			const removeResult = removeAllWorktrees(prefix, perRepoRoot, cleanupOpId, targetBranch, batchState.batchId, orchConfig);
+			const removeResult = removeAllWorktrees(
+				prefix,
+				perRepoRoot,
+				cleanupOpId,
+				targetBranch,
+				batchState.batchId,
+				orchConfig,
+			);
 
 			// Log preserved branches
 			for (const p of removeResult.preserved) {
@@ -4327,15 +5220,25 @@ export async function executeOrchBatch(
 			}
 
 			if (removeResult.failed.length > 0) {
-				const failedPaths = removeResult.failed.map(f => f.worktree.path).join(", ");
-				execLog("batch", batchState.batchId, `worktree cleanup: ${removeResult.removed.length} removed, ${removeResult.failed.length} failed, ${removeResult.preserved.length} preserved`, {
-					failedPaths,
-					repoId: perRepoId ?? "(default)",
-				});
+				const failedPaths = removeResult.failed.map((f) => f.worktree.path).join(", ");
+				execLog(
+					"batch",
+					batchState.batchId,
+					`worktree cleanup: ${removeResult.removed.length} removed, ${removeResult.failed.length} failed, ${removeResult.preserved.length} preserved`,
+					{
+						failedPaths,
+						repoId: perRepoId ?? "(default)",
+					},
+				);
 			} else if (removeResult.totalAttempted > 0) {
-				execLog("batch", batchState.batchId, `worktree cleanup: ${removeResult.removed.length} removed, ${removeResult.preserved.length} preserved`, {
-					repoId: perRepoId ?? "(default)",
-				});
+				execLog(
+					"batch",
+					batchState.batchId,
+					`worktree cleanup: ${removeResult.removed.length} removed, ${removeResult.preserved.length} preserved`,
+					{
+						repoId: perRepoId ?? "(default)",
+					},
+				);
 			}
 		}
 
@@ -4365,14 +5268,24 @@ export async function executeOrchBatch(
 									repoId: lr.repoId ?? "(default)",
 								});
 							} else {
-								execLog("batch", batchState.batchId, `warning: failed to delete merged branch ${lr.sourceBranch} — retained for manual cleanup`, {
-									repoId: lr.repoId ?? "(default)",
-								});
+								execLog(
+									"batch",
+									batchState.batchId,
+									`warning: failed to delete merged branch ${lr.sourceBranch} — retained for manual cleanup`,
+									{
+										repoId: lr.repoId ?? "(default)",
+									},
+								);
 							}
 						} else {
-							execLog("batch", batchState.batchId, `warning: branch ${lr.sourceBranch} not fully merged into ${lr.targetBranch} — retained`, {
-								repoId: lr.repoId ?? "(default)",
-							});
+							execLog(
+								"batch",
+								batchState.batchId,
+								`warning: branch ${lr.sourceBranch} not fully merged into ${lr.targetBranch} — retained`,
+								{
+									repoId: lr.repoId ?? "(default)",
+								},
+							);
 						}
 					}
 				}
@@ -4414,13 +5327,18 @@ export async function executeOrchBatch(
 	// supervisor is active (fallback). For "supervised" mode, the supervisor
 	// always handles integration.
 	const mergedTaskCount = batchState.succeededTasks;
-	const isTerminalPhase = batchState.phase === "completed" || batchState.phase === "failed";
+	const phase = batchState.phase as OrchBatchPhase;
+	const isTerminalPhase = phase === "completed" || phase === "failed";
 	if (isTerminalPhase && !preserveWorktreesForResume && batchState.orchBranch && mergedTaskCount > 0) {
 		if (orchConfig.orchestrator.integration === "supervised" || orchConfig.orchestrator.integration === "auto") {
 			// TP-043: Supervisor-managed integration modes. The supervisor
 			// agent handles integration after batch_complete event. The engine
 			// does NOT perform legacy fast-forward here — defer to supervisor.
-			execLog("batch", batchState.batchId, `integration deferred to supervisor (mode: ${orchConfig.orchestrator.integration})`);
+			execLog(
+				"batch",
+				batchState.batchId,
+				`integration deferred to supervisor (mode: ${orchConfig.orchestrator.integration})`,
+			);
 		} else {
 			// Manual mode (default): show integration guidance
 			onNotify(
@@ -4431,15 +5349,24 @@ export async function executeOrchBatch(
 	}
 
 	// ── TS-009: Persist terminal state ──
-	persistRuntimeState("batch-terminal", batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discoveryRef, stateRoot);
+	persistRuntimeState(
+		"batch-terminal",
+		batchState,
+		wavePlan,
+		latestAllocatedLanes,
+		allTaskOutcomes,
+		discoveryRef,
+		stateRoot,
+	);
 
 	// ── TP-076: Emit supervisor alert for batch completion ──────
-	if (batchState.phase === "completed" || batchState.phase === "failed") {
+	if (phase === "completed" || phase === "failed") {
 		const batchDurationMs = batchState.endedAt ? batchState.endedAt - batchState.startedAt : 0;
-		const durationStr = batchDurationMs > 0
-			? `${Math.floor(batchDurationMs / 60000)}m ${Math.round((batchDurationMs % 60000) / 1000)}s`
-			: "unknown";
-		if (batchState.phase === "completed" && batchState.failedTasks === 0) {
+		const durationStr =
+			batchDurationMs > 0
+				? `${Math.floor(batchDurationMs / 60000)}m ${Math.round((batchDurationMs % 60000) / 1000)}s`
+				: "unknown";
+		if (phase === "completed" && batchState.failedTasks === 0) {
 			emitAlert({
 				category: "batch-complete",
 				summary:
@@ -4478,12 +5405,19 @@ export async function executeOrchBatch(
 
 	// ── TP-031: Emit diagnostic reports (JSONL + markdown) ──
 	// Non-fatal: errors are logged but never crash batch finalization.
-	emitDiagnosticReports(assembleDiagnosticInput(orchConfig, batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, stateRoot));
+	emitDiagnosticReports(
+		assembleDiagnosticInput(orchConfig, batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, stateRoot),
+	);
 
 	if (batchState.phase === "paused" || batchState.phase === "stopped") {
-		execLog("batch", batchState.batchId, "batch ended in non-terminal execution state; completion banner suppressed", {
-			phase: batchState.phase,
-		});
+		execLog(
+			"batch",
+			batchState.batchId,
+			"batch ended in non-terminal execution state; completion banner suppressed",
+			{
+				phase: batchState.phase,
+			},
+		);
 	} else {
 		onNotify(
 			ORCH_MESSAGES.orchBatchComplete(
@@ -4522,6 +5456,4 @@ export async function executeOrchBatch(
 	}
 }
 
-
 // ── Dashboard Widget (Step 6) ────────────────────────────────────────
-

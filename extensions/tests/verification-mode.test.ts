@@ -31,10 +31,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 /** Load merge.ts source for pattern verification */
 function getMergeSource(): string {
-	return readFileSync(
-		join(__dirname, "..", "taskplane", "merge.ts"),
-		"utf-8",
-	);
+	return readFileSync(join(__dirname, "..", "taskplane", "merge.ts"), "utf-8");
 }
 
 // ── 1. Feature Flag Gating (verification.enabled) ───────────────────
@@ -71,9 +68,7 @@ describe("verification.enabled feature flag gating (TP-032)", () => {
 		expect(hasTestingLine).not.toBeNull();
 
 		// And that verificationEnabled is a SEPARATE variable read from config
-		const enabledLine = source.match(
-			/const verificationEnabled\s*=\s*config\.verification\.enabled/,
-		);
+		const enabledLine = source.match(/const verificationEnabled\s*=\s*config\.verification\.enabled/);
 		expect(enabledLine).not.toBeNull();
 	});
 });
@@ -93,9 +88,7 @@ describe("strict mode: enabled + no commands → merge failure (TP-032)", () => 
 	it("2.2: strict mode failure includes diagnostic reason", () => {
 		const source = getMergeSource();
 		// The failure reason must include clear context about why it failed
-		expect(source).toContain(
-			"Verification enabled (strict mode) but no testing commands configured",
-		);
+		expect(source).toContain("Verification enabled (strict mode) but no testing commands configured");
 	});
 
 	it("2.3: strict mode cleans up worktree before returning failure", () => {
@@ -117,9 +110,7 @@ describe("strict mode: enabled + no commands → merge failure (TP-032)", () => 
 	it("2.4: strict mode failure result includes status: 'failed'", () => {
 		const source = getMergeSource();
 		// Find the strict no-commands return block
-		const strictBlock = source.indexOf(
-			"Verification enabled (strict mode) but no testing commands configured",
-		);
+		const strictBlock = source.indexOf("Verification enabled (strict mode) but no testing commands configured");
 		expect(strictBlock).toBeGreaterThan(-1);
 
 		// The return statement before this reason should include status: "failed"
@@ -134,17 +125,13 @@ describe("strict mode: enabled + no commands → merge failure (TP-032)", () => 
 describe("permissive mode: enabled + no commands → continue (TP-032)", () => {
 	it("3.1: permissive mode with no commands logs warning and continues", () => {
 		const source = getMergeSource();
-		expect(source).toContain(
-			"permissive mode: continuing without verification",
-		);
+		expect(source).toContain("permissive mode: continuing without verification");
 	});
 
 	it("3.2: permissive mode does NOT return failure when no commands configured", () => {
 		const source = getMergeSource();
 		// Find the permissive no-commands path
-		const permissiveNoCommands = source.indexOf(
-			"permissive mode: continuing without verification",
-		);
+		const permissiveNoCommands = source.indexOf("permissive mode: continuing without verification");
 		expect(permissiveNoCommands).toBeGreaterThan(-1);
 
 		// After this log message, there should NOT be an immediate return statement
@@ -191,13 +178,9 @@ describe("baseline capture failure: strict vs permissive (TP-032)", () => {
 
 	it("4.3: permissive mode on capture failure sets baseline to null and continues", () => {
 		const source = getMergeSource();
-		expect(source).toContain(
-			"baseline capture failed — permissive mode: continuing without baseline verification",
-		);
+		expect(source).toContain("baseline capture failed — permissive mode: continuing without baseline verification");
 		// Permissive path must set baseline = null (so post-merge verification is skipped)
-		const permissiveCaptureFail = source.indexOf(
-			"permissive mode: continuing without baseline verification",
-		);
+		const permissiveCaptureFail = source.indexOf("permissive mode: continuing without baseline verification");
 		expect(permissiveCaptureFail).toBeGreaterThan(-1);
 		// Wider window to include the code after the log line and comment
 		const afterPermissive = source.slice(permissiveCaptureFail, permissiveCaptureFail + 500);
@@ -212,9 +195,7 @@ describe("flakyReruns configuration wiring (TP-032)", () => {
 		const source = getMergeSource();
 		expect(source).toContain("config.verification.flaky_reruns");
 		// And stored in a local variable
-		const flakyLine = source.match(
-			/const flakyReruns\s*=\s*config\.verification\.flaky_reruns/,
-		);
+		const flakyLine = source.match(/const flakyReruns\s*=\s*config\.verification\.flaky_reruns/);
 		expect(flakyLine).not.toBeNull();
 	});
 
@@ -278,10 +259,7 @@ describe("flakyReruns configuration wiring (TP-032)", () => {
 
 describe("engine.ts and resume.ts verification_new_failure handling (TP-032)", () => {
 	it("6.1: engine.ts excludes verification_new_failure lanes from success counts", () => {
-		const engineSource = readFileSync(
-			join(__dirname, "..", "taskplane", "engine.ts"),
-			"utf-8",
-		);
+		const engineSource = readFileSync(join(__dirname, "..", "taskplane", "engine.ts"), "utf-8");
 		// TP-032 R006-3 comment
 		expect(engineSource).toContain("TP-032 R006-3");
 		expect(engineSource).toContain("verification_new_failure");
@@ -290,20 +268,14 @@ describe("engine.ts and resume.ts verification_new_failure handling (TP-032)", (
 	});
 
 	it("6.2: engine.ts excludes verification_new_failure lanes from branch cleanup", () => {
-		const engineSource = readFileSync(
-			join(__dirname, "..", "taskplane", "engine.ts"),
-			"utf-8",
-		);
+		const engineSource = readFileSync(join(__dirname, "..", "taskplane", "engine.ts"), "utf-8");
 		// Branch cleanup must check !lr.error before deleting branches
 		const branchCleanupComment = engineSource.indexOf("Exclude verification_new_failure lanes from branch cleanup");
 		expect(branchCleanupComment).toBeGreaterThan(-1);
 	});
 
 	it("6.3: resume.ts handles verification_new_failure lanes consistently", () => {
-		const resumeSource = readFileSync(
-			join(__dirname, "..", "taskplane", "resume.ts"),
-			"utf-8",
-		);
+		const resumeSource = readFileSync(join(__dirname, "..", "taskplane", "resume.ts"), "utf-8");
 		// Resume path must also handle verification failures
 		expect(resumeSource).toContain("!lr.error");
 	});
@@ -334,10 +306,7 @@ describe("diffFingerprints correctly classifies new vs pre-existing (TP-032)", (
 
 	it("7.2: genuinely new failures appear only in newFailures", () => {
 		const baseline = [fp("test", "a.ts", "test1", "old failure")];
-		const postMerge = [
-			fp("test", "a.ts", "test1", "old failure"),
-			fp("test", "b.ts", "test2", "new failure"),
-		];
+		const postMerge = [fp("test", "a.ts", "test1", "old failure"), fp("test", "b.ts", "test2", "new failure")];
 
 		const diff = diffFingerprints(baseline, postMerge);
 		expect(diff.newFailures).toHaveLength(1);
@@ -347,10 +316,7 @@ describe("diffFingerprints correctly classifies new vs pre-existing (TP-032)", (
 	});
 
 	it("7.3: fixed failures (in baseline, not in postMerge) appear in fixed", () => {
-		const baseline = [
-			fp("test", "a.ts", "test1", "was broken"),
-			fp("test", "b.ts", "test2", "also broken"),
-		];
+		const baseline = [fp("test", "a.ts", "test1", "was broken"), fp("test", "b.ts", "test2", "also broken")];
 		const postMerge = [fp("test", "a.ts", "test1", "was broken")];
 
 		const diff = diffFingerprints(baseline, postMerge);

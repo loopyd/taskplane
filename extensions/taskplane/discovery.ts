@@ -6,7 +6,16 @@ import { readFileSync, writeFileSync, existsSync, readdirSync, statSync } from "
 import { join, dirname, basename, resolve } from "path";
 
 import { FATAL_DISCOVERY_CODES } from "./types.ts";
-import type { DiscoveryError, DiscoveryResult, ParsedTask, PromptSegmentDagMetadata, SegmentCheckboxGroup, StepSegmentMapping, TaskArea, WorkspaceConfig } from "./types.ts";
+import type {
+	DiscoveryError,
+	DiscoveryResult,
+	ParsedTask,
+	PromptSegmentDagMetadata,
+	SegmentCheckboxGroup,
+	StepSegmentMapping,
+	TaskArea,
+	WorkspaceConfig,
+} from "./types.ts";
 
 // ── PROMPT.md Parsing ────────────────────────────────────────────────
 
@@ -88,11 +97,7 @@ interface ParsedSegmentDagBody {
  * - Unknown edge endpoints (not present in explicit repo list) fail fast.
  * - Self-edges and cycles fail fast with `SEGMENT_DAG_INVALID`.
  */
-function parseSegmentDagMetadata(
-	content: string,
-	taskId: string,
-	promptPath: string,
-): ParsedSegmentDagBody {
+function parseSegmentDagMetadata(content: string, taskId: string, promptPath: string): ParsedSegmentDagBody {
 	const headerMatch = content.match(/^##\s+Segment DAG\s*$/im);
 	if (!headerMatch || headerMatch.index === undefined) {
 		return { metadata: null, error: null };
@@ -233,8 +238,7 @@ function parseSegmentDagMetadata(
 				metadata: null,
 				error: {
 					code: "SEGMENT_DAG_INVALID",
-					message:
-						`Task ${taskId} has self-edge "${fromRepoId} -> ${toRepoId}" in ## Segment DAG at line ${baseLine + i}.`,
+					message: `Task ${taskId} has self-edge "${fromRepoId} -> ${toRepoId}" in ## Segment DAG at line ${baseLine + i}.`,
 					taskId,
 					taskPath: promptPath,
 				},
@@ -258,8 +262,7 @@ function parseSegmentDagMetadata(
 				metadata: null,
 				error: {
 					code: "SEGMENT_REPO_UNKNOWN",
-					message:
-						`Task ${taskId} has edge endpoint repo "${edge.fromRepoId}" in ## Segment DAG that is not declared in Repos:.`,
+					message: `Task ${taskId} has edge endpoint repo "${edge.fromRepoId}" in ## Segment DAG that is not declared in Repos:.`,
 					taskId,
 					taskPath: promptPath,
 				},
@@ -270,8 +273,7 @@ function parseSegmentDagMetadata(
 				metadata: null,
 				error: {
 					code: "SEGMENT_REPO_UNKNOWN",
-					message:
-						`Task ${taskId} has edge endpoint repo "${edge.toRepoId}" in ## Segment DAG that is not declared in Repos:.`,
+					message: `Task ${taskId} has edge endpoint repo "${edge.toRepoId}" in ## Segment DAG that is not declared in Repos:.`,
 					taskId,
 					taskPath: promptPath,
 				},
@@ -330,12 +332,12 @@ function parseSegmentDagMetadata(
 	}
 
 	if (cycle) {
+		const cyclePath = cycle as string[];
 		return {
 			metadata: null,
 			error: {
 				code: "SEGMENT_DAG_INVALID",
-				message:
-					`Task ${taskId} has cyclic ## Segment DAG metadata: ${cycle.join(" -> ")}.`,
+				message: `Task ${taskId} has cyclic ## Segment DAG metadata: ${cyclePath.join(" -> ")}.`,
 				taskId,
 				taskPath: promptPath,
 			},
@@ -523,8 +525,7 @@ export function parseStepSegmentMapping(
 				if (checkboxes.length === 0) {
 					warnings.push({
 						code: "SEGMENT_STEP_EMPTY",
-						message:
-							`Task ${taskId} Step ${header.stepNumber} has empty segment "${seg.repoId}" with no checkboxes.`,
+						message: `Task ${taskId} Step ${header.stepNumber} has empty segment "${seg.repoId}" with no checkboxes.`,
 						taskId,
 					});
 				}
@@ -650,9 +651,7 @@ export function parsePromptForOrchestrator(
 
 	// ── Extract dependencies ─────────────────────────────────────
 	const dependencies: string[] = [];
-	const depSectionMatch = content.match(
-		/^##\s+Dependencies\s*\n([\s\S]*?)(?=\n##\s|\n---|\n$)/m,
-	);
+	const depSectionMatch = content.match(/^##\s+Dependencies\s*\n([\s\S]*?)(?=\n##\s|\n---|\n$)/m);
 
 	if (depSectionMatch) {
 		const depBody = depSectionMatch[1].trim();
@@ -669,9 +668,7 @@ export function parsePromptForOrchestrator(
 			}
 
 			// Pattern 2: Bullet list "- COMP-005 ...", "- **time-off/TO-014** ..."
-			const bulletMatches = depBody.matchAll(
-				/^[\s-]*\*?\*?((?:[a-z0-9-]+\/)?[A-Z]+-\d+)\*?\*?/gim,
-			);
+			const bulletMatches = depBody.matchAll(/^[\s-]*\*?\*?((?:[a-z0-9-]+\/)?[A-Z]+-\d+)\*?\*?/gim);
 			for (const m of bulletMatches) {
 				const dep = normalizeDependencyReference(m[1]);
 				if (!dependencies.includes(dep)) dependencies.push(dep);
@@ -709,16 +706,12 @@ export function parsePromptForOrchestrator(
 		if (afterHeader !== -1) {
 			const rest = content.slice(afterHeader + 1);
 			const nextSectionMatch = rest.search(/^##\s|^---/m);
-			execTargetSectionBody = nextSectionMatch !== -1
-				? rest.slice(0, nextSectionMatch)
-				: rest;
+			execTargetSectionBody = nextSectionMatch !== -1 ? rest.slice(0, nextSectionMatch) : rest;
 		}
 	}
 	if (execTargetSectionBody !== null) {
 		// Match "Repo: api" or "**Repo:** api" or "Workspace: api" with whitespace
-		const repoLineMatch = execTargetSectionBody.match(
-			/^\s*\*?\*?(?:Repo|Workspace):?\*?\*?\s+(\S+)/mi,
-		);
+		const repoLineMatch = execTargetSectionBody.match(/^\s*\*?\*?(?:Repo|Workspace):?\*?\*?\s+(\S+)/im);
 		if (repoLineMatch) {
 			const candidate = repoLineMatch[1].trim().toLowerCase();
 			if (REPO_ID_PATTERN.test(candidate)) {
@@ -729,9 +722,7 @@ export function parsePromptForOrchestrator(
 
 	// Priority 2 (fallback): Inline "**Repo:** <id>" or "**Workspace:** <id>" anywhere in content
 	if (!promptRepoId) {
-		const inlineRepoMatch = content.match(
-			/^\*\*(?:Repo|Workspace):\*\*\s+(\S+)/m,
-		);
+		const inlineRepoMatch = content.match(/^\*\*(?:Repo|Workspace):\*\*\s+(\S+)/m);
 		if (inlineRepoMatch) {
 			const candidate = inlineRepoMatch[1].trim().toLowerCase();
 			if (REPO_ID_PATTERN.test(candidate)) {
@@ -742,9 +733,7 @@ export function parsePromptForOrchestrator(
 
 	// ── Extract file scope ───────────────────────────────────────
 	const fileScope: string[] = [];
-	const fileScopeMatch = content.match(
-		/^##\s+File Scope\s*\n([\s\S]*?)(?=\n##\s|\n---|\n$)/m,
-	);
+	const fileScopeMatch = content.match(/^##\s+File Scope\s*\n([\s\S]*?)(?=\n##\s|\n---|\n$)/m);
 
 	if (fileScopeMatch) {
 		const scopeBody = fileScopeMatch[1].trim();
@@ -811,7 +800,6 @@ export function parsePromptForOrchestrator(
 		warnings: stepSegResult.warnings,
 	};
 }
-
 
 // ── Area Scanning ────────────────────────────────────────────────────
 
@@ -887,7 +875,6 @@ export function scanAreaForTasks(
 	return { tasks, errors };
 }
 
-
 // ── Completed Task Set ───────────────────────────────────────────────
 
 /**
@@ -957,7 +944,6 @@ export function buildCompletedTaskSet(areaPaths: string[]): Set<string> {
 	return completed;
 }
 
-
 // ── Argument Resolution ──────────────────────────────────────────────
 
 /**
@@ -995,10 +981,7 @@ export function resolveArguments(
 			if (!areaScanPaths.includes(fullPath)) {
 				areaScanPaths.push(fullPath);
 			}
-		} else if (
-			token.endsWith("PROMPT.md") &&
-			existsSync(resolve(cwd, token))
-		) {
+		} else if (token.endsWith("PROMPT.md") && existsSync(resolve(cwd, token))) {
 			// Single PROMPT.md file
 			directTaskFolders.push(resolve(cwd, dirname(token)));
 		} else if (existsSync(resolve(cwd, token))) {
@@ -1110,10 +1093,7 @@ export function writeAreaDependencyCache(
 	}
 }
 
-export function applyDependenciesFromCache(
-	discovery: DiscoveryResult,
-	areaScanPaths: string[],
-): { applied: boolean } {
+export function applyDependenciesFromCache(discovery: DiscoveryResult, areaScanPaths: string[]): { applied: boolean } {
 	let applied = false;
 	for (const areaPath of areaScanPaths) {
 		const cache = loadAreaDependencyCache(areaPath);
@@ -1128,7 +1108,6 @@ export function applyDependenciesFromCache(
 	}
 	return { applied };
 }
-
 
 // ── Task Registry ────────────────────────────────────────────────────
 
@@ -1237,7 +1216,6 @@ export function buildTaskRegistry(
 
 	return { pending, completed, errors };
 }
-
 
 // ── Cross-Area Dependency Resolution ─────────────────────────────────
 
@@ -1406,7 +1384,6 @@ export function resolveDependencies(
 
 	return errors;
 }
-
 
 // ── Task-to-Repo Routing ─────────────────────────────────────────────
 
@@ -1577,9 +1554,8 @@ export function resolveTaskRouting(
 					if (!validRepoIds.has(seg.repoId)) {
 						const knownRepos = [...validRepoIds.keys()];
 						const suggestions = suggestRepoMatches(seg.repoId, knownRepos);
-						const suggestionHint = suggestions.length > 0
-							? ` Did you mean: ${suggestions.join(", ")}?`
-							: "";
+						const suggestionHint =
+							suggestions.length > 0 ? ` Did you mean: ${suggestions.join(", ")}?` : "";
 						errors.push({
 							code: "SEGMENT_STEP_REPO_INVALID",
 							message:
@@ -1598,7 +1574,6 @@ export function resolveTaskRouting(
 
 	return errors;
 }
-
 
 // ── Discovery Pipeline (Public) ──────────────────────────────────────
 
@@ -1644,12 +1619,7 @@ export function runDiscovery(
 	}
 
 	// Step 2: Build task registry (prompt-parsed dependencies as baseline)
-	const discovery = buildTaskRegistry(
-		resolved.areaScanPaths,
-		resolved.directTaskFolders,
-		taskAreas,
-		cwd,
-	);
+	const discovery = buildTaskRegistry(resolved.areaScanPaths, resolved.directTaskFolders, taskAreas, cwd);
 
 	// If we have duplicate ID errors, stop early (fail-fast)
 	const duplicateErrors = discovery.errors.filter((e) => e.code === "DUPLICATE_ID");
@@ -1721,7 +1691,7 @@ export function runDiscovery(
 	for (const task of discovery.pending.values()) {
 		if (!task.stepSegmentMap) continue;
 		for (const step of task.stepSegmentMap) {
-			const stepRepoIds = step.segments.map(s => s.repoId);
+			const stepRepoIds = step.segments.map((s) => s.repoId);
 			const seen = new Set<string>();
 			for (const rid of stepRepoIds) {
 				if (seen.has(rid)) {
@@ -1765,26 +1735,14 @@ export function formatDiscoveryResults(result: DiscoveryResult): string {
 		}
 
 		lines.push("Pending Tasks:");
-		const sortedAreas = [...byArea.entries()].sort((a, b) =>
-			a[0].localeCompare(b[0]),
-		);
+		const sortedAreas = [...byArea.entries()].sort((a, b) => a[0].localeCompare(b[0]));
 		for (const [area, tasks] of sortedAreas) {
 			lines.push(`  ${area}:`);
-			const sortedTasks = [...tasks].sort((a, b) =>
-				a.taskId.localeCompare(b.taskId),
-			);
+			const sortedTasks = [...tasks].sort((a, b) => a.taskId.localeCompare(b.taskId));
 			for (const task of sortedTasks) {
-				const deps =
-					task.dependencies.length > 0
-						? ` → depends on: ${task.dependencies.join(", ")}`
-						: "";
-				const repo =
-					task.resolvedRepoId
-						? ` → repo: ${task.resolvedRepoId}`
-						: "";
-				lines.push(
-					`    ${task.taskId} [${task.size}] ${task.taskName}${deps}${repo}`,
-				);
+				const deps = task.dependencies.length > 0 ? ` → depends on: ${task.dependencies.join(", ")}` : "";
+				const repo = task.resolvedRepoId ? ` → repo: ${task.resolvedRepoId}` : "";
+				lines.push(`    ${task.taskId} [${task.size}] ${task.taskName}${deps}${repo}`);
 			}
 		}
 		lines.push("");
@@ -1815,4 +1773,3 @@ export function formatDiscoveryResults(result: DiscoveryResult): string {
 
 	return lines.join("\n");
 }
-

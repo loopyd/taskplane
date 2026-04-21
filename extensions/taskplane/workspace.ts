@@ -41,7 +41,7 @@
  */
 import { readFileSync, existsSync, realpathSync } from "fs";
 import { resolve, relative, isAbsolute } from "path";
-import { parse as yamlParse } from "yaml";
+import { parseYamlStrict } from "./yaml-utils.ts";
 
 import { runGit } from "./git.ts";
 import {
@@ -53,7 +53,6 @@ import {
 	type WorkspaceRoutingConfig,
 	type PointerResolution,
 } from "./types.ts";
-
 
 // ── Path Canonicalization ────────────────────────────────────────────
 
@@ -107,7 +106,6 @@ function isPathWithinContainer(childPath: string, parentPath: string): boolean {
 	const parent = canonicalizePath(parentPath, "");
 	return child === parent || child.startsWith(`${parent}/`);
 }
-
 
 // ── Pointer Resolution ───────────────────────────────────────────────
 
@@ -287,7 +285,6 @@ export function resolvePointer(
 	};
 }
 
-
 // ── Workspace Config Loading ─────────────────────────────────────────
 
 /**
@@ -327,7 +324,7 @@ export function loadWorkspaceConfig(workspaceRoot: string): WorkspaceConfig | nu
 	// ── 3. YAML parse ────────────────────────────────────────────
 	let parsed: unknown;
 	try {
-		parsed = yamlParse(rawContent);
+		parsed = parseYamlStrict(rawContent);
 	} catch (err: unknown) {
 		const msg = err instanceof Error ? err.message : String(err);
 		throw new WorkspaceConfigError(
@@ -453,9 +450,10 @@ export function loadWorkspaceConfig(workspaceRoot: string): WorkspaceConfig | nu
 		normalizedPaths.set(normalizedPath, repoId);
 
 		// Build repo config
-		const defaultBranch = typeof repoEntry.default_branch === "string" && repoEntry.default_branch.trim()
-			? repoEntry.default_branch.trim()
-			: undefined;
+		const defaultBranch =
+			typeof repoEntry.default_branch === "string" && repoEntry.default_branch.trim()
+				? repoEntry.default_branch.trim()
+				: undefined;
 
 		repos.set(repoId, {
 			id: repoId,
@@ -587,7 +585,6 @@ export function loadWorkspaceConfig(workspaceRoot: string): WorkspaceConfig | nu
 	};
 }
 
-
 // ── Cross-Config Validation ─────────────────────────────────────────
 
 /**
@@ -602,9 +599,7 @@ export function validateTaskAreasWithinTasksRoot(
 	taskRunnerConfig: import("./types.ts").TaskRunnerConfig,
 ): void {
 	const tasksRoot = workspaceConfig.routing.tasksRoot;
-	const areaEntries = Object.entries(taskRunnerConfig.task_areas ?? {}).sort((a, b) =>
-		a[0].localeCompare(b[0])
-	);
+	const areaEntries = Object.entries(taskRunnerConfig.task_areas ?? {}).sort((a, b) => a[0].localeCompare(b[0]));
 
 	for (const [areaName, area] of areaEntries) {
 		const areaPathRaw = (area?.path ?? "").trim();
@@ -619,7 +614,6 @@ export function validateTaskAreasWithinTasksRoot(
 		}
 	}
 }
-
 
 // ── Execution Context Builder ────────────────────────────────────────
 
@@ -656,7 +650,7 @@ export function buildExecutionContext(
 			throw new WorkspaceConfigError(
 				"WORKSPACE_SETUP_REQUIRED",
 				`No workspace config found at ${wsConfigFile}, and current directory is not a git repository: ${cwd}. ` +
-				`Run Taskplane from a git repository, or create ${wsConfigFile} (taskplane init) to use workspace mode.`,
+					`Run Taskplane from a git repository, or create ${wsConfigFile} (taskplane init) to use workspace mode.`,
 				undefined,
 				cwd,
 			);

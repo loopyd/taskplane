@@ -112,7 +112,6 @@ export interface FingerprintDiff {
 	fixed: TestFingerprint[];
 }
 
-
 // ── Normalization Helpers ────────────────────────────────────────────
 
 /** Max length for normalized message strings */
@@ -172,7 +171,6 @@ export function fingerprintKey(fp: TestFingerprint): string {
 	return `${fp.commandId}\0${fp.file}\0${fp.case}\0${fp.kind}\0${fp.messageNorm}`;
 }
 
-
 // ── Command Runner ───────────────────────────────────────────────────
 
 /** Default timeout for verification commands: 5 minutes */
@@ -224,9 +222,7 @@ export function runVerificationCommands(
 					stdout: proc.stdout || "",
 					stderr: proc.stderr || "",
 					durationMs,
-					error: isTimeout
-						? `Command timed out after ${timeoutMs}ms`
-						: `Spawn error: ${proc.error.message}`,
+					error: isTimeout ? `Command timed out after ${timeoutMs}ms` : `Spawn error: ${proc.error.message}`,
 				});
 			} else {
 				results.push({
@@ -254,7 +250,6 @@ export function runVerificationCommands(
 
 	return results;
 }
-
 
 // ── Test Output Parsers ──────────────────────────────────────────────
 
@@ -371,7 +366,7 @@ export function parseVitestOutput(commandId: string, stdout: string): TestFinger
 		// This covers setup/import/runtime-at-file-load errors where Vitest marks the file as
 		// failed but produces no assertionResults (or only non-failed ones).
 		if (testFile.status === "failed") {
-			const hasFailedAssertions = hasAssertions && assertions!.some(a => a.status === "failed");
+			const hasFailedAssertions = hasAssertions && assertions!.some((a) => a.status === "failed");
 			if (!hasFailedAssertions) {
 				// No assertion-level failures captured — emit suite-level runtime_error fingerprint
 				const suiteMessage = testFile.message || "Suite failed with no message";
@@ -407,13 +402,15 @@ export function parseTestOutput(commandResult: CommandResult): TestFingerprint[]
 
 	// If command had a spawn/timeout error, produce a command_error fingerprint
 	if (error) {
-		return [{
-			commandId,
-			file: "",
-			case: "",
-			kind: "command_error",
-			messageNorm: normalizeMessage(error),
-		}];
+		return [
+			{
+				commandId,
+				file: "",
+				case: "",
+				kind: "command_error",
+				messageNorm: normalizeMessage(error),
+			},
+		];
 	}
 
 	// If exit code is 0, no failures to fingerprint
@@ -433,15 +430,16 @@ export function parseTestOutput(commandResult: CommandResult): TestFingerprint[]
 
 	// Fallback: command_error fingerprint with stderr (or stdout if stderr is empty)
 	const fallbackMessage = stderr.trim() || stdout.trim() || "Command failed with no output";
-	return [{
-		commandId,
-		file: "",
-		case: "",
-		kind: "command_error",
-		messageNorm: normalizeMessage(fallbackMessage),
-	}];
+	return [
+		{
+			commandId,
+			file: "",
+			case: "",
+			kind: "command_error",
+			messageNorm: normalizeMessage(fallbackMessage),
+		},
+	];
 }
-
 
 // ── Fingerprint Diffing ──────────────────────────────────────────────
 
@@ -474,10 +472,7 @@ export function deduplicateFingerprints(fingerprints: TestFingerprint[]): TestFi
  * @param postMerge - Fingerprints from post-merge verification run
  * @returns FingerprintDiff with new failures, pre-existing, and fixed sets
  */
-export function diffFingerprints(
-	baseline: TestFingerprint[],
-	postMerge: TestFingerprint[],
-): FingerprintDiff {
+export function diffFingerprints(baseline: TestFingerprint[], postMerge: TestFingerprint[]): FingerprintDiff {
 	const dedupBaseline = deduplicateFingerprints(baseline);
 	const dedupPostMerge = deduplicateFingerprints(postMerge);
 
@@ -508,7 +503,6 @@ export function diffFingerprints(
 
 	return { newFailures, preExisting, fixed };
 }
-
 
 // ── Baseline Capture ─────────────────────────────────────────────────
 

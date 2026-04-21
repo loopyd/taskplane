@@ -154,7 +154,11 @@ export function parseSegmentIdRepo(segment: { repoId: string }): string {
 /** Build a dynamic segment expansion request ID (`exp-{timestamp}-{random5}`). */
 export function buildExpansionRequestId(timestamp = Date.now()): string {
 	const ts = Number.isFinite(timestamp) ? Math.floor(timestamp) : Date.now();
-	const base = Math.random().toString(36).slice(2).toLowerCase().replace(/[^a-z0-9]/g, "");
+	const base = Math.random()
+		.toString(36)
+		.slice(2)
+		.toLowerCase()
+		.replace(/[^a-z0-9]/g, "");
 	const random5 = (base + "00000").slice(0, 5);
 	return `exp-${ts}-${random5}`;
 }
@@ -314,6 +318,19 @@ export interface TaskRunnerConfig {
 	 */
 	model_fallback?: "inherit" | "fail";
 	/**
+	 * Worker agent model/thinking/tools configuration.
+	 * Threaded through to `executeLaneV2()` via env vars.
+	 * @since TP-201
+	 */
+	worker?: {
+		/** Model string (empty = inherit session default) */
+		model: string;
+		/** Thinking mode ("on" | "off" | budget string, empty = inherit) */
+		thinking: string;
+		/** Comma-separated tool allowlist */
+		tools: string;
+	};
+	/**
 	 * Reviewer agent model/thinking/tools configuration.
 	 * Threaded through to `spawnReviewer()` via env vars.
 	 * @since TP-160
@@ -345,7 +362,6 @@ export interface PreflightCheck {
 	message: string;
 	hint?: string;
 }
-
 
 // ── Defaults ─────────────────────────────────────────────────────────
 
@@ -403,7 +419,6 @@ export const DEFAULT_TASK_RUNNER_CONFIG: TaskRunnerConfig = {
 	reference_docs: {},
 	model_fallback: "inherit",
 };
-
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -632,7 +647,6 @@ export interface DiscoveryResult {
 	errors: DiscoveryError[];
 }
 
-
 // ── Wave Computation Types ───────────────────────────────────────────
 
 /** Dependency graph: adjacency list (task → tasks it depends on) */
@@ -658,7 +672,6 @@ export interface WaveComputationResult {
 	/** Optional task→segment planning map (TP-080, additive contract). */
 	segmentPlans?: TaskSegmentPlanMap;
 }
-
 
 // ── Lane Allocation (Phase 3) ────────────────────────────────────────
 
@@ -735,7 +748,6 @@ export interface AllocatedLane {
 	/** Repo ID this lane targets (workspace mode only). Undefined in repo mode. */
 	repoId?: string;
 }
-
 
 // ── Execution Types & Contracts ──────────────────────────────────────
 
@@ -894,6 +906,7 @@ export type ExecutionErrorCode =
 	| "EXEC_SPAWN_FAILED"
 	| "EXEC_TASK_FAILED"
 	| "EXEC_TASK_STALLED"
+	| "EXEC_MISSING_TASK_FOLDER"
 	| "EXEC_TASK_STAGE_FAILED"
 	| "EXEC_TASK_COMMIT_FAILED"
 	| "EXEC_TMUX_NOT_AVAILABLE"
@@ -913,7 +926,6 @@ export class ExecutionError extends Error {
 		this.taskId = taskId;
 	}
 }
-
 
 // ── Monitoring Types & Contracts ─────────────────────────────────────
 
@@ -1026,7 +1038,6 @@ export interface MtimeTracker {
 	stallTimerStart: number | null;
 }
 
-
 // ── Wave Execution Types & Contracts ─────────────────────────────────
 
 /**
@@ -1098,7 +1109,6 @@ export interface WaveExecutionResult {
 	} | null;
 }
 
-
 // ── Orchestrator Runtime State ───────────────────────────────────────
 
 /**
@@ -1111,7 +1121,16 @@ export interface WaveExecutionResult {
  *                   → paused (via /orch-pause)
  *   Any active state → idle (via cleanup after completion/failure)
  */
-export type OrchBatchPhase = "idle" | "launching" | "planning" | "executing" | "merging" | "paused" | "stopped" | "completed" | "failed";
+export type OrchBatchPhase =
+	| "idle"
+	| "launching"
+	| "planning"
+	| "executing"
+	| "merging"
+	| "paused"
+	| "stopped"
+	| "completed"
+	| "failed";
 
 /**
  * Runtime state for a batch execution.
@@ -1263,7 +1282,6 @@ export function freshOrchBatchState(): OrchBatchRuntimeState {
 		mergeResults: [],
 	};
 }
-
 
 // ── Merge Types ──────────────────────────────────────────────────────
 
@@ -1620,10 +1638,7 @@ export type MergeHealthStatus = "healthy" | "warning" | "dead" | "stuck";
  *
  * @since TP-056
  */
-export type MergeHealthEventType =
-	| "merge_health_warning"
-	| "merge_health_dead"
-	| "merge_health_stuck";
+export type MergeHealthEventType = "merge_health_warning" | "merge_health_dead" | "merge_health_stuck";
 
 /**
  * Snapshot of a merge session's pane output at a point in time.
@@ -1661,7 +1676,6 @@ export interface MergeSessionHealthState {
 	/** Whether a dead event has been emitted (prevent duplicates) */
 	deadEmitted: boolean;
 }
-
 
 // ── Merge Retry Policy Matrix (TP-033 Step 2) ───────────────────────
 
@@ -1764,7 +1778,6 @@ export const MERGE_FAILURE_CLASSIFICATIONS: readonly MergeFailureClassification[
 	"git_lock_file",
 ] as const;
 
-
 // ── Tier 0 Watchdog Recovery Types (TP-039) ──────────────────────────
 
 /**
@@ -1775,11 +1788,7 @@ export const MERGE_FAILURE_CLASSIFICATIONS: readonly MergeFailureClassification[
  *
  * @since TP-039
  */
-export type Tier0RecoveryPattern =
-	| "worker_crash"
-	| "stale_worktree"
-	| "cleanup_gate"
-	| "model_fallback";
+export type Tier0RecoveryPattern = "worker_crash" | "stale_worktree" | "cleanup_gate" | "model_fallback";
 
 /**
  * Exit classifications that are eligible for automatic Tier 0 retry.
@@ -2037,7 +2046,6 @@ export interface EngineEvent {
  */
 export type EngineEventCallback = (event: EngineEvent) => void;
 
-
 // ── Supervisor Alert Types (TP-076) ──────────────────────────────────
 
 /**
@@ -2206,7 +2214,9 @@ export function buildSupervisorSegmentFrontierSnapshot(
 	preferredSegmentId?: string | null,
 ): SupervisorSegmentFrontierSnapshot | undefined {
 	const orderedSegmentIds = Array.isArray(segmentIds)
-		? segmentIds.filter((segmentId): segmentId is string => typeof segmentId === "string" && segmentId.trim().length > 0)
+		? segmentIds.filter(
+				(segmentId): segmentId is string => typeof segmentId === "string" && segmentId.trim().length > 0,
+			)
 		: [];
 	if (orderedSegmentIds.length === 0) return undefined;
 
@@ -2217,16 +2227,17 @@ export function buildSupervisorSegmentFrontierSnapshot(
 		}
 	}
 
-	const resolvedActiveSegmentId = (activeSegmentId && orderedSegmentIds.includes(activeSegmentId))
-		? activeSegmentId
-		: (preferredSegmentId && orderedSegmentIds.includes(preferredSegmentId)
-			? preferredSegmentId
-			: null);
+	const resolvedActiveSegmentId =
+		activeSegmentId && orderedSegmentIds.includes(activeSegmentId)
+			? activeSegmentId
+			: preferredSegmentId && orderedSegmentIds.includes(preferredSegmentId)
+				? preferredSegmentId
+				: null;
 
 	const segments = orderedSegmentIds.map((segmentId) => {
 		const persisted = bySegmentId.get(segmentId);
-		const status: PersistedSegmentStatus = persisted?.status
-			?? (resolvedActiveSegmentId === segmentId ? "running" : "pending");
+		const status: PersistedSegmentStatus =
+			persisted?.status ?? (resolvedActiveSegmentId === segmentId ? "running" : "pending");
 		return {
 			segmentId,
 			repoId: persisted ? parseSegmentIdRepo(persisted) : "unknown",
@@ -2235,11 +2246,12 @@ export function buildSupervisorSegmentFrontierSnapshot(
 		};
 	});
 
-	const terminalSegments = segments.filter((segment) =>
-		segment.status === "succeeded"
-		|| segment.status === "failed"
-		|| segment.status === "stalled"
-		|| segment.status === "skipped",
+	const terminalSegments = segments.filter(
+		(segment) =>
+			segment.status === "succeeded" ||
+			segment.status === "failed" ||
+			segment.status === "stalled" ||
+			segment.status === "skipped",
 	).length;
 
 	return {
@@ -2273,7 +2285,6 @@ export function buildEngineEventBase(
 		phase,
 	};
 }
-
 
 /**
  * Decision output from the merge retry policy evaluator.
@@ -2311,50 +2322,50 @@ export interface MergeRetryDecision {
  */
 export type MergeRetryLoopOutcome =
 	| {
-		/** Retry succeeded — caller should continue normal post-merge flow */
-		kind: "retry_succeeded";
-		mergeResult: MergeWaveResult;
-		/** Classification of the failure that was retried */
-		classification: MergeFailureClassification | null;
-		/** Scope key used for retry counter tracking */
-		scopeKey: string;
-		/** Last retry decision (carries attempt/maxAttempts for event emission) */
-		lastDecision: MergeRetryDecision;
-	}
+			/** Retry succeeded — caller should continue normal post-merge flow */
+			kind: "retry_succeeded";
+			mergeResult: MergeWaveResult;
+			/** Classification of the failure that was retried */
+			classification: MergeFailureClassification | null;
+			/** Scope key used for retry counter tracking */
+			scopeKey: string;
+			/** Last retry decision (carries attempt/maxAttempts for event emission) */
+			lastDecision: MergeRetryDecision;
+	  }
 	| {
-		/** Safe-stop triggered during retry — caller should break the wave loop */
-		kind: "safe_stop";
-		mergeResult: MergeWaveResult;
-		/** Classification of the failure that was retried */
-		classification: MergeFailureClassification | null;
-		/** Scope key used for retry counter tracking */
-		scopeKey: string;
-		/** Last retry decision (carries attempt/maxAttempts for event emission) */
-		lastDecision: MergeRetryDecision;
-		errorMessage: string;
-		notifyMessage: string;
-	}
+			/** Safe-stop triggered during retry — caller should break the wave loop */
+			kind: "safe_stop";
+			mergeResult: MergeWaveResult;
+			/** Classification of the failure that was retried */
+			classification: MergeFailureClassification | null;
+			/** Scope key used for retry counter tracking */
+			scopeKey: string;
+			/** Last retry decision (carries attempt/maxAttempts for event emission) */
+			lastDecision: MergeRetryDecision;
+			errorMessage: string;
+			notifyMessage: string;
+	  }
 	| {
-		/**
-		 * Retry exhausted or failure is non-retriable — caller should
-		 * force `paused` regardless of on_merge_failure config.
-		 */
-		kind: "exhausted";
-		mergeResult: MergeWaveResult;
-		classification: MergeFailureClassification | null;
-		scopeKey: string;
-		lastDecision: MergeRetryDecision;
-		errorMessage: string;
-		notifyMessage: string;
-	}
+			/**
+			 * Retry exhausted or failure is non-retriable — caller should
+			 * force `paused` regardless of on_merge_failure config.
+			 */
+			kind: "exhausted";
+			mergeResult: MergeWaveResult;
+			classification: MergeFailureClassification | null;
+			scopeKey: string;
+			lastDecision: MergeRetryDecision;
+			errorMessage: string;
+			notifyMessage: string;
+	  }
 	| {
-		/** No retry attempted (unclassifiable or non-retriable with 0 attempts).
-		 *  Caller should fall through to standard on_merge_failure policy. */
-		kind: "no_retry";
-		mergeResult: MergeWaveResult;
-		classification: MergeFailureClassification | null;
-		scopeKey: string;
-	};
+			/** No retry attempted (unclassifiable or non-retriable with 0 attempts).
+			 *  Caller should fall through to standard on_merge_failure policy. */
+			kind: "no_retry";
+			mergeResult: MergeWaveResult;
+			classification: MergeFailureClassification | null;
+			scopeKey: string;
+	  };
 
 /**
  * Callbacks provided to `applyMergeRetryLoop()` for side effects
@@ -2438,7 +2449,6 @@ export interface OrchDashboardViewModel {
 	failurePolicy: string | null; // e.g., "stop-wave" if stopped by policy
 }
 
-
 // ── State Persistence Types (TS-009) ─────────────────────────────────
 
 // ── v3 Resilience & Diagnostics Sections (TP-030) ────────────────────
@@ -2519,6 +2529,68 @@ export interface PersistedTaskExitSummary {
 	retries?: number;
 }
 
+/** Agent roles included in batch diagnostics output. */
+export type AgentDiagnosticsRole = "worker" | "reviewer" | "supervisor" | "merger";
+
+/** Generic per-task diagnostics counters for one agent role. */
+export interface AgentTaskDiagnostics {
+	/** Number of observed runs for this task under the role. */
+	runs: number;
+	/** Number of successful outcomes. */
+	succeeded: number;
+	/** Number of failed outcomes. */
+	failed: number;
+	/** Total task duration in seconds. */
+	durationSec: number;
+	/** Total task cost in USD. */
+	costUsd: number;
+	/** Total tool calls. */
+	toolCalls: number;
+	/** Total input tokens. */
+	inputTokens: number;
+	/** Total output tokens. */
+	outputTokens: number;
+	/** Total cache-read tokens. */
+	cacheReadTokens: number;
+	/** Total cache-write tokens. */
+	cacheWriteTokens: number;
+	/** Outcome counters (role-specific keys like "APPROVE" or "SUCCESS"). */
+	outcomes: Record<string, number>;
+	/** Most recent observed outcome value. */
+	lastOutcome: string | null;
+}
+
+/** Aggregated diagnostics counters for one agent role. */
+export interface AgentRoleDiagnostics {
+	/** Number of observed runs across all tasks/events for the role. */
+	runs: number;
+	/** Number of successful outcomes. */
+	succeeded: number;
+	/** Number of failed outcomes. */
+	failed: number;
+	/** Total duration in seconds. */
+	durationSec: number;
+	/** Total cost in USD. */
+	costUsd: number;
+	/** Total tool calls. */
+	toolCalls: number;
+	/** Total input tokens. */
+	inputTokens: number;
+	/** Total output tokens. */
+	outputTokens: number;
+	/** Total cache-read tokens. */
+	cacheReadTokens: number;
+	/** Total cache-write tokens. */
+	cacheWriteTokens: number;
+	/** Outcome counters (role-specific keys like "APPROVE" or "SUCCESS"). */
+	outcomes: Record<string, number>;
+	/** Per-task diagnostics keyed by task ID when task-level attribution exists. */
+	taskMetrics: Record<string, AgentTaskDiagnostics>;
+}
+
+/** Aggregated diagnostics keyed by agent role. */
+export type BatchAgentDiagnostics = Record<AgentDiagnosticsRole, AgentRoleDiagnostics>;
+
 /**
  * Batch-level diagnostics section for batch-state.json.
  *
@@ -2538,6 +2610,8 @@ export interface BatchDiagnostics {
 	taskExits: Record<string, PersistedTaskExitSummary>;
 	/** Accumulated batch cost in USD across all tasks */
 	batchCost: number;
+	/** Optional multi-role agent diagnostics aggregated at diagnostics emission time. */
+	agentDiagnostics?: BatchAgentDiagnostics;
 }
 
 /**
@@ -2561,6 +2635,53 @@ export function defaultBatchDiagnostics(): BatchDiagnostics {
 	return {
 		taskExits: {},
 		batchCost: 0,
+		agentDiagnostics: defaultBatchAgentDiagnostics(),
+	};
+}
+
+/** Create an empty per-task agent diagnostics record. */
+export function defaultAgentTaskDiagnostics(): AgentTaskDiagnostics {
+	return {
+		runs: 0,
+		succeeded: 0,
+		failed: 0,
+		durationSec: 0,
+		costUsd: 0,
+		toolCalls: 0,
+		inputTokens: 0,
+		outputTokens: 0,
+		cacheReadTokens: 0,
+		cacheWriteTokens: 0,
+		outcomes: {},
+		lastOutcome: null,
+	};
+}
+
+/** Create an empty aggregate diagnostics record for one role. */
+export function defaultAgentRoleDiagnostics(): AgentRoleDiagnostics {
+	return {
+		runs: 0,
+		succeeded: 0,
+		failed: 0,
+		durationSec: 0,
+		costUsd: 0,
+		toolCalls: 0,
+		inputTokens: 0,
+		outputTokens: 0,
+		cacheReadTokens: 0,
+		cacheWriteTokens: 0,
+		outcomes: {},
+		taskMetrics: {},
+	};
+}
+
+/** Create an empty aggregate diagnostics map for all agent roles. */
+export function defaultBatchAgentDiagnostics(): BatchAgentDiagnostics {
+	return {
+		worker: defaultAgentRoleDiagnostics(),
+		reviewer: defaultAgentRoleDiagnostics(),
+		supervisor: defaultAgentRoleDiagnostics(),
+		merger: defaultAgentRoleDiagnostics(),
 	};
 }
 
@@ -2621,10 +2742,7 @@ export function batchStatePath(repoRoot: string): string {
  * - STATE_SCHEMA_INVALID: JSON is valid but fails schema validation
  *   (missing required fields, unknown enum values, version mismatch)
  */
-export type StateFileErrorCode =
-	| "STATE_FILE_IO_ERROR"
-	| "STATE_FILE_PARSE_ERROR"
-	| "STATE_SCHEMA_INVALID";
+export type StateFileErrorCode = "STATE_FILE_IO_ERROR" | "STATE_FILE_PARSE_ERROR" | "STATE_SCHEMA_INVALID";
 
 /** Typed error class for state file operations. */
 export class StateFileError extends Error {
@@ -3023,7 +3141,6 @@ export interface PersistedBatchState {
 	_extraFields?: Record<string, unknown>;
 }
 
-
 // ── Resume (TS-009 Step 4) ───────────────────────────────────────────
 
 /**
@@ -3241,17 +3358,13 @@ export const DURATION_BASE_MINUTES = 30;
  * Get estimated duration in minutes for a task size.
  * Uses explicit mapping, falling back to weight × base.
  */
-export function getTaskDurationMinutes(
-	size: string,
-	sizeWeights: Record<string, number>,
-): number {
+export function getTaskDurationMinutes(size: string, sizeWeights: Record<string, number>): number {
 	if (SIZE_DURATION_MINUTES[size] !== undefined) {
 		return SIZE_DURATION_MINUTES[size];
 	}
 	const weight = sizeWeights[size] || sizeWeights["M"] || 2;
 	return weight * DURATION_BASE_MINUTES;
 }
-
 
 // ── Batch History ────────────────────────────────────────────────────
 
@@ -3269,8 +3382,8 @@ export interface BatchTaskSummary {
 	taskId: string;
 	taskName: string;
 	status: "succeeded" | "failed" | "skipped" | "blocked" | "stalled" | "pending";
-	wave: number;      // 1-based
-	lane: number;      // 1-based
+	wave: number; // 1-based
+	lane: number; // 1-based
 	durationMs: number;
 	tokens: TokenCounts;
 	exitReason: string | null;
@@ -3278,8 +3391,8 @@ export interface BatchTaskSummary {
 
 /** Per-wave summary for history. */
 export interface BatchWaveSummary {
-	wave: number;      // 1-based
-	tasks: string[];   // task IDs
+	wave: number; // 1-based
+	tasks: string[]; // task IDs
 	mergeStatus: "succeeded" | "failed" | "partial" | "skipped";
 	durationMs: number;
 	tokens: TokenCounts;
@@ -3307,7 +3420,6 @@ export interface BatchHistorySummary {
 
 /** Max number of batch history entries to retain. */
 export const BATCH_HISTORY_MAX_ENTRIES = 100;
-
 
 // ── Workspace Mode Types ─────────────────────────────────────────────
 
@@ -3446,7 +3558,6 @@ export interface ExecutionContext {
 	pointer: PointerResolution | null;
 }
 
-
 // ── Workspace Validation Error Types ─────────────────────────────────
 
 /**
@@ -3488,7 +3599,7 @@ export type WorkspaceConfigErrorCode =
 	| "WORKSPACE_TASK_AREA_OUTSIDE_TASKS_ROOT"
 	| "WORKSPACE_SETUP_REQUIRED"
 	| "WORKSPACE_DUPLICATE_REPO_PATH"
-	| "WORKSPACE_SCHEMA_INVALID";/**
+	| "WORKSPACE_SCHEMA_INVALID"; /**
  * Typed error class for workspace configuration failures.
  *
  * Thrown during workspace config loading/validation when the config file
@@ -3513,7 +3624,6 @@ export class WorkspaceConfigError extends Error {
 		this.relatedPath = relatedPath;
 	}
 }
-
 
 // ── Pointer Resolution Types ─────────────────────────────────────────
 
@@ -3581,7 +3691,6 @@ export interface PointerResolution {
 	warning?: string;
 }
 
-
 // ── Workspace Defaults ───────────────────────────────────────────────
 
 /**
@@ -3625,7 +3734,6 @@ export function createRepoModeContext(
 	};
 }
 
-
 // ── Agent Mailbox Types (TP-089) ─────────────────────────────────────
 
 /**
@@ -3663,7 +3771,12 @@ export type MailboxMessageType = "steer" | "query" | "abort" | "info" | "reply" 
  * @since TP-089
  */
 export const MAILBOX_MESSAGE_TYPES: ReadonlySet<string> = new Set<MailboxMessageType>([
-	"steer", "query", "abort", "info", "reply", "escalate",
+	"steer",
+	"query",
+	"abort",
+	"info",
+	"reply",
+	"escalate",
 ]);
 
 /**
@@ -3755,18 +3868,14 @@ export type RuntimeAgentRole = "worker" | "reviewer" | "merger" | "lane-runner";
  *
  * @since TP-102
  */
-export type RuntimeAgentStatus =
-	| "spawning"
-	| "running"
-	| "wrapping_up"
-	| "exited"
-	| "crashed"
-	| "timed_out"
-	| "killed";
+export type RuntimeAgentStatus = "spawning" | "running" | "wrapping_up" | "exited" | "crashed" | "timed_out" | "killed";
 
 /** Set of terminal agent statuses (process is no longer alive). @since TP-102 */
 export const TERMINAL_AGENT_STATUSES: ReadonlySet<RuntimeAgentStatus> = new Set([
-	"exited", "crashed", "timed_out", "killed",
+	"exited",
+	"crashed",
+	"timed_out",
+	"killed",
 ]);
 
 /**
@@ -4239,13 +4348,25 @@ export function validateAgentManifest(manifest: unknown): string[] {
 		const validRoles: ReadonlySet<string> = new Set(["worker", "reviewer", "merger", "lane-runner"]);
 		if (!validRoles.has(m.role as string)) errors.push(`role must be one of: ${[...validRoles].join(", ")}`);
 	}
-	if (typeof m.pid !== "number" || !Number.isFinite(m.pid) || m.pid <= 0) errors.push("pid must be a positive finite number");
-	if (typeof m.parentPid !== "number" || !Number.isFinite(m.parentPid) || m.parentPid <= 0) errors.push("parentPid must be a positive finite number");
-	if (typeof m.startedAt !== "number" || !Number.isFinite(m.startedAt)) errors.push("startedAt must be a finite number");
+	if (typeof m.pid !== "number" || !Number.isFinite(m.pid) || m.pid <= 0)
+		errors.push("pid must be a positive finite number");
+	if (typeof m.parentPid !== "number" || !Number.isFinite(m.parentPid) || m.parentPid <= 0)
+		errors.push("parentPid must be a positive finite number");
+	if (typeof m.startedAt !== "number" || !Number.isFinite(m.startedAt))
+		errors.push("startedAt must be a finite number");
 	if (typeof m.status !== "string") errors.push("status must be a string");
 	else {
-		const validStatuses: ReadonlySet<string> = new Set(["spawning", "running", "wrapping_up", "exited", "crashed", "timed_out", "killed"]);
-		if (!validStatuses.has(m.status as string)) errors.push(`status must be one of: ${[...validStatuses].join(", ")}`);
+		const validStatuses: ReadonlySet<string> = new Set([
+			"spawning",
+			"running",
+			"wrapping_up",
+			"exited",
+			"crashed",
+			"timed_out",
+			"killed",
+		]);
+		if (!validStatuses.has(m.status as string))
+			errors.push(`status must be one of: ${[...validStatuses].join(", ")}`);
 	}
 	if (typeof m.cwd !== "string" || !m.cwd) errors.push("cwd must be a non-empty string");
 	if (typeof m.repoId !== "string") errors.push("repoId must be a string");
@@ -4275,4 +4396,3 @@ export function validatePacketPaths(packet: unknown): string[] {
 
 	return errors;
 }
-

@@ -39,11 +39,7 @@ import {
 	type ParsedTask,
 } from "../taskplane/types.ts";
 
-import {
-	buildExecutionUnit,
-	buildAgentIdFromLane,
-	resolveRuntimeStateRoot,
-} from "../taskplane/execution.ts";
+import { buildExecutionUnit, buildAgentIdFromLane, resolveRuntimeStateRoot } from "../taskplane/execution.ts";
 
 // ── 1. PacketPaths ──────────────────────────────────────────────────
 
@@ -171,7 +167,15 @@ describe("2.x: validateAgentManifest", () => {
 	});
 
 	it("2.9: accepts all valid statuses", () => {
-		for (const status of ["spawning", "running", "wrapping_up", "exited", "crashed", "timed_out", "killed"] as RuntimeAgentStatus[]) {
+		for (const status of [
+			"spawning",
+			"running",
+			"wrapping_up",
+			"exited",
+			"crashed",
+			"timed_out",
+			"killed",
+		] as RuntimeAgentStatus[]) {
 			const m = validManifest();
 			m.status = status;
 			expect(validateAgentManifest(m)).toEqual([]);
@@ -262,15 +266,11 @@ describe("4.x: runtime path helpers", () => {
 	});
 
 	it("4.6: runtimeRegistryPath", () => {
-		expect(runtimeRegistryPath(stateRoot, batchId)).toBe(
-			"/project/.pi/runtime/20260330T120000/registry.json",
-		);
+		expect(runtimeRegistryPath(stateRoot, batchId)).toBe("/project/.pi/runtime/20260330T120000/registry.json");
 	});
 
 	it("4.7: Windows-style stateRoot works", () => {
-		expect(runtimeRoot("C:/dev/taskplane", batchId)).toBe(
-			"C:/dev/taskplane/.pi/runtime/20260330T120000",
-		);
+		expect(runtimeRoot("C:/dev/taskplane", batchId)).toBe("C:/dev/taskplane/.pi/runtime/20260330T120000");
 	});
 });
 

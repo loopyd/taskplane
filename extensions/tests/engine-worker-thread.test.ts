@@ -18,11 +18,7 @@ import {
 	deserializeWorkspaceConfig,
 	applySerializedState,
 } from "../taskplane/engine-worker.ts";
-import type {
-	EngineWorkerData,
-	SerializedBatchState,
-	SerializedWorkspaceConfig,
-} from "../taskplane/engine-worker.ts";
+import type { EngineWorkerData, SerializedBatchState, SerializedWorkspaceConfig } from "../taskplane/engine-worker.ts";
 import { freshOrchBatchState } from "../taskplane/types.ts";
 import type { OrchBatchRuntimeState, WorkspaceConfig } from "../taskplane/types.ts";
 
@@ -92,9 +88,7 @@ describe("1.x — Workspace config serialization", () => {
 	it("1.5: roundtrip preserves workspace config", () => {
 		const original: WorkspaceConfig = {
 			mode: "workspace",
-			repos: new Map([
-				["backend", { path: "/repo/backend", defaultBranch: "main" } as any],
-			]),
+			repos: new Map([["backend", { path: "/repo/backend", defaultBranch: "main" } as any]]),
 			routing: { tasksRoot: "/tasks", defaultRepo: "backend", strict: true } as any,
 			configPath: "/ws/config.json",
 		};
@@ -232,7 +226,7 @@ describe("3.x — Engine worker entry point structure", () => {
 
 	it("3.8: engine-worker.ts guards execution with fork sentinel check", () => {
 		const src = readSource("engine-worker.ts");
-		expect(src).toContain('TASKPLANE_ENGINE_FORK');
+		expect(src).toContain("TASKPLANE_ENGINE_FORK");
 		expect(src).toContain("process.send");
 	});
 
@@ -258,7 +252,7 @@ describe("3.x — Engine worker entry point structure", () => {
 describe("4.x — Extension worker thread integration", () => {
 	it("4.1: extension.ts imports fork from child_process", () => {
 		const src = readSource("extension.ts");
-		expect(src).toContain('import { fork');
+		expect(src).toContain("import { fork");
 		expect(src).toContain('"child_process"');
 	});
 
@@ -301,10 +295,7 @@ describe("4.x — Extension worker thread integration", () => {
 
 	it("4.7: doOrchPause forwards pause to engine process", () => {
 		const src = readSource("extension.ts");
-		const pauseBody = src.substring(
-			src.indexOf("function doOrchPause()"),
-			src.indexOf("function doOrchResume("),
-		);
+		const pauseBody = src.substring(src.indexOf("function doOrchPause()"), src.indexOf("function doOrchResume("));
 		expect(pauseBody).toContain('activeWorker?.send({ type: "pause" })');
 	});
 

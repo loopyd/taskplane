@@ -208,7 +208,7 @@ describe("runPreResumeDiagnostics", () => {
 		// Use a non-existent path to avoid git calls actually finding branches
 		const result = runPreResumeDiagnostics(state, "/tmp/nonexistent-repo-root", "/tmp/nonexistent-state-root");
 		// State coherence always passes because state was already loaded
-		const stateCheck = result.checks.find(c => c.check === "state-coherence");
+		const stateCheck = result.checks.find((c) => c.check === "state-coherence");
 		expect(stateCheck).toBeDefined();
 		expect(stateCheck!.passed).toBe(true);
 		expect(stateCheck!.detail).toContain(state.batchId);
@@ -220,7 +220,7 @@ describe("runPreResumeDiagnostics", () => {
 		// Point to a valid git repo (current project) but with a nonexistent branch
 		const repoRoot = join(__dirname, "..", "..");
 		const result = runPreResumeDiagnostics(state, repoRoot, repoRoot);
-		const branchCheck = result.checks.find(c => c.check.startsWith("branch-consistency:"));
+		const branchCheck = result.checks.find((c) => c.check.startsWith("branch-consistency:"));
 		expect(branchCheck).toBeDefined();
 		expect(branchCheck!.passed).toBe(false);
 		expect(branchCheck!.detail).toContain("not found");
@@ -240,7 +240,7 @@ describe("runPreResumeDiagnostics", () => {
 		];
 		const result = runPreResumeDiagnostics(state, "/tmp/nonexistent", "/tmp/nonexistent");
 		// No worktree health checks should be emitted for null worktreePath
-		const wtChecks = result.checks.filter(c => c.check.startsWith("worktree-health:"));
+		const wtChecks = result.checks.filter((c) => c.check.startsWith("worktree-health:"));
 		expect(wtChecks).toHaveLength(0);
 	});
 
@@ -257,7 +257,7 @@ describe("runPreResumeDiagnostics", () => {
 			} as unknown as PersistedLaneRecord,
 		];
 		const result = runPreResumeDiagnostics(state, "/tmp/nonexistent", "/tmp/nonexistent");
-		const wtCheck = result.checks.find(c => c.check === "worktree-health:lane-1");
+		const wtCheck = result.checks.find((c) => c.check === "worktree-health:lane-1");
 		expect(wtCheck).toBeDefined();
 		expect(wtCheck!.passed).toBe(true);
 		expect(wtCheck!.detail).toContain("absent");
@@ -288,10 +288,7 @@ describe("runPreResumeDiagnostics", () => {
 // ── 4. Force-resume runtime path — source verification ───────────────
 
 describe("force-resume runtime path in resumeOrchBatch — source verification", () => {
-	const resumeSource = readFileSync(
-		join(__dirname, "..", "taskplane", "resume.ts"),
-		"utf-8",
-	);
+	const resumeSource = readFileSync(join(__dirname, "..", "taskplane", "resume.ts"), "utf-8");
 
 	it("gates force-resume on pre-resume diagnostics (blocks when diagnostics fail)", () => {
 		// The force-resume path must call runPreResumeDiagnostics and return early
@@ -330,7 +327,8 @@ describe("force-resume runtime path in resumeOrchBatch — source verification",
 		expect(resumeSource).toContain('persistedState.phase === "stopped"');
 		expect(resumeSource).toContain('persistedState.phase === "failed"');
 		// isForceResume should be gated on force AND (stopped|failed)
-		const isForceResumePattern = /const isForceResume = force && \(persistedState\.phase === "stopped" \|\| persistedState\.phase === "failed"\)/;
+		const isForceResumePattern =
+			/const isForceResume = force && \(persistedState\.phase === "stopped" \|\| persistedState\.phase === "failed"\)/;
 		expect(resumeSource).toMatch(isForceResumePattern);
 	});
 });
@@ -366,7 +364,7 @@ describe("force-resume runtime path — diagnostics gate", () => {
 		const result = runPreResumeDiagnostics(state, "/tmp/nonexistent-repo-root", "/tmp/state-root", null);
 
 		// State coherence always passes (state is already loaded)
-		const stateCheck = result.checks.find(c => c.check === "state-coherence");
+		const stateCheck = result.checks.find((c) => c.check === "state-coherence");
 		expect(stateCheck).toBeDefined();
 		expect(stateCheck!.passed).toBe(true);
 	});
@@ -379,7 +377,7 @@ describe("force-resume runtime path — diagnostics gate", () => {
 		// Use cwd as repo root (which IS a git repo in the test environment)
 		const result = runPreResumeDiagnostics(state, process.cwd(), process.cwd(), null);
 
-		const branchCheck = result.checks.find(c => c.check.startsWith("branch-consistency"));
+		const branchCheck = result.checks.find((c) => c.check.startsWith("branch-consistency"));
 		expect(branchCheck).toBeDefined();
 		expect(branchCheck!.passed).toBe(false);
 		expect(branchCheck!.detail).toContain("not found");

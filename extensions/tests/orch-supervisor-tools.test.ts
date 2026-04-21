@@ -28,10 +28,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 // Read extension.ts source for structural verification
-const extensionSource = readFileSync(
-	join(__dirname, "..", "taskplane", "extension.ts"),
-	"utf-8",
-);
+const extensionSource = readFileSync(join(__dirname, "..", "taskplane", "extension.ts"), "utf-8");
 
 // ══════════════════════════════════════════════════════════════════════
 // 1.x — Tool registration
@@ -264,12 +261,7 @@ describe("4.x: Supervisor prompt includes tool awareness", () => {
 	const supervisorConfig = { ...DEFAULT_SUPERVISOR_CONFIG };
 	const stateRoot = "/tmp/test-state";
 
-	const monitoringPrompt = buildSupervisorSystemPrompt(
-		batchState,
-		config,
-		supervisorConfig,
-		stateRoot,
-	);
+	const monitoringPrompt = buildSupervisorSystemPrompt(batchState, config, supervisorConfig, stateRoot);
 
 	it("4.1: monitoring prompt mentions orch_start tool", () => {
 		expect(monitoringPrompt).toContain("orch_start(target)");
