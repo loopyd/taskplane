@@ -3,8 +3,9 @@
  * @module orch/formatting
  */
 import { join } from "path";
-import { truncateToWidth } from "@mariozechner/pi-tui";
+import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@mariozechner/pi-tui";
 
+import { buildOrchPlanWidgetLines, type OrchPlanWidgetState } from "./messages.ts";
 import { parseDependencyReference } from "./discovery.ts";
 import type { LaneAssignment, MonitorState, OrchBatchRuntimeState, OrchDashboardViewModel, OrchLaneCardData, OrchSummaryCounts, ParsedTask, WaveComputationResult } from "./types.ts";
 import { getTaskDurationMinutes, SIZE_DURATION_MINUTES } from "./types.ts";
@@ -767,6 +768,54 @@ export function createOrchWidget(
 				return lines;
 			},
 			invalidate() {},
+		};
+	};
+}
+
+export function createOrchPlanWidget(
+	state: OrchPlanWidgetState,
+): ((_tui: any, theme: any) => { render(width: number): string[]; invalidate(): void }) | undefined {
+	const lines = buildOrchPlanWidgetLines(state.sections);
+	const statusColor =
+		state.status === "success"
+			? "success"
+			: state.status === "error"
+				? "error"
+				: "warning";
+	const statusIcon =
+		state.status === "success"
+			? "✓"
+			: state.status === "error"
+				? "✗"
+				: "●";
+	const statusLine = `${statusIcon} ${state.phase || (state.status === "success" ? "Plan ready" : state.status === "error" ? "Plan failed" : "Running")}`;
+	if (lines.length === 0 && !state.phase) return undefined;
+
+	return (_tui: any, theme: any) => {
+		return {
+			render: (width: number) => {
+				const safeWidth = Math.max(6, width);
+				const innerWidth = Math.max(1, safeWidth - 4);
+				const border = (text: string) => theme.fg("border", text);
+				const bodyLines = [
+					theme.fg("accent", theme.bold(state.commandTitle)),
+					theme.fg(statusColor, statusLine),
+					...(lines.length > 0 ? ["", ...lines] : []),
+				];
+				const rendered = [border(`┌${"─".repeat(safeWidth - 2)}┐`)];
+
+				for (const bodyLine of bodyLines) {
+					const wrappedLines = wrapTextWithAnsi(bodyLine, innerWidth);
+					for (const wrappedLine of wrappedLines) {
+						const padding = " ".repeat(Math.max(0, innerWidth - visibleWidth(wrappedLine)));
+						rendered.push(`${border("│")} ${wrappedLine}${padding} ${border("│")}`);
+					}
+				}
+
+				rendered.push(border(`└${"─".repeat(safeWidth - 2)}┘`));
+				return rendered;
+			},
+			invalidate: () => {},
 		};
 	};
 }

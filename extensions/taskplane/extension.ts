@@ -13,15 +13,16 @@ import { DEFAULT_ORCHESTRATOR_CONFIG, DEFAULT_TASK_RUNNER_CONFIG, FATAL_DISCOVER
 import type { AbortMode, ExecutionContext, MonitorState, OrchestratorConfig, PersistedBatchState, TaskRunnerConfig } from "./types.ts";
 import {
 	ORCH_MESSAGES,
-	buildOrchPlanWidgetLines,
 	computeIntegrateCleanupResult,
 	formatWorkspaceSyncPresentation,
 	getBlockingWorkspaceSyncFindings,
 	hasBlockingWorkspaceSyncFindings,
+	serializeOrchPlanWidgetLines,
+	type OrchPlanWidgetState,
 } from "./messages.ts";
 import type { IntegrateCleanupRepoFindings } from "./messages.ts";
 import { computeWaveAssignments } from "./waves.ts";
-import { createOrchWidget, formatDependencyGraph, formatWavePlan } from "./formatting.ts";
+import { createOrchPlanWidget, createOrchWidget, formatDependencyGraph, formatWavePlan } from "./formatting.ts";
 import { deleteBatchState, loadBatchState, saveBatchState, detectOrphanSessions, updateBatchHistoryIntegration } from "./persistence.ts";
 import { deleteStaleBranches, listWorktrees, resolveWorktreeBasePath, formatPreflightResults, runPreflight } from "./worktree.ts";
 import { computeTransitiveDependents, resolveCanonicalTaskPaths } from "./execution.ts";
@@ -1696,8 +1697,20 @@ export default function (pi: ExtensionAPI) {
 		);
 	}
 
-	function setOrchPlanWidget(ctx: ExtensionContext, sections: Array<string | null | undefined>) {
-		const lines = buildOrchPlanWidgetLines(sections);
+	function supportsRichOrchPlanWidget(ctx: ExtensionContext): boolean {
+		const ui = ctx.ui as ExtensionContext["ui"] & { getAllThemes?: () => unknown[] };
+		return typeof ui.getAllThemes === "function"
+			? ui.getAllThemes().length > 0
+			: ctx.hasUI;
+	}
+
+	function setOrchPlanWidget(ctx: ExtensionContext, state: OrchPlanWidgetState) {
+		if (supportsRichOrchPlanWidget(ctx)) {
+			ctx.ui.setWidget("task-orch-plan", createOrchPlanWidget(state));
+			return;
+		}
+
+		const lines = serializeOrchPlanWidgetLines(state);
 		ctx.ui.setWidget("task-orch-plan", lines.length > 0 ? lines : undefined);
 	}
 
@@ -1893,20 +1906,35 @@ export default function (pi: ExtensionAPI) {
 	pi.registerCommand("orch-plan", {
 		description: "Preview execution plan: /orch-plan <areas|paths|all> [--refresh] [--sync]",
 		handler: async (args, ctx) => {
-			const orchPlanSections: string[] = [];
+			const commandTitle = args?.trim() ? `/orch-plan ${args.trim()}` : "/orch-plan";
+			const orchPlanState: OrchPlanWidgetState = {
+				commandTitle,
+				status: "running",
+				phase: "Preparing plan",
+				sections: [],
+			};
+			const setOrchPlanPhase = (phase: string) => {
+				orchPlanState.phase = phase;
+				setOrchPlanWidget(ctx, orchPlanState);
+			};
+			const finalizeOrchPlan = (status: OrchPlanWidgetState["status"], phase: string) => {
+				orchPlanState.status = status;
+				orchPlanState.phase = phase;
+				setOrchPlanWidget(ctx, orchPlanState);
+			};
 			const publishOrchPlanSection = (
 				message: string,
 				level: "info" | "warning" | "error",
 				persist = true,
 			) => {
 				if (persist && message.trim().length > 0) {
-					orchPlanSections.push(message);
-					setOrchPlanWidget(ctx, orchPlanSections);
+					orchPlanState.sections.push(message);
+					setOrchPlanWidget(ctx, orchPlanState);
 				}
 				ctx.ui.notify(message, level);
 			};
 
-			setOrchPlanWidget(ctx, []);
+			setOrchPlanWidget(ctx, orchPlanState);
 
 			if (!args?.trim()) {
 				publishOrchPlanSection(
@@ -1924,10 +1952,14 @@ export default function (pi: ExtensionAPI) {
 					"  /orch-plan all --refresh",
 					"info",
 				);
+				finalizeOrchPlan("error", "Usage error");
 				return;
 			}
 
-			if (!requireExecCtx(ctx)) return;
+			if (!requireExecCtx(ctx)) {
+				finalizeOrchPlan("error", "Initialization failed");
+				return;
+			}
 
 			// Parse planner flags
 			const hasRefresh = /(^|\s)--refresh(?=\s|$)/.test(args);
@@ -1939,6 +1971,7 @@ export default function (pi: ExtensionAPI) {
 					"Error: target argument required (e.g., 'all', area name, or path)",
 					"error",
 				);
+				finalizeOrchPlan("error", "Target required");
 				return;
 			}
 			if (hasRefresh) {
@@ -1949,6 +1982,7 @@ export default function (pi: ExtensionAPI) {
 			ctx.ui.notify("ℹ️ Runtime V2 is the default backend (subprocess-only).", "info");
 			let workspaceSyncSummary = collectCurrentWorkspaceSyncSummary(cleanArgs);
 			if (hasSync && workspaceSyncSummary) {
+				setOrchPlanPhase("Syncing workspace");
 				const syncOutcome = await runWorkspaceSyncWithUi(cleanArgs, ctx);
 				const syncPresentation = formatWorkspaceSyncPresentation(
 					syncOutcome.syncResult,
@@ -1957,6 +1991,7 @@ export default function (pi: ExtensionAPI) {
 				publishOrchPlanSection(syncPresentation.message, syncPresentation.notificationLevel);
 				workspaceSyncSummary = syncOutcome.refreshedSummary;
 			}
+			setOrchPlanPhase("Running preflight");
 			const preflight = runPreflight(orchConfig, execCtx!.repoRoot, {
 				workspaceRoot: execCtx!.workspaceRoot,
 				pointerConfigRoot: execCtx!.pointer?.configRoot,
@@ -1968,11 +2003,16 @@ export default function (pi: ExtensionAPI) {
 					formatWorkspaceSyncBlocker(cleanArgs, workspaceSyncSummary, hasSync),
 					hasSync ? "warning" : "info",
 				);
+				finalizeOrchPlan("error", "Workspace sync required");
 				return;
 			}
-			if (!preflight.passed) return;
+			if (!preflight.passed) {
+				finalizeOrchPlan("error", "Preflight failed");
+				return;
+			}
 
 			// ── Section 2: Discovery ─────────────────────────────────
+			setOrchPlanPhase("Discovering tasks");
 			// Discovery resolves task area paths relative to workspaceRoot (not repoRoot),
 			// because task_areas in task-runner.yaml are workspace-relative paths.
 			const discovery = runDiscovery(cleanArgs, runnerConfig.task_areas, execCtx!.workspaceRoot, {
@@ -2008,21 +2048,25 @@ export default function (pi: ExtensionAPI) {
 						"info",
 					);
 				}
+				finalizeOrchPlan("error", "Discovery failed");
 				return;
 			}
 
 			if (discovery.pending.size === 0) {
 				publishOrchPlanSection("No pending tasks found. Nothing to plan.", "info");
+				finalizeOrchPlan("success", "No pending tasks");
 				return;
 			}
 
 			// ── Section 3: Dependency Graph ──────────────────────────
+			setOrchPlanPhase("Rendering dependency graph");
 			publishOrchPlanSection(
 				formatDependencyGraph(discovery.pending, discovery.completed),
 				"info",
 			);
 
 			// ── Section 4: Waves + Estimate ──────────────────────────
+			setOrchPlanPhase("Computing waves");
 			// Uses computeWaveAssignments pipeline only — NO re-parsing
 			const waveResult = computeWaveAssignments(
 				discovery.pending,
@@ -2039,6 +2083,7 @@ export default function (pi: ExtensionAPI) {
 				formatWavePlan(waveResult, orchConfig.assignment.size_weights),
 				waveResult.errors.length > 0 ? "error" : "info",
 			);
+			finalizeOrchPlan(waveResult.errors.length > 0 ? "error" : "success", waveResult.errors.length > 0 ? "Plan failed" : "Plan ready");
 		},
 	});
 

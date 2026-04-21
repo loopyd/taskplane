@@ -180,6 +180,15 @@ export const ORCH_MESSAGES = {
 	},
 } as const;
 
+export type OrchPlanWidgetStatus = "running" | "success" | "error";
+
+export interface OrchPlanWidgetState {
+	commandTitle: string;
+	status: OrchPlanWidgetStatus;
+	phase?: string;
+	sections: Array<string | null | undefined>;
+}
+
 export function buildOrchPlanWidgetLines(sections: Array<string | null | undefined>): string[] {
 	const lines: string[] = [];
 	for (const section of sections) {
@@ -189,6 +198,17 @@ export function buildOrchPlanWidgetLines(sections: Array<string | null | undefin
 		lines.push(...normalized.split("\n"));
 	}
 	return lines;
+}
+
+export function serializeOrchPlanWidgetLines(state: OrchPlanWidgetState): string[] {
+	const statusLine =
+		state.status === "success"
+			? `✓ ${state.phase || "Plan ready"}`
+			: state.status === "error"
+				? `✗ ${state.phase || "Plan failed"}`
+				: `● ${state.phase || "Running"}`;
+	const sectionLines = buildOrchPlanWidgetLines(state.sections);
+	return [state.commandTitle, statusLine, ...(sectionLines.length > 0 ? ["", ...sectionLines] : [])];
 }
 
 
