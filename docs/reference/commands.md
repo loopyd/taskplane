@@ -474,7 +474,7 @@ Open the interactive settings TUI for viewing and editing taskplane configuratio
 **Behavior**
 
 - Shows a two-level navigation: section selector → field list
-- Displays 13 sections covering orchestrator, supervisor, task-runner, global preferences, and advanced (JSON-only) fields
+- Displays 14 sections covering orchestrator, supervisor, task-runner, agent extensions, global preferences, and advanced (JSON-only) fields
 - Each field shows its current value and source indicator: `(project)` or `(global)`
 - Enum and boolean fields use toggleable controls; strings and numbers use text input
 - Global-preference changes write to `~/.pi/agent/taskplane/preferences.json`
@@ -493,6 +493,7 @@ Open the interactive settings TUI for viewing and editing taskplane configuratio
 | Agent: Worker | Worker model, tools, thinking |
 | Agent: Reviewer | Reviewer model, tools, thinking |
 | Agent: Merge | Merge model, tools, thinking, ordering, timeout |
+| Agent Extensions | Toggle third-party extensions on/off per agent type (Worker, Reviewer, Merger) |
 | Context Limits | Context window, iteration limits, progress limits |
 | Failure Policy | Task/merge failure handling, timeouts |
 | Dependencies | Dependency source and caching |

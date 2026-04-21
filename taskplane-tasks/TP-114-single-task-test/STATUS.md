@@ -1,33 +1,43 @@
 # TP-114: Single Task Test — Status
 
-**Current Step:** Not Started
-**Status:** 🔵 Ready for Execution
-**Last Updated:** 2026-04-01
+**Current Step:** Step 3: Documentation & Delivery
+**Status:** ✅ Complete
+**Last Updated:** 2026-04-21
 **Review Level:** 0
 **Review Counter:** 0
-**Iteration:** 0
+**Iteration:** 1
 **Size:** S
 
 ---
 
 ### Step 0: Preflight
-**Status:** ⬜ Not Started
+**Status:** ✅ Complete
 
-- [ ] Confirm this PROMPT.md and STATUS.md exist
-
----
-
-### Step 1: Write Test File
-**Status:** ⬜ Not Started
-
-- [ ] Create `hello.txt` in this task folder with content "Runtime V2 works!"
+- [x] Confirm this PROMPT.md and STATUS.md exist
 
 ---
 
-### Step 2: Documentation & Delivery
-**Status:** ⬜ Not Started
+### Step 1: Create Test Files
+**Status:** ✅ Complete
 
-- [ ] Log completion in STATUS.md
+- [x] Create `hello.txt` with content "Runtime V2 works!"
+- [x] Create `fibonacci.txt` with first 20 Fibonacci numbers
+- [x] Create `summary.txt` with Runtime V2 summary
+
+---
+
+### Step 2: Code Analysis
+**Status:** ✅ Complete
+
+- [x] Count exported functions in lane-runner.ts → `analysis.txt`
+- [x] List event types from agent-host.ts → `events.txt`
+
+---
+
+### Step 3: Documentation & Delivery
+**Status:** ✅ Complete
+
+- [x] Log completion in STATUS.md
 
 ---
 
@@ -38,27 +48,21 @@
 
 ---
 
-## Discoveries
-
-| Discovery | Disposition | Location |
-|-----------|-------------|----------|
-
----
-
 ## Execution Log
 
 | Timestamp | Action | Outcome |
 |-----------|--------|---------|
-| 2026-04-01 | Task staged | PROMPT.md and STATUS.md created |
+| 2026-04-20 | Task reset | Ready for regression test |
+| 2026-04-21 00:03 | Task started | Runtime V2 lane-runner execution |
+| 2026-04-21 00:03 | Step 0 started | Preflight |
+| 2026-04-21 | Steps 0-1 complete | Preflight confirmed; created hello.txt, fibonacci.txt, summary.txt |
+| 2026-04-21 | Step 2 complete | Created analysis.txt (8 exported functions in lane-runner.ts) and events.txt (14 event types in agent-host.ts) |
+| 2026-04-21 | Step 3 complete | All files created, task complete |
+| 2026-04-21 00:05 | Worker iter 1 | done in 166s, tools: 37 |
+| 2026-04-21 00:05 | Task complete | .DONE created |
 
 ---
 
 ## Blockers
 
 *None*
-
----
-
-## Notes
-
-*Smoke test for Runtime V2 single-task execution.*

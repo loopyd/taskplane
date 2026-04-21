@@ -111,6 +111,8 @@ export interface WorkerConfig {
 	thinking: string;
 	/** Optional spawn mode override for task-runner (Runtime V2 subprocess-only). */
 	spawnMode?: "subprocess";
+	/** Package specifiers to exclude from extension forwarding for worker agents (exact match). @since TP-180 */
+	excludeExtensions?: string[];
 }
 
 /** Reviewer agent configuration */
@@ -121,6 +123,8 @@ export interface ReviewerConfig {
 	tools: string;
 	/** Thinking mode for reviewer */
 	thinking: string;
+	/** Package specifiers to exclude from extension forwarding for reviewer agents (exact match). @since TP-180 */
+	excludeExtensions?: string[];
 }
 
 /** Context/resource limits for task execution */
@@ -310,6 +314,8 @@ export interface MergeConfig {
 	order: "fewest-files-first" | "sequential";
 	/** Merge-agent timeout in minutes */
 	timeoutMinutes?: number;
+	/** Package specifiers to exclude from extension forwarding for merge agents (exact match). @since TP-180 */
+	excludeExtensions?: string[];
 }
 
 /** Failure policy settings */
@@ -588,8 +594,8 @@ export const DEFAULT_TASK_RUNNER_SECTION: TaskRunnerSection = {
 	testing: { commands: {} },
 	standards: { docs: [], rules: [] },
 	standardsOverrides: {},
-	worker: { model: "", tools: "read,write,edit,bash,grep,find,ls", thinking: "" },
-	reviewer: { model: "", tools: "read,bash,grep,find,ls", thinking: "on" },
+	worker: { model: "", tools: "read,write,edit,bash,grep,find,ls", thinking: "", excludeExtensions: [] },
+	reviewer: { model: "", tools: "read,bash,grep,find,ls", thinking: "on", excludeExtensions: [] },
 	context: {
 		workerContextWindow: 0,
 		warnPercent: 85,
@@ -645,6 +651,7 @@ export const DEFAULT_ORCHESTRATOR_SECTION: OrchestratorSection = {
 		verify: [],
 		order: "fewest-files-first",
 		timeoutMinutes: 90,
+		excludeExtensions: [],
 	},
 	failure: {
 		onTaskFailure: "skip-dependents",
