@@ -4,7 +4,7 @@ import { expect } from "./expect.ts";
 import {
 	getBlockingWorkspaceSyncFindings,
 	hasBlockingWorkspaceSyncFindings,
-} from "../taskplane/extension.ts";
+} from "../taskplane/messages.ts";
 
 describe("workspace sync blocking policy", () => {
 	it("does not treat permissive findings as blocking", () => {

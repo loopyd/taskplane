@@ -14,6 +14,7 @@ import type {
 	RepoMergeOutcome,
 	SubmodulePolicy,
 	WorkspaceSyncApplyResult,
+	WorkspaceSyncFinding,
 	WorkspaceSyncPresentation,
 	WorkspaceSyncSummary,
 } from "./types.ts";
@@ -309,8 +310,12 @@ export const WORKSPACE_MESSAGES = {
 	},
 } as const;
 
-function hasBlockingWorkspaceSyncFindings(summary: WorkspaceSyncSummary | null | undefined): boolean {
-	return summary?.findings.some((finding) => finding.status === "fail") ?? false;
+export function getBlockingWorkspaceSyncFindings(summary: WorkspaceSyncSummary | null | undefined): WorkspaceSyncFinding[] {
+	return (summary?.findings ?? []).filter((finding) => finding.status === "fail");
+}
+
+export function hasBlockingWorkspaceSyncFindings(summary: WorkspaceSyncSummary | null | undefined): boolean {
+	return getBlockingWorkspaceSyncFindings(summary).length > 0;
 }
 
 export function formatWorkspaceSyncPresentation(

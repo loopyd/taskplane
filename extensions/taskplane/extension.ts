@@ -11,7 +11,13 @@ import { fork, type ChildProcess } from "child_process";
 // Each import targets the specific module where the symbol is defined.
 import { DEFAULT_ORCHESTRATOR_CONFIG, DEFAULT_TASK_RUNNER_CONFIG, FATAL_DISCOVERY_CODES, StateFileError, WorkspaceConfigError, freshOrchBatchState } from "./types.ts";
 import type { AbortMode, ExecutionContext, MonitorState, OrchestratorConfig, PersistedBatchState, TaskRunnerConfig } from "./types.ts";
-import { ORCH_MESSAGES, computeIntegrateCleanupResult, formatWorkspaceSyncPresentation } from "./messages.ts";
+import {
+	ORCH_MESSAGES,
+	computeIntegrateCleanupResult,
+	formatWorkspaceSyncPresentation,
+	getBlockingWorkspaceSyncFindings,
+	hasBlockingWorkspaceSyncFindings,
+} from "./messages.ts";
 import type { IntegrateCleanupRepoFindings } from "./messages.ts";
 import { computeWaveAssignments } from "./waves.ts";
 import { createOrchWidget, formatDependencyGraph, formatWavePlan } from "./formatting.ts";
@@ -1640,18 +1646,6 @@ export function detectOrchState(deps: OrchStateDetectionDeps): OrchStateDetectio
 			"• Run a project health check\n" +
 			"What interests you?",
 	};
-}
-
-export function getBlockingWorkspaceSyncFindings(
-	summary: ReturnType<typeof collectWorkspaceSyncSummary> | null | undefined,
-) {
-	return (summary?.findings ?? []).filter((finding) => finding.status === "fail");
-}
-
-export function hasBlockingWorkspaceSyncFindings(
-	summary: ReturnType<typeof collectWorkspaceSyncSummary> | null | undefined,
-): boolean {
-	return getBlockingWorkspaceSyncFindings(summary).length > 0;
 }
 
 // ── Extension ────────────────────────────────────────────────────────
