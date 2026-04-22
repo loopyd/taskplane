@@ -343,15 +343,56 @@ function resolvePreferredRemoteFromGitDir(gitDir: string): string | null {
 	return remotes[0] ?? null;
 }
 
-function isCommitReachableOnRemote(cwd: string, remoteName: string, commit: string): boolean {
+/**
+ * Check whether a specific commit is reachable from a submodule's remote.
+ *
+ * Strategy:
+ * 1. Direct match against origin/HEAD via ls-remote (always points to latest tip).
+ * 2. Named branch/tag tips via ls-remote + merge-base ancestry check.
+ * 3. If fetch was done before calling, also try local tracking refs as fallback.
+ *
+ * This handles forked submodules where commits exist on origin but may not be
+ * reachable from the branch names that ls-remote returns in a stale worktree.
+ */
+function checkSubmoduleCommitReachable(cwd: string, remoteName: string, commit: string): boolean {
+	// Fast path: direct match against origin/HEAD — always available after fetch.
+	const headResult = runGit(["ls-remote", remoteName, "HEAD"], cwd);
+	if (headResult.ok && headResult.stdout.trim()) {
+		const headSha = headResult.stdout
+			.split(/\r?\n/)
+			.map((line) => line.trim().split(/[\t]+/)[0] ?? "")
+			[0];
+		if (headSha === commit) return true;
+	}
+
+// Legacy name — kept for backward compatibility with detectUnsafeSubmoduleStates.
+const isCommitReachableOnRemote = checkSubmoduleCommitReachable;
+
+	// Check all named branch and tag tips.
 	const refsResult = runGit(["ls-remote", remoteName, "refs/heads/*", "refs/tags/*"], cwd);
-	if (!refsResult.ok || !refsResult.stdout.trim()) return false;
+	if (!refsResult.ok || !refsResult.stdout.trim()) {
+		// Fallback: if we have a local tracking ref for origin/HEAD, use merge-base.
+		const mbResult = runGit(["merge-base", "--is-ancestor", commit, `${remoteName}/HEAD`], cwd);
+		if (mbResult.ok) return true;
+		return false;
+	}
 
 	const remoteTips = uniqueSorted(
 		refsResult.stdout
 			.split(/\r?\n/)
-			.map((line) => line.trim().split(/\s+/)[0] ?? "")
+			.map((line) => line.trim().split(/[\s]+/)[0] ?? "")
 			.filter((sha) => /^[0-9a-f]{40}$/i.test(sha)),
+	);
+
+	for (const tip of remoteTips) {
+		if (tip === commit) return true;
+		const ancestorResult = runGit(["merge-base", "--is-ancestor", commit, tip], cwd);
+		if (ancestorResult.ok) return true;
+	}
+
+	// Final fallback: check against origin/HEAD as a local ref.
+	return runGit(["merge-base", "--is-ancestor", commit, `${remoteName}/HEAD`], cwd).ok;
+}$/i.test(sha)),
 	);
 
 	for (const tip of remoteTips) {
@@ -505,21 +546,24 @@ export function detectUnreachableGitlinks(cwd: string): UnreachableGitlinkState[
 		ensureSubmoduleCheckout(cwd, submodulePath);
 		const absolutePath = join(cwd, submodulePath);
 
-		// Ensure remotes are fresh before reachability checks. In merge worktrees,
-		// submodules may have stale local refs from the branch's original checkout.
-		// A quick fetch ensures ls-remote and merge-base queries see current state.
-		runGit(["fetch", "--all", "--quiet"], absolutePath);
-
+		// Determine the remote to check against.
 		const remoteName = existsSync(absolutePath) ? resolvePreferredRemote(absolutePath) : null;
 		const submoduleGitDir = resolveSubmoduleGitDir(cwd, submodulePath);
 		const gitDirRemoteName = submoduleGitDir ? resolvePreferredRemoteFromGitDir(submoduleGitDir) : null;
 		const resolvedRemoteName = remoteName ?? gitDirRemoteName;
-		const reachable = remoteName
-			? isCommitReachableOnRemote(absolutePath, remoteName, gitlinkCommit)
-			: (submoduleGitDir && gitDirRemoteName
-				? isCommitReachableOnRemoteFromGitDir(submoduleGitDir, gitDirRemoteName, gitlinkCommit)
-				: false);
-		if (!resolvedRemoteName || !reachable) {
+
+		// In merge worktrees the submodule may have stale local refs. Fetch fresh
+		// state from origin before checking reachability so that ls-remote results
+		// and merge-base object lookups can succeed.
+		runGit(["fetch", resolvedRemoteName, "--quiet"], absolutePath);
+
+		const reachable = checkSubmoduleCommitReachable(
+			absolutePath,
+			resolvedRemoteName ?? "origin",
+			gitlinkCommit,
+		);
+
+		if (!reachable) {
 			findings.push({
 				path: submodulePath,
 				gitlinkCommit,
