@@ -481,6 +481,33 @@ function filterArtifactStatusLines(rawOutput: string, submodulePaths: Set<string
  * - submodule HEAD differs from the recorded gitlink commit, but that HEAD is
  *   not reachable from the submodule's preferred remote
  */
+/**
+ * Filter git status porcelain output to remove paths that are ignored by .gitignore.
+ * Uses `git check-ignore --no-index` — respects ALL .gitignore rules at every level,
+ * avoiding the need to hardcode artifact patterns like __pycache__ or node_modules.
+ */
+function filterGitIgnoredStatusLines(statusOutput: string, cwd: string): string {
+	return statusOutput
+		.split(/\r?\n/)
+		.filter((line) => {
+			if (!line.trim()) return false;
+			const parts = line.trimStart().split(/[\t ]+/);
+			if (parts.length < 2) return true; // Keep lines we can't parse
+			const filePath = parts[1];
+
+			// Skip gitignored paths — these are transient artifacts the submodule maintainers don't want tracked.
+			try {
+				const checkResult = runGit(["check-ignore", "--no-index", filePath], cwd);
+				if (checkResult.ok && checkResult.stdout.trim()) {
+					return false; // Path is ignored → skip it
+				}
+			} catch { /* fall through — keep line if check fails */ }
+
+			return true;
+		})
+		.join("\n");
+}
+
 export function detectUnsafeSubmoduleStates(cwd: string): UnsafeSubmoduleState[] {
 	const submodulePaths = uniqueSorted([
 		...listGitlinkPaths(cwd),
@@ -499,7 +526,10 @@ export function detectUnsafeSubmoduleStates(cwd: string): UnsafeSubmoduleState[]
 			// shared-worktree submodule as "M <other-submodule-path>" — this is an
 			// expected transient artifact, not actual code changes inside that submodule.
 			const knownSubmodulePaths = new Set(submodulePaths);
-			const filteredStatus = filterArtifactStatusLines(dirtyStatus.stdout, knownSubmodulePaths);
+			// Apply gitignore-aware filtering FIRST (respects submodule .gitignore at every level),
+			// then apply artifact pattern filtering as a safety net for paths not caught by gitignore.
+			const ignoredFiltered = filterGitIgnoredStatusLines(dirtyStatus.stdout, absolutePath);
+			const filteredStatus = filterArtifactStatusLines(ignoredFiltered, knownSubmodulePaths);
 			if (filteredStatus.trim()) {
 				findings.push({
 					path: submodulePath,
