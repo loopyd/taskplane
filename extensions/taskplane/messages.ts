@@ -432,6 +432,41 @@ function isAtomicRollbackFailureReason(reason: string | null): boolean {
 	return !!reason && reason.startsWith("cross_repo_atomic_rollback");
 }
 
+function hasRollbackFailureLaneError(mergeResult: MergeWaveResult): boolean {
+	return mergeResult.laneResults.some((laneResult) => {
+		const error = laneResult.error?.toLowerCase() ?? "";
+		return error.includes("rollback reset failed") ||
+			error.includes("no pre-lane head available for rollback") ||
+			(error.includes("rollback") && error.includes("advancement blocked"));
+	});
+}
+
+/**
+ * Detect rollback safe-stop even when older persisted state omitted the
+ * dedicated `rollbackFailed` flag.
+ */
+export function mergeRequiresRollbackSafeStop(mergeResult: MergeWaveResult): boolean {
+	if (mergeResult.rollbackFailed) {
+		return true;
+	}
+
+	if (mergeResult.transactionRecords?.some((record) => record.status === "rollback_failed")) {
+		return true;
+	}
+
+	if (hasRollbackFailureLaneError(mergeResult)) {
+		return true;
+	}
+
+	if (mergeResult.repoResults?.some((result) => result.failureReason?.startsWith("cross_repo_atomic_rollback_failed"))) {
+		return true;
+	}
+
+	const failureReason = (mergeResult.failureReason ?? "").toLowerCase();
+	return failureReason.includes("cross_repo_atomic_rollback_failed") ||
+		failureReason.includes("rollback failures:");
+}
+
 /**
  * Format a repo-scoped failure summary for strict atomic multi-repo merges.
  *
@@ -443,7 +478,7 @@ function isAtomicRollbackFailureReason(reason: string | null): boolean {
  */
 export function formatRepoAtomicFailureSummary(mergeResult: MergeWaveResult): string | null {
 	const repoResults = mergeResult.repoResults;
-	if (mergeResult.status !== "failed" || mergeResult.rollbackFailed) {
+	if (mergeResult.status !== "failed" || mergeRequiresRollbackSafeStop(mergeResult)) {
 		return null;
 	}
 	if (!repoResults || repoResults.length < 2) {
@@ -1028,7 +1063,7 @@ export async function applyMergeRetryLoop(
 			};
 		}
 
-		if (currentResult.rollbackFailed) {
+		if (currentResult.rollbackFailed || mergeRequiresRollbackSafeStop(currentResult)) {
 			// Safe-stop takes priority
 			const hasPersistErrors = currentResult.persistenceErrors && currentResult.persistenceErrors.length > 0;
 			const persistWarning = hasPersistErrors

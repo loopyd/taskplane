@@ -296,11 +296,14 @@ describe("3.x — Safe-stop: rollback failure handling", () => {
 		expect(afterSafeStop).toContain("break");
 	});
 
-	it("3.6: resume.ts forces paused on rollbackFailed (parity with engine.ts)", () => {
+	it("3.6: resume.ts routes rollback safe-stop through the shared helper", () => {
 		const resumeSource = readSource("resume.ts");
 
 		// Resume must have the same safe-stop handling
-		expect(resumeSource).toContain("mergeResult?.rollbackFailed");
+		expect(resumeSource).toContain("const applyRollbackSafeStop = (waveIdx: number, mergeResult: MergeWaveResult)");
+		expect(resumeSource).toContain("mergeResult.rollbackFailed");
+		expect(resumeSource).toContain("mergeRequiresRollbackSafeStop(mergeResult)");
+		expect(resumeSource).toContain("applyRollbackSafeStop(waveIdx, mergeResult)");
 		expect(resumeSource).toContain("SAFE-STOP: verification rollback failed");
 		expect(resumeSource).toContain('batchState.phase = "paused"');
 		expect(resumeSource).toContain("Check transaction records in .pi/verification/");
@@ -347,13 +350,12 @@ describe("4.x — Transaction record persistence", () => {
 	it("4.1: persistTransactionRecord writes to correct path pattern", () => {
 		const mergeSource = readSource("merge.ts");
 
-		// Path: .pi/verification/{opId}/txn-b{batchId}-repo-{repoSlug}-wave-{n}-lane-{k}.json
+		// Path: .pi/verification/{opId}/txn-{waveTransactionId}-repo-{repoSlug}-lane-{k}.json
 		expect(mergeSource).toContain(".pi");
 		expect(mergeSource).toContain("verification");
 		expect(mergeSource).toContain("record.opId");
-		expect(mergeSource).toContain("txn-b${record.batchId}");
+		expect(mergeSource).toContain("txn-${record.waveTransactionId}");
 		expect(mergeSource).toContain("repo-${repoSlug}");
-		expect(mergeSource).toContain("wave-${record.waveIndex}");
 		expect(mergeSource).toContain("lane-${record.laneNumber}");
 	});
 
@@ -422,6 +424,14 @@ describe("5.x — Persistence warning propagation (R004-2)", () => {
 		expect(mergeSource).toContain("groupResult.persistenceErrors");
 	});
 
+	it("5.2b: atomic rollback transaction rewrite errors also flow into aggregate persistence warnings", () => {
+		const mergeSource = readSource("merge.ts");
+
+		expect(mergeSource).toContain("rewriteCommittedTransactionsAfterAtomicRollback");
+		expect(mergeSource).toContain("allPersistenceErrors.push(...rewriteCommittedTransactionsAfterAtomicRollback(");
+		expect(mergeSource).toContain("aggregateResult.persistenceErrors = allPersistenceErrors");
+	});
+
 	it("5.3: engine.ts includes persistence warning in safe-stop notification", () => {
 		const engineSource = readSource("engine.ts");
 
@@ -445,7 +455,7 @@ describe("5.x — Persistence warning propagation (R004-2)", () => {
 // ══════════════════════════════════════════════════════════════════════
 
 describe("6.x — Engine/resume parity for safe-stop", () => {
-	it("6.1: both engine.ts and resume.ts check rollbackFailed before merge failure handling", () => {
+	it("6.1: engine.ts and resume.ts route rollback safe-stop before generic merge failure handling", () => {
 		const engineSource = readSource("engine.ts");
 		const resumeSource = readSource("resume.ts");
 
@@ -453,10 +463,12 @@ describe("6.x — Engine/resume parity for safe-stop", () => {
 		const engineRollbackIdx = engineSource.indexOf("mergeResult?.rollbackFailed");
 		const engineMergeFailIdx = engineSource.indexOf('mergeResult.status === "failed"');
 		expect(engineRollbackIdx).toBeLessThan(engineMergeFailIdx);
+		expect(engineSource).toContain("mergeRequiresRollbackSafeStop(mergeResult)");
 
-		const resumeRollbackIdx = resumeSource.indexOf("mergeResult?.rollbackFailed");
+		const resumeRollbackIdx = resumeSource.indexOf("applyRollbackSafeStop(waveIdx, mergeResult)");
 		const resumeMergeFailIdx = resumeSource.indexOf('mergeResult.status === "failed"');
 		expect(resumeRollbackIdx).toBeLessThan(resumeMergeFailIdx);
+		expect(resumeSource).toContain("applyRollbackSafeStop(waveIdx, mergeRetryResult)");
 	});
 
 	it("6.2: both files persist with trigger merge-rollback-safe-stop", () => {

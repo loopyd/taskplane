@@ -34,11 +34,11 @@ function terminateAliveV2Agents(stateRoot: string, batchId: string, sessionName:
 }
 import { getCurrentBranch, runGit } from "./git.ts";
 import { mergeWaveByRepo } from "./merge.ts";
-import { applyMergeRetryLoop, computeCleanupGatePolicy, computeMergeFailurePolicy, extractFailedRepoId, formatRepoAtomicFailureSummary, formatRepoMergeSummary, ORCH_MESSAGES } from "./messages.ts";
+import { applyMergeRetryLoop, computeCleanupGatePolicy, computeMergeFailurePolicy, extractFailedRepoId, formatRepoAtomicFailureSummary, formatRepoMergeSummary, mergeRequiresRollbackSafeStop, ORCH_MESSAGES } from "./messages.ts";
 import type { CleanupGateRepoFailure } from "./messages.ts";
 import { resolveOperatorId } from "./naming.ts";
 import { applyPartialProgressToOutcomes, deleteBatchState, hasTaskDoneMarker, loadBatchState, persistRuntimeState, seedPendingOutcomesForAllocatedLanes, syncTaskOutcomesFromMonitor, upsertTaskOutcome } from "./persistence.ts";
-import { buildBatchProgressSnapshot, buildSupervisorSegmentFrontierSnapshot, defaultResilienceState, StateFileError } from "./types.ts";
+import { buildBatchProgressSnapshot, buildSupervisorTaskFailureAlert, defaultResilienceState, StateFileError } from "./types.ts";
 import type { AllocatedLane, AllocatedTask, LaneExecutionResult, LaneTaskOutcome, LaneTaskStatus, MergeWaveResult, OrchBatchPhase, OrchBatchRuntimeState, OrchestratorConfig, ParsedTask, PersistedBatchState, PersistedLaneRecord, PersistedSegmentRecord, ReconciledTaskState, ResumeEligibility, ResumePoint, TaskRunnerConfig, WaveExecutionResult, WorkspaceConfig } from "./types.ts";
 import { buildDependencyGraph, resolveBaseBranch, resolveRepoRoot } from "./waves.ts";
 import { deleteBranchBestEffort, forceCleanupWorktree, listWorktrees, preserveFailedLaneProgress, removeAllWorktrees, removeWorktree, safeResetWorktree, sleepSync } from "./worktree.ts";
@@ -67,10 +67,23 @@ export function collectRepoRoots(
 	workspaceConfig?: WorkspaceConfig | null,
 ): string[] {
 	const roots = new Set<string>();
+	const collectLaneRepoIds = (lane: {
+		repoId?: string;
+		repoWorktrees?: Record<string, { repoId?: string }>;
+	}): Set<string | undefined> => {
+		const repoIds = new Set<string | undefined>();
+		repoIds.add(lane.repoId);
+		for (const [repoKey, worktree] of Object.entries(lane.repoWorktrees ?? {})) {
+			repoIds.add(worktree.repoId ?? repoKey);
+		}
+		return repoIds;
+	};
 
 	for (const lane of persistedState.lanes) {
-		const root = resolveRepoRoot(lane.repoId, defaultRepoRoot, workspaceConfig);
-		roots.add(root);
+		for (const repoId of collectLaneRepoIds(lane)) {
+			const root = resolveRepoRoot(repoId, defaultRepoRoot, workspaceConfig);
+			roots.add(root);
+		}
 	}
 
 	// Always include the default repo root (covers repo mode and any
@@ -146,6 +159,7 @@ export function reconstructAllocatedLanes(
 		laneSessionId: lr.laneSessionId,
 		worktreePath: lr.worktreePath,
 		branch: lr.branch,
+		...(lr.repoWorktrees !== undefined ? { repoWorktrees: lr.repoWorktrees } : {}),
 		tasks: lr.taskIds.map((taskId) => {
 			const persistedTask = taskLookup.get(taskId);
 			// Build a minimal ParsedTask stub that carries repo attribution
@@ -157,6 +171,9 @@ export function reconstructAllocatedLanes(
 			}
 			if (persistedTask?.resolvedRepoId !== undefined) {
 				taskStub.resolvedRepoId = persistedTask.resolvedRepoId;
+			}
+			if ((persistedTask as any)?.resolvedRepoIds !== undefined) {
+				(taskStub as any).resolvedRepoIds = (persistedTask as any).resolvedRepoIds;
 			}
 			if ((persistedTask as any)?.participatingRepoIds !== undefined) {
 				(taskStub as any).participatingRepoIds = (persistedTask as any).participatingRepoIds;
@@ -209,16 +226,32 @@ export function reconstructAllocatedLanes(
  * @returns Array of unique absolute repo root paths
  */
 export function collectAllRepoRoots(
-	laneSources: Array<{ repoId?: string }[]>,
+	laneSources: Array<Array<{
+		repoId?: string;
+		repoWorktrees?: Record<string, { repoId?: string }>;
+	}>>,
 	defaultRepoRoot: string,
 	workspaceConfig?: WorkspaceConfig | null,
 ): string[] {
 	const roots = new Set<string>();
+	const collectLaneRepoIds = (lane: {
+		repoId?: string;
+		repoWorktrees?: Record<string, { repoId?: string }>;
+	}): Set<string | undefined> => {
+		const repoIds = new Set<string | undefined>();
+		repoIds.add(lane.repoId);
+		for (const [repoKey, worktree] of Object.entries(lane.repoWorktrees ?? {})) {
+			repoIds.add(worktree.repoId ?? repoKey);
+		}
+		return repoIds;
+	};
 
 	for (const lanes of laneSources) {
 		for (const lane of lanes) {
-			const root = resolveRepoRoot(lane.repoId, defaultRepoRoot, workspaceConfig);
-			roots.add(root);
+			for (const repoId of collectLaneRepoIds(lane)) {
+				const root = resolveRepoRoot(repoId, defaultRepoRoot, workspaceConfig);
+				roots.add(root);
+			}
 		}
 	}
 
@@ -227,6 +260,22 @@ export function collectAllRepoRoots(
 	roots.add(defaultRepoRoot);
 
 	return [...roots];
+}
+
+function collectLaneWorktreePaths(lane: {
+	worktreePath?: string;
+	repoWorktrees?: Record<string, { path: string }>;
+}): string[] {
+	const paths = new Set<string>();
+	if (lane.worktreePath) {
+		paths.add(lane.worktreePath);
+	}
+	for (const worktree of Object.values(lane.repoWorktrees ?? {})) {
+		if (worktree.path) {
+			paths.add(worktree.path);
+		}
+	}
+	return [...paths];
 }
 
 // ── Resume Pure Functions ────────────────────────────────────────────
@@ -249,15 +298,18 @@ export function collectDoneTaskIdsForResume(
 			continue;
 		}
 		const laneRec = persistedState.lanes.find(l => l.taskIds.includes(task.taskId));
-		if (laneRec?.worktreePath && task.taskFolder) {
-			const resolved = resolveCanonicalTaskPaths(
-				task.taskFolder,
-				laneRec.worktreePath,
-				repoRoot,
-				!!workspaceConfig,
-			);
-			if (existsSync(resolved.donePath)) {
-				doneTaskIds.add(task.taskId);
+		if (laneRec && task.taskFolder) {
+			for (const worktreePath of collectLaneWorktreePaths(laneRec)) {
+				const resolved = resolveCanonicalTaskPaths(
+					task.taskFolder,
+					worktreePath,
+					repoRoot,
+					!!workspaceConfig,
+				);
+				if (existsSync(resolved.donePath)) {
+					doneTaskIds.add(task.taskId);
+					break;
+				}
 			}
 		}
 	}
@@ -1024,27 +1076,32 @@ export function runPreResumeDiagnostics(
 
 	// 3. Worktree health — check each persisted lane worktree
 	for (const lane of persistedState.lanes) {
-		if (!lane.worktreePath) continue;
+		const worktreePaths = collectLaneWorktreePaths(lane);
+		if (worktreePaths.length === 0) continue;
 
-		const wtExists = existsSync(lane.worktreePath);
-		if (wtExists) {
-			// Verify it's a valid git worktree (has .git file/directory)
-			const gitMarker = join(lane.worktreePath, ".git");
-			const isValidWt = existsSync(gitMarker);
-			checks.push({
-				check: `worktree-health:lane-${lane.laneNumber}`,
-				passed: isValidWt,
-				detail: isValidWt
-					? `Lane ${lane.laneNumber} worktree exists and has valid .git marker`
-					: `Lane ${lane.laneNumber} worktree exists at ${lane.worktreePath} but lacks .git marker (corrupted)`,
-			});
-		} else {
-			// Absent worktree is OK — resume will re-create or skip
-			checks.push({
-				check: `worktree-health:lane-${lane.laneNumber}`,
-				passed: true,
-				detail: `Lane ${lane.laneNumber} worktree absent (will be re-created on resume)`,
-			});
+		for (const [index, worktreePath] of worktreePaths.entries()) {
+			const wtExists = existsSync(worktreePath);
+			const checkLabel = worktreePaths.length > 1
+				? `worktree-health:lane-${lane.laneNumber}:${index + 1}`
+				: `worktree-health:lane-${lane.laneNumber}`;
+			if (wtExists) {
+				// Verify it's a valid git worktree (has .git file/directory)
+				const gitMarker = join(worktreePath, ".git");
+				const isValidWt = existsSync(gitMarker);
+				checks.push({
+					check: checkLabel,
+					passed: isValidWt,
+					detail: isValidWt
+						? `Lane ${lane.laneNumber} worktree exists and has valid .git marker`
+						: `Lane ${lane.laneNumber} worktree exists at ${worktreePath} but lacks .git marker (corrupted)`,
+				});
+			} else {
+				checks.push({
+					check: checkLabel,
+					passed: true,
+					detail: `Lane ${lane.laneNumber} worktree absent (will be re-created on resume)`,
+				});
+			}
 		}
 	}
 
@@ -1229,7 +1286,7 @@ export async function resumeOrchBatch(
 	const existingWorktreeTaskIds = new Set<string>();
 	for (const task of persistedState.tasks) {
 		const laneRecord = persistedState.lanes.find(l => l.taskIds.includes(task.taskId));
-		if (laneRecord && laneRecord.worktreePath && existsSync(laneRecord.worktreePath)) {
+		if (laneRecord && collectLaneWorktreePaths(laneRecord).some((worktreePath) => existsSync(worktreePath))) {
 			existingWorktreeTaskIds.add(task.taskId);
 		}
 	}
@@ -1445,6 +1502,9 @@ export async function resumeOrchBatch(
 		if (persistedTask.participatingRepoIds?.length) {
 			parsed.participatingRepoIds = persistedTask.participatingRepoIds;
 		}
+		if ((persistedTask as any).resolvedRepoIds?.length) {
+			(parsed as any).resolvedRepoIds = (persistedTask as any).resolvedRepoIds;
+		}
 		if (persistedTask.segmentIds?.length) {
 			parsed.segmentIds = persistedTask.segmentIds;
 		}
@@ -1491,6 +1551,7 @@ export async function resumeOrchBatch(
 				laneSessionId: laneRecord.laneSessionId,
 				worktreePath: laneRecord.worktreePath,
 				branch: laneRecord.branch,
+				...(laneRecord.repoWorktrees !== undefined ? { repoWorktrees: laneRecord.repoWorktrees } : {}),
 				tasks: [allocatedTask],
 				strategy: "round-robin",
 				estimatedLoad: 0,
@@ -1572,6 +1633,7 @@ export async function resumeOrchBatch(
 				laneSessionId: laneRecord.laneSessionId,
 				worktreePath: laneRecord.worktreePath,
 				branch: laneRecord.branch,
+				...(laneRecord.repoWorktrees !== undefined ? { repoWorktrees: laneRecord.repoWorktrees } : {}),
 				tasks: [allocatedTask],
 				strategy: "round-robin",
 				estimatedLoad: 0,
@@ -1822,6 +1884,62 @@ export async function resumeOrchBatch(
 	const roundToTaskWave = batchState.roundToTaskWave;
 	const taskLevelWaveCount = batchState.taskLevelWaveCount;
 
+	const applyRollbackSafeStop = (waveIdx: number, mergeResult: MergeWaveResult): boolean => {
+		if (!mergeResult.rollbackFailed && !mergeRequiresRollbackSafeStop(mergeResult)) {
+			return false;
+		}
+
+		const hasPersistErrors = mergeResult.persistenceErrors && mergeResult.persistenceErrors.length > 0;
+		const persistWarning = hasPersistErrors
+			? ` WARNING: ${mergeResult.persistenceErrors!.length} transaction record(s) failed to persist — recovery file(s) may be missing.`
+			: "";
+
+		execLog("batch", batchState.batchId, "SAFE-STOP: verification rollback failed — forcing paused regardless of policy", {
+			waveIndex: waveIdx,
+			configPolicy: orchConfig.failure.on_merge_failure,
+			...(hasPersistErrors ? { persistenceErrors: mergeResult.persistenceErrors } : {}),
+		});
+
+		batchState.phase = "paused";
+		batchState.errors.push(
+			`Safe-stop at wave ${waveIdx + 1}: verification rollback failed. ` +
+			`Merge worktree and temp branch preserved for recovery. ` +
+			`Check transaction records in .pi/verification/ for recovery commands.` +
+			persistWarning,
+		);
+		persistRuntimeState("merge-rollback-safe-stop", batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discovery, stateRoot);
+		onNotify(
+			`🛑 Safe-stop: verification rollback failed at wave ${waveIdx + 1}. ` +
+			`Batch force-paused. Merge worktree preserved for manual recovery. ` +
+			`See .pi/verification/ transaction records for recovery commands.` +
+			persistWarning,
+			"error",
+		);
+
+		const rollbackRepoId = extractFailedRepoId(mergeResult) ?? undefined;
+		emitAlert({
+			category: "merge-failure",
+			summary:
+				`⚠️ Merge failed for wave ${waveIdx + 1} — verification rollback failed\n` +
+				`  Batch force-paused for manual recovery.\n` +
+				`  Check .pi/verification/ for recovery commands.\n\n` +
+				`Available actions:\n` +
+				`  - Check .pi/verification/ transaction records\n` +
+				`  - orch_status() to inspect current state\n` +
+				`  - orch_resume(force=true) after manual recovery`,
+			context: {
+				waveIndex: waveIdx,
+				laneNumber: mergeResult.failedLane ?? undefined,
+				repoId: rollbackRepoId,
+				mergeError: `Safe-stop: verification rollback failed at wave ${waveIdx + 1}`,
+				batchProgress: buildBatchProgressSnapshot(batchState),
+			},
+		});
+
+		preserveWorktreesForResume = true;
+		return true;
+	};
+
 	for (let waveIdx = resumePoint.resumeWaveIndex; waveIdx < wavePlan.length; waveIdx++) {
 		// Check pause signal
 		if (batchState.pauseSignal.paused) {
@@ -1991,6 +2109,9 @@ export async function resumeOrchBatch(
 						`⚠️ Wave ${resolveDisplayWaveNumber(waveIdx, roundToTaskWave, taskLevelWaveCount).displayWave} merge retry ${mergeRetryResult.status}: ${mergeRetryResult.failureReason || "unknown"}`,
 						"warning",
 					);
+					if (applyRollbackSafeStop(waveIdx, mergeRetryResult)) {
+						break;
+					}
 					// Apply merge failure policy (same as normal wave merge failure)
 					const policyResult = computeMergeFailurePolicy(mergeRetryResult, waveIdx, orchConfig);
 					execLog("batch", batchState.batchId, `merge retry failure — applying ${policyResult.policy} policy`, policyResult.logDetails);
@@ -2092,57 +2213,26 @@ export async function resumeOrchBatch(
 		for (const taskId of waveResult.failedTaskIds) {
 			const outcome = allTaskOutcomes.find(o => o.taskId === taskId);
 			const laneForTask = latestAllocatedLanes.find(l => l.tasks.some(t => t.taskId === taskId));
-			const taskRecord = batchState.tasks.find((task) => task.taskId === taskId);
+			const taskRecord = persistedState.tasks.find((task) => task.taskId === taskId);
 			const exitReason = outcome?.exitReason || "unknown";
 			const hasPartialProgress = (outcome?.partialProgressCommits ?? 0) > 0;
-			const segmentFrontier = buildSupervisorSegmentFrontierSnapshot(
+			emitAlert(buildSupervisorTaskFailureAlert({
 				taskId,
-				taskRecord?.segmentIds,
-				taskRecord?.activeSegmentId,
-				batchState.segments,
-				outcome?.segmentId,
-			);
-			const segmentId = outcome?.segmentId
-				?? taskRecord?.activeSegmentId
-				?? segmentFrontier?.activeSegmentId
-				?? undefined;
-			const repoId = segmentId
-				? (segmentFrontier?.segments.find((segment) => segment.segmentId === segmentId)?.repoId ?? laneForTask?.repoId)
-				: laneForTask?.repoId;
-			const segmentSummary = segmentId
-				? `  Segment: ${segmentId}${repoId ? ` (repo: ${repoId})` : ""}\n`
-				: "";
-			const frontierSummary = segmentFrontier
-				? `  Segment frontier: ${segmentFrontier.terminalSegments}/${segmentFrontier.totalSegments} terminal\n`
-				: "";
-			emitAlert({
-				category: "task-failure",
-				summary:
-					`⚠️ Task failure: ${taskId}\n` +
-					`  Exit reason: ${exitReason}\n` +
-					segmentSummary +
-					frontierSummary +
-					`  Lane: ${laneForTask?.laneId ?? "unknown"} (lane ${laneForTask?.laneNumber ?? "?"})\n` +
-					`  Partial progress preserved: ${hasPartialProgress ? "yes" : "no"}\n` +
-					`  Batch: wave ${resolveDisplayWaveNumber(waveIdx, roundToTaskWave, taskLevelWaveCount).displayWave}/${taskLevelWaveCount ?? batchState.totalWaves}, ` +
-					`${batchState.succeededTasks} succeeded, ${batchState.failedTasks} failed\n\n` +
-					`Available actions:\n` +
-					`  - orch_status() to inspect current state\n` +
-					`  - orch_resume(force=true) to retry\n` +
-					`  - Read STATUS.md and lane logs for diagnosis`,
-				context: {
-					taskId,
-					segmentId,
-					repoId,
-					segmentFrontier,
-					laneId: laneForTask?.laneId,
-					laneNumber: laneForTask?.laneNumber,
-					waveIndex: waveIdx,
-					exitReason,
-					partialProgress: hasPartialProgress,
-					batchProgress: buildBatchProgressSnapshot(batchState),
-				},
-			});
+				failurePolicy: waveResult.policyApplied,
+				exitReason,
+				partialProgress: hasPartialProgress,
+				laneId: laneForTask?.laneId,
+				laneNumber: laneForTask?.laneNumber,
+				laneRepoId: laneForTask?.repoId,
+				taskSegmentIds: taskRecord?.segmentIds,
+				taskActiveSegmentId: taskRecord?.activeSegmentId,
+				persistedSegments: batchState.segments,
+				outcomeSegmentId: outcome?.segmentId,
+				blockedTaskIds: waveResult.policyApplied === "skip-dependents" ? [...waveResult.blockedTaskIds] : undefined,
+				batchProgress: buildBatchProgressSnapshot(batchState),
+				displayWave: resolveDisplayWaveNumber(waveIdx, roundToTaskWave, taskLevelWaveCount).displayWave,
+				totalDisplayWaves: taskLevelWaveCount ?? batchState.totalWaves,
+			}));
 		}
 
 		persistRuntimeState("wave-execution-complete", batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discovery, stateRoot);
@@ -2313,58 +2403,7 @@ export async function resumeOrchBatch(
 		// When a verification rollback failed, force paused regardless of
 		// on_merge_failure policy. The merge worktree and temp branch are
 		// preserved for manual recovery using commands in the transaction record.
-		if (mergeResult?.rollbackFailed) {
-			// TP-033 R004-2: Include persistence error warning when transaction
-			// record files may be missing, so operator knows to inspect manually
-			const hasPersistErrors = mergeResult.persistenceErrors && mergeResult.persistenceErrors.length > 0;
-			const persistWarning = hasPersistErrors
-				? ` WARNING: ${mergeResult.persistenceErrors!.length} transaction record(s) failed to persist — recovery file(s) may be missing.`
-				: "";
-
-			execLog("batch", batchState.batchId, "SAFE-STOP: verification rollback failed — forcing paused regardless of policy", {
-				waveIndex: waveIdx,
-				configPolicy: orchConfig.failure.on_merge_failure,
-				...(hasPersistErrors ? { persistenceErrors: mergeResult.persistenceErrors } : {}),
-			});
-
-			batchState.phase = "paused";
-			batchState.errors.push(
-				`Safe-stop at wave ${waveIdx + 1}: verification rollback failed. ` +
-				`Merge worktree and temp branch preserved for recovery. ` +
-				`Check transaction records in .pi/verification/ for recovery commands.` +
-				persistWarning
-			);
-			persistRuntimeState("merge-rollback-safe-stop", batchState, wavePlan, latestAllocatedLanes, allTaskOutcomes, discovery, stateRoot);
-			onNotify(
-				`🛑 Safe-stop: verification rollback failed at wave ${waveIdx + 1}. ` +
-				`Batch force-paused. Merge worktree preserved for manual recovery. ` +
-				`See .pi/verification/ transaction records for recovery commands.` +
-				persistWarning,
-				"error",
-			);
-
-			// ── TP-076: Emit supervisor alert for rollback safe-stop ──
-			const rollbackRepoId = extractFailedRepoId(mergeResult) ?? undefined;
-			emitAlert({
-				category: "merge-failure",
-				summary:
-					`⚠️ Merge failed for wave ${waveIdx + 1} — verification rollback failed\n` +
-					`  Batch force-paused for manual recovery.\n` +
-					`  Check .pi/verification/ for recovery commands.\n\n` +
-					`Available actions:\n` +
-					`  - Check .pi/verification/ transaction records\n` +
-					`  - orch_status() to inspect current state\n` +
-					`  - orch_resume(force=true) after manual recovery`,
-				context: {
-					waveIndex: waveIdx,
-					laneNumber: mergeResult.failedLane ?? undefined,
-					repoId: rollbackRepoId,
-					mergeError: `Safe-stop: verification rollback failed at wave ${waveIdx + 1}`,
-					batchProgress: buildBatchProgressSnapshot(batchState),
-				},
-			});
-
-			preserveWorktreesForResume = true;
+		if (mergeResult && applyRollbackSafeStop(waveIdx, mergeResult)) {
 			break;
 		}
 

@@ -463,6 +463,32 @@ describe("7.x: buildExecutionUnit bridge", () => {
 		expect(unit.repoPaths["web-client"]).toBe("/workspace/repos/web-client");
 	});
 
+	it("7.3b: maps resolvedRepoIds before segment participation is materialized", () => {
+		const lane = makeAllocatedLane({
+			repoId: "api",
+			worktreePath: "/workspace/.worktrees/api-lane-1",
+		});
+		const task = makeAllocatedTask({
+			resolvedRepoId: "api",
+			resolvedRepoIds: ["api", "shared-libs", "web-client"],
+		});
+		const workspaceConfig = {
+			mode: "workspace",
+			repos: new Map([
+				["api", { path: "/workspace/repos/api" }],
+				["shared-libs", { path: "/workspace/repos/shared-libs" }],
+				["web-client", { path: "/workspace/repos/web-client" }],
+			]),
+			routing: { tasksRoot: "/workspace/tasks", defaultRepo: "api" },
+			configPath: "/workspace/.pi/taskplane-workspace.yaml",
+		} as any;
+		const unit = buildExecutionUnit(lane, task, "/workspace/repos/api", true, workspaceConfig);
+
+		expect(unit.repoPaths.api).toBe(lane.worktreePath);
+		expect(unit.repoPaths["shared-libs"]).toBe("/workspace/repos/shared-libs");
+		expect(unit.repoPaths["web-client"]).toBe("/workspace/repos/web-client");
+	});
+
 	it("7.4: uses segment ID when activeSegmentId is set", () => {
 		const task = makeAllocatedTask({ activeSegmentId: "TP-102::api" });
 		const lane = makeAllocatedLane();
@@ -470,6 +496,40 @@ describe("7.x: buildExecutionUnit bridge", () => {
 
 		expect(unit.segmentId).toBe("TP-102::api");
 		expect(unit.id).toBe("TP-102::api");
+	});
+
+	it("7.4b: uses repoWorktrees path for the execution repo when available", () => {
+		const lane = makeAllocatedLane({
+			repoId: "shared-libs",
+			worktreePath: "/workspace/.worktrees/api-lane-1",
+			repoWorktrees: {
+				api: { path: "/workspace/.worktrees/api-lane-1", branch: "task/api", laneNumber: 1, repoId: "api" },
+				"shared-libs": { path: "/workspace/.worktrees/shared-libs-lane-1", branch: "task/shared", laneNumber: 1, repoId: "shared-libs" },
+			},
+		});
+		const task = makeAllocatedTask({
+			activeSegmentId: "TP-102::shared-libs",
+			packetRepoId: "shared-libs",
+			participatingRepoIds: ["api", "shared-libs"],
+			taskFolder: "/workspace/tasks/TP-102",
+		});
+		const workspaceConfig = {
+			mode: "workspace",
+			repos: new Map([
+				["api", { path: "/workspace/repos/api" }],
+				["shared-libs", { path: "/workspace/repos/shared-libs" }],
+			]),
+			routing: { tasksRoot: "/workspace/tasks", defaultRepo: "api" },
+			configPath: "/workspace/.pi/taskplane-workspace.yaml",
+		} as any;
+
+		const unit = buildExecutionUnit(lane, task, "/workspace/repos/api", true, workspaceConfig);
+
+		expect(unit.executionRepoId).toBe("shared-libs");
+		expect(unit.worktreePath).toBe("/workspace/.worktrees/shared-libs-lane-1");
+		expect(unit.repoPaths["shared-libs"]).toBe("/workspace/.worktrees/shared-libs-lane-1");
+		expect(unit.repoPaths.api).toBe("/workspace/.worktrees/api-lane-1");
+		expect(unit.packet.taskFolder).toContain("/workspace/.worktrees/shared-libs-lane-1/");
 	});
 
 	it("7.5: packet paths are valid PacketPaths", () => {

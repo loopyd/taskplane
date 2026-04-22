@@ -2164,11 +2164,11 @@ export default function (pi: ExtensionAPI) {
 					if (fatalErrors.length > 0) {
 						publishOrchPlanSection("❌ Cannot compute plan due to discovery errors above.", "error");
 						const hasRoutingErrors = fatalErrors.some(
-							(e) => e.code === "TASK_REPO_UNRESOLVED" || e.code === "TASK_REPO_UNKNOWN",
+							(e) => e.code === "TASK_REPO_UNRESOLVED" || e.code === "TASK_REPO_UNKNOWN" || e.code === "TASK_REPO_SCOPE_MISMATCH",
 						);
 						if (hasRoutingErrors) {
 							publishOrchPlanSection(
-								"💡 Check PROMPT Repo: fields, area repo_id config, and routing.default_repo in workspace config.",
+								"💡 Check PROMPT Repo:/Repos: fields, repo-prefixed file scope entries, area repo_id config, and routing.default_repo in workspace config.",
 								"info",
 							);
 						}

@@ -248,6 +248,18 @@ function validatePersistedState(data: unknown): any {
 			throw new StateFileError("STATE_SCHEMA_INVALID",
 				`tasks[${i}].resolvedRepoId is not a string (got ${typeof t.resolvedRepoId})`);
 		}
+		if ((t as any).resolvedRepoIds !== undefined) {
+			if (!Array.isArray((t as any).resolvedRepoIds)) {
+				throw new StateFileError("STATE_SCHEMA_INVALID",
+					`tasks[${i}].resolvedRepoIds is not an array (got ${typeof (t as any).resolvedRepoIds})`);
+			}
+			for (let j = 0; j < ((t as any).resolvedRepoIds as unknown[]).length; j++) {
+				if (typeof ((t as any).resolvedRepoIds as unknown[])[j] !== "string") {
+					throw new StateFileError("STATE_SCHEMA_INVALID",
+						`tasks[${i}].resolvedRepoIds[${j}] is not a string`);
+				}
+			}
+		}
 	}
 
 	// Validate lane records
@@ -287,6 +299,34 @@ function validatePersistedState(data: unknown): any {
 			throw new StateFileError("STATE_SCHEMA_INVALID",
 				`lanes[${i}].laneNumber is missing or not a number`);
 		}
+		if ((l as any).repoWorktrees !== undefined) {
+			const repoWorktrees = (l as any).repoWorktrees;
+			if (!repoWorktrees || typeof repoWorktrees !== "object" || Array.isArray(repoWorktrees)) {
+				throw new StateFileError("STATE_SCHEMA_INVALID",
+					`lanes[${i}].repoWorktrees is not an object`);
+			}
+			for (const [repoId, worktree] of Object.entries(repoWorktrees as Record<string, unknown>)) {
+				if (!worktree || typeof worktree !== "object" || Array.isArray(worktree)) {
+					throw new StateFileError("STATE_SCHEMA_INVALID",
+						`lanes[${i}].repoWorktrees[${repoId}] is not an object`);
+				}
+				const wt = worktree as Record<string, unknown>;
+				for (const field of ["path", "branch"] as const) {
+					if (typeof wt[field] !== "string") {
+						throw new StateFileError("STATE_SCHEMA_INVALID",
+							`lanes[${i}].repoWorktrees[${repoId}].${field} is missing or not a string`);
+					}
+				}
+				if (typeof wt.laneNumber !== "number") {
+					throw new StateFileError("STATE_SCHEMA_INVALID",
+						`lanes[${i}].repoWorktrees[${repoId}].laneNumber is missing or not a number`);
+				}
+				if (wt.repoId !== undefined && typeof wt.repoId !== "string") {
+					throw new StateFileError("STATE_SCHEMA_INVALID",
+						`lanes[${i}].repoWorktrees[${repoId}].repoId is not a string`);
+				}
+			}
+		}
 		if (!Array.isArray(l.taskIds)) {
 			throw new StateFileError("STATE_SCHEMA_INVALID",
 				`lanes[${i}].taskIds is missing or not an array`);
@@ -308,6 +348,10 @@ function validatePersistedState(data: unknown): any {
 		if (typeof m.waveIndex !== "number") {
 			throw new StateFileError("STATE_SCHEMA_INVALID",
 				`mergeResults[${i}].waveIndex is missing or not a number`);
+		}
+		if (m.waveTransactionId !== undefined && typeof m.waveTransactionId !== "string") {
+			throw new StateFileError("STATE_SCHEMA_INVALID",
+				`mergeResults[${i}].waveTransactionId is not a string (got ${typeof m.waveTransactionId})`);
 		}
 		if (typeof m.status !== "string" || !VALID_PERSISTED_MERGE_STATUSES.has(m.status)) {
 			throw new StateFileError("STATE_SCHEMA_INVALID",
@@ -1336,7 +1380,7 @@ function minimalLane(laneNum: number, taskIds: string[], repoId?: string): any {
 }
 
 // Helper: build minimal lane with ParsedTask objects containing repo fields
-function minimalLaneWithRepoTasks(laneNum: number, tasks: Array<{ taskId: string; promptRepoId?: string; resolvedRepoId?: string }>, repoId?: string): any {
+function minimalLaneWithRepoTasks(laneNum: number, tasks: Array<{ taskId: string; promptRepoId?: string; resolvedRepoId?: string; resolvedRepoIds?: string[] }>, repoId?: string): any {
 	return {
 		laneNumber: laneNum,
 		laneId: `lane-${laneNum}`,
@@ -1351,6 +1395,7 @@ function minimalLaneWithRepoTasks(laneNum: number, tasks: Array<{ taskId: string
 				taskId: t.taskId,
 				promptRepoId: t.promptRepoId,
 				resolvedRepoId: t.resolvedRepoId,
+				resolvedRepoIds: t.resolvedRepoIds,
 			},
 		})),
 		strategy: "affinity-first",
@@ -1437,6 +1482,9 @@ function serializeBatchState(
 		if (allocated?.allocatedTask.task?.resolvedRepoId !== undefined) {
 			record.resolvedRepoId = allocated.allocatedTask.task.resolvedRepoId;
 		}
+		if ((allocated?.allocatedTask.task as any)?.resolvedRepoIds !== undefined) {
+			record.resolvedRepoIds = (allocated!.allocatedTask.task as any).resolvedRepoIds;
+		}
 		return record;
 	});
 
@@ -1449,6 +1497,9 @@ function serializeBatchState(
 			branch: lane.branch,
 			taskIds: lane.tasks.map((t: any) => t.taskId),
 		};
+		if (lane.repoWorktrees !== undefined) {
+			record.repoWorktrees = lane.repoWorktrees;
+		}
 		// v2: Serialize lane repoId
 		if (lane.repoId !== undefined) {
 			record.repoId = lane.repoId;
@@ -1469,6 +1520,9 @@ function serializeBatchState(
 				failedLane: mr.failedLane,
 				failureReason: mr.failureReason,
 			};
+			if (typeof mr.waveTransactionId === "string" && mr.waveTransactionId.length > 0) {
+				record.waveTransactionId = mr.waveTransactionId;
+			}
 			if (mr.rollbackFailed) {
 				record.rollbackFailed = true;
 			}
@@ -1525,7 +1579,7 @@ function persistRuntimeState(
 	wavePlan: string[][],
 	lanes: any[],
 	allTaskOutcomes: any[],
-	discovery: { pending: Map<string, { taskFolder: string; promptRepoId?: string; resolvedRepoId?: string }> } | null,
+	discovery: { pending: Map<string, { taskFolder: string; promptRepoId?: string; resolvedRepoId?: string; resolvedRepoIds?: string[] }> } | null,
 	repoRoot: string,
 ): void {
 	try {
@@ -1543,6 +1597,9 @@ function persistRuntimeState(
 					}
 					if (taskRecord.resolvedRepoId === undefined && parsedTask.resolvedRepoId !== undefined) {
 						taskRecord.resolvedRepoId = parsedTask.resolvedRepoId;
+					}
+					if (taskRecord.resolvedRepoIds === undefined && parsedTask.resolvedRepoIds !== undefined) {
+						taskRecord.resolvedRepoIds = parsedTask.resolvedRepoIds;
 					}
 				}
 			}
@@ -1821,7 +1878,7 @@ try {
 
 		const lanes = [
 			minimalLaneWithRepoTasks(1, [
-				{ taskId: "WS-001", promptRepoId: "api", resolvedRepoId: "api" },
+				{ taskId: "WS-001", promptRepoId: "api", resolvedRepoId: "api", resolvedRepoIds: ["api", "frontend"] },
 			], "api"),
 			minimalLaneWithRepoTasks(2, [
 				{ taskId: "WS-002", promptRepoId: undefined, resolvedRepoId: "frontend" },
@@ -1841,6 +1898,7 @@ try {
 		const ws002 = parsed.tasks.find((t: any) => t.taskId === "WS-002");
 		assertEqual(ws001.repoId, "api", "WS-001 repoId serialized from ParsedTask");
 		assertEqual(ws001.resolvedRepoId, "api", "WS-001 resolvedRepoId serialized from ParsedTask");
+		assertEqual(JSON.stringify(ws001.resolvedRepoIds), JSON.stringify(["api", "frontend"]), "WS-001 resolvedRepoIds serialized from ParsedTask");
 		assertEqual(ws002.repoId, undefined, "WS-002 repoId undefined (not declared in prompt)");
 		assertEqual(ws002.resolvedRepoId, "frontend", "WS-002 resolvedRepoId serialized from area/default fallback");
 
@@ -4274,14 +4332,24 @@ function resolveRepoRoot(
 
 // Reimplement collectRepoRoots for test self-containment (mirrors source)
 function collectRepoRoots(
-	persistedState: { lanes: Array<{ repoId?: string }> },
+	persistedState: { lanes: Array<{ repoId?: string; repoWorktrees?: Record<string, { repoId?: string }> }> },
 	defaultRepoRoot: string,
 	workspaceConfig?: { repos: Map<string, { path: string }> } | null,
 ): string[] {
 	const roots = new Set<string>();
+	const collectLaneRepoIds = (lane: { repoId?: string; repoWorktrees?: Record<string, { repoId?: string }> }): Set<string | undefined> => {
+		const repoIds = new Set<string | undefined>();
+		repoIds.add(lane.repoId);
+		for (const [repoKey, worktree] of Object.entries(lane.repoWorktrees ?? {})) {
+			repoIds.add(worktree.repoId ?? repoKey);
+		}
+		return repoIds;
+	};
 	for (const lane of persistedState.lanes) {
-		const root = resolveRepoRoot(lane.repoId, defaultRepoRoot, workspaceConfig);
-		roots.add(root);
+		for (const repoId of collectLaneRepoIds(lane)) {
+			const root = resolveRepoRoot(repoId, defaultRepoRoot, workspaceConfig);
+			roots.add(root);
+		}
 	}
 	roots.add(defaultRepoRoot);
 	return [...roots];
@@ -4429,16 +4497,22 @@ function collectRepoRoots(
 		repos: new Map([
 			["api", { path: "/repos/api" }],
 			["frontend", { path: "/repos/frontend" }],
+			["shared", { path: "/repos/shared" }],
 		]),
 	};
 	const defaultRoot = "/repos/default";
 	const state = workspacePersistedState();
+	(state.lanes[0] as any).repoWorktrees = {
+		api: { repoId: "api" },
+		shared: { repoId: "shared" },
+	};
 
 	const roots = collectRepoRoots(state, defaultRoot, wsConfig);
 	assert(roots.includes("/repos/api"), "collectRepoRoots includes api root");
 	assert(roots.includes("/repos/frontend"), "collectRepoRoots includes frontend root");
+	assert(roots.includes("/repos/shared"), "collectRepoRoots includes secondary repoWorktree root");
 	assert(roots.includes(defaultRoot), "collectRepoRoots includes default root");
-	assertEqual(roots.length, 3, "collectRepoRoots returns 3 unique roots");
+	assertEqual(roots.length, 4, "collectRepoRoots returns 4 unique roots");
 }
 
 {
@@ -5248,7 +5322,7 @@ console.log("\n── TP-007 Step 2: reconstructAllocatedLanes & collectAllRepoR
 // ── Reimplement Step 2 helpers for test self-containment ─────────────
 
 function reconstructAllocatedLanes(
-	persistedLanes: Array<{ laneNumber: number; laneId: string; laneSessionId: string; worktreePath: string; branch: string; taskIds: string[]; repoId?: string }>,
+	persistedLanes: Array<{ laneNumber: number; laneId: string; laneSessionId: string; worktreePath: string; repoWorktrees?: Record<string, { path: string; branch: string; laneNumber: number; repoId?: string }>; branch: string; taskIds: string[]; repoId?: string }>,
 	persistedTasks?: Array<{ taskId: string; repoId?: string; resolvedRepoId?: string; taskFolder?: string }>,
 ): any[] {
 	const taskLookup = new Map<string, any>();
@@ -5263,6 +5337,7 @@ function reconstructAllocatedLanes(
 		laneId: lr.laneId,
 		laneSessionId: lr.laneSessionId,
 		worktreePath: lr.worktreePath,
+		repoWorktrees: lr.repoWorktrees,
 		branch: lr.branch,
 		tasks: lr.taskIds.map((taskId: string) => {
 			const persistedTask = taskLookup.get(taskId);
@@ -5291,15 +5366,25 @@ function reconstructAllocatedLanes(
 }
 
 function collectAllRepoRoots(
-	laneSources: Array<Array<{ repoId?: string }>>,
+	laneSources: Array<Array<{ repoId?: string; repoWorktrees?: Record<string, { repoId?: string }> }>>,
 	defaultRepoRoot: string,
 	workspaceConfig?: { repos: Map<string, { path: string }> } | null,
 ): string[] {
 	const roots = new Set<string>();
+	const collectLaneRepoIds = (lane: { repoId?: string; repoWorktrees?: Record<string, { repoId?: string }> }): Set<string | undefined> => {
+		const repoIds = new Set<string | undefined>();
+		repoIds.add(lane.repoId);
+		for (const [repoKey, worktree] of Object.entries(lane.repoWorktrees ?? {})) {
+			repoIds.add(worktree.repoId ?? repoKey);
+		}
+		return repoIds;
+	};
 	for (const lanes of laneSources) {
 		for (const lane of lanes) {
-			const root = resolveRepoRoot(lane.repoId, defaultRepoRoot, workspaceConfig);
-			roots.add(root);
+			for (const repoId of collectLaneRepoIds(lane)) {
+				const root = resolveRepoRoot(repoId, defaultRepoRoot, workspaceConfig);
+				roots.add(root);
+			}
 		}
 	}
 	roots.add(defaultRepoRoot);
@@ -5315,6 +5400,10 @@ function collectAllRepoRoots(
 			laneId: "lane-1",
 			laneSessionId: "orch-lane-1",
 			worktreePath: "/work/wt-1",
+			repoWorktrees: {
+				api: { path: "/work/wt-1", branch: "orch/batch-1-lane-1", laneNumber: 1, repoId: "api" },
+				web: { path: "/work/wt-1-web", branch: "orch/batch-1-lane-1", laneNumber: 1, repoId: "web" },
+			},
 			branch: "orch/batch-1-lane-1",
 			taskIds: ["T1", "T2"],
 			repoId: "api",
@@ -5336,6 +5425,8 @@ function collectAllRepoRoots(
 	assertEqual(allocated[0].laneId, "lane-1", "lane 1 id preserved");
 	assertEqual(allocated[0].laneSessionId, "orch-lane-1", "lane 1 session preserved");
 	assertEqual(allocated[0].worktreePath, "/work/wt-1", "lane 1 worktree preserved");
+	assertEqual(allocated[0].repoWorktrees.api.path, "/work/wt-1", "lane 1 primary repoWorktree preserved");
+	assertEqual(allocated[0].repoWorktrees.web.path, "/work/wt-1-web", "lane 1 secondary repoWorktree preserved");
 	assertEqual(allocated[0].branch, "orch/batch-1-lane-1", "lane 1 branch preserved");
 	assertEqual(allocated[0].repoId, "api", "lane 1 repoId preserved");
 	assertEqual(allocated[0].tasks.length, 2, "lane 1 has 2 task stubs");
@@ -5375,12 +5466,13 @@ function collectAllRepoRoots(
 			["api", { path: "/repos/api" }],
 			["frontend", { path: "/repos/frontend" }],
 			["backend", { path: "/repos/backend" }],
+			["shared", { path: "/repos/shared" }],
 		]),
 	};
 
 	// Persisted lanes have api + frontend
 	const persistedLanes = [
-		{ repoId: "api" as string | undefined },
+		{ repoId: "api" as string | undefined, repoWorktrees: { shared: { repoId: "shared" } } },
 		{ repoId: "frontend" as string | undefined },
 	];
 	// Newly allocated lanes introduce backend
@@ -5392,9 +5484,10 @@ function collectAllRepoRoots(
 	const roots = collectAllRepoRoots([persistedLanes, newLanes], "/default", wsConfig);
 	assert(roots.includes("/repos/api"), "includes api from persisted");
 	assert(roots.includes("/repos/frontend"), "includes frontend from persisted");
+	assert(roots.includes("/repos/shared"), "includes shared from persisted repoWorktrees");
 	assert(roots.includes("/repos/backend"), "includes backend from new lanes");
 	assert(roots.includes("/default"), "includes default root");
-	assertEqual(roots.length, 4, "4 unique roots (3 repos + default)");
+	assertEqual(roots.length, 5, "5 unique roots (4 repos + default)");
 }
 
 // 2.4: collectAllRepoRoots in repo mode (no workspaceConfig)
@@ -5415,6 +5508,10 @@ function collectAllRepoRoots(
 			laneId: "lane-1",
 			laneSessionId: "orch-lane-1",
 			worktreePath: "/work/wt-1",
+			repoWorktrees: {
+				api: { path: "/work/wt-1", branch: "orch/batch-1-lane-1", laneNumber: 1, repoId: "api" },
+				web: { path: "/work/wt-1-web", branch: "orch/batch-1-lane-1", laneNumber: 1, repoId: "web" },
+			},
 			branch: "orch/batch-1-lane-1",
 			taskIds: ["T1"],
 			repoId: "api",
@@ -5493,6 +5590,10 @@ function collectAllRepoRoots(
 			laneId: "lane-1",
 			laneSessionId: "orch-lane-1",
 			worktreePath: "/work/wt-1",
+			repoWorktrees: {
+				api: { path: "/work/wt-1", branch: "orch/batch-1-lane-1", laneNumber: 1, repoId: "api" },
+				web: { path: "/work/wt-1-web", branch: "orch/batch-1-lane-1", laneNumber: 1, repoId: "web" },
+			},
 			branch: "orch/batch-1-lane-1",
 			taskIds: ["T1"],
 			repoId: "api",
@@ -5619,6 +5720,10 @@ function collectAllRepoRoots(
 			laneId: "lane-1",
 			laneSessionId: "orch-lane-1",
 			worktreePath: "/work/wt-1",
+			repoWorktrees: {
+				api: { path: "/work/wt-1", branch: "orch/batch-1-lane-1", laneNumber: 1, repoId: "api" },
+				web: { path: "/work/wt-1-web", branch: "orch/batch-1-lane-1", laneNumber: 1, repoId: "web" },
+			},
 			branch: "orch/batch-1-lane-1",
 			taskIds: ["T1"],
 			repoId: "api",
@@ -5662,6 +5767,7 @@ function collectAllRepoRoots(
 
 	assertEqual(validated.lanes.length, 1, "round-trip: 1 lane");
 	assertEqual(validated.lanes[0].repoId, "api", "round-trip: lane repoId preserved");
+	assertEqual(validated.lanes[0].repoWorktrees.web.path, "/work/wt-1-web", "round-trip: secondary repoWorktree preserved");
 	assertEqual(validated.lanes[0].laneNumber, 1, "round-trip: lane number preserved");
 	assertEqual(validated.lanes[0].laneSessionId, "orch-lane-1", "round-trip: session preserved");
 
@@ -5673,6 +5779,7 @@ function collectAllRepoRoots(
 	const reReconstruct = reconstructAllocatedLanes(validated.lanes);
 	assertEqual(reReconstruct.length, 1, "re-reconstruct: 1 lane");
 	assertEqual(reReconstruct[0].repoId, "api", "re-reconstruct: repoId preserved across pause/resume");
+	assertEqual(reReconstruct[0].repoWorktrees.web.path, "/work/wt-1-web", "re-reconstruct: repoWorktrees preserved across pause/resume");
 }
 
 // ── TP-007 Step 2 additional tests ───────────────────────────────────
@@ -5904,6 +6011,7 @@ function collectAllRepoRoots(
 		mergeResults: [
 			{
 				waveIndex: 2,
+				waveTransactionId: "wave-B-merge-state-w2-abc123",
 				status: "failed",
 				failedLane: 2,
 				failureReason: "[repo:web] conflict. Cross-repo atomic merge rolled back 1 repo group(s).",
@@ -5924,6 +6032,7 @@ function collectAllRepoRoots(
 
 	assertEqual(parsed.mergeResults.length, 1, "merge-state: one persisted merge result");
 	assertEqual(parsed.mergeResults[0].waveIndex, 1, "merge-state: wave index normalized to 0-based");
+	assertEqual(parsed.mergeResults[0].waveTransactionId, "wave-B-merge-state-w2-abc123", "merge-state: waveTransactionId persisted");
 	assertEqual(parsed.mergeResults[0].rollbackFailed, true, "merge-state: rollbackFailed persisted");
 	assertEqual(parsed.mergeResults[0].persistenceErrors.length, 1, "merge-state: persistenceErrors persisted");
 	assertEqual(parsed.mergeResults[0].persistenceErrors[0], "lane 2 (repo: web): ENOSPC", "merge-state: persistence error content preserved");

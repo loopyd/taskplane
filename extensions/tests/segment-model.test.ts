@@ -109,6 +109,32 @@ describe("task segment plan determinism", () => {
 		]);
 		expect(plan.edges.every((e) => e.reason === "prompt:execution-target-repos")).toBe(true);
 	});
+
+	it("uses dependency resolvedRepoIds order when inferring cross-repo segments", () => {
+		const pending = new Map<string, ParsedTask>([
+			[
+				"TP-360",
+				makeTask("TP-360", {
+					resolvedRepoId: "dashboard",
+					resolvedRepoIds: ["dashboard", "administration"],
+				}),
+			],
+			[
+				"TP-361",
+				makeTask("TP-361", {
+					dependencies: ["TP-360"],
+				}),
+			],
+		]);
+
+		const plans = buildTaskSegmentPlans(pending);
+		const plan = plans.get("TP-361")!;
+		expect(plan.mode).toBe("inferred-sequential");
+		expect(plan.segments.map((s) => s.repoId)).toEqual(["dashboard", "administration"]);
+		expect(plan.edges.map((e) => `${e.fromSegmentId}->${e.toSegmentId}`)).toEqual([
+			"TP-361::dashboard->TP-361::administration",
+		]);
+	});
 });
 
 describe("computeWaveAssignments segment plan wiring", () => {

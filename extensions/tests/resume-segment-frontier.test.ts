@@ -124,6 +124,61 @@ describe("TP-135 resume segment fallback behavior", () => {
 		}
 	});
 
+	it("finds .DONE in a secondary repoWorktree when the primary lane worktree lacks it", () => {
+		const root = join(tmpdir(), `tp135-secondary-done-${Date.now()}`);
+		const primaryWorktree = join(root, "wt-primary");
+		const secondaryWorktree = join(root, "wt-secondary");
+		const taskFolder = join(root, "tasks", "TP-001");
+		mkdirSync(primaryWorktree, { recursive: true });
+		mkdirSync(secondaryWorktree, { recursive: true });
+		mkdirSync(join(secondaryWorktree, "tasks", "TP-001"), { recursive: true });
+		writeFileSync(join(secondaryWorktree, "tasks", "TP-001", ".DONE"), "", "utf8");
+
+		try {
+			const state = makeState({
+				mode: "workspace",
+				lanes: [{
+					laneNumber: 1,
+					laneId: "api/lane-1",
+					laneSessionId: "orch-api-lane-1",
+					worktreePath: primaryWorktree,
+					repoWorktrees: {
+						api: { path: primaryWorktree, branch: "task/api-lane-1", laneNumber: 1, repoId: "api" },
+						docs: { path: secondaryWorktree, branch: "task/api-lane-1", laneNumber: 1, repoId: "docs" },
+					},
+					branch: "task/api-lane-1",
+					repoId: "api",
+					taskIds: ["TP-001"],
+				}],
+				tasks: [{
+					taskId: "TP-001",
+					laneNumber: 1,
+					sessionName: "orch-api-lane-1",
+					status: "running",
+					taskFolder,
+					startedAt: Date.now() - 1000,
+					endedAt: null,
+					doneFileFound: false,
+					exitReason: "",
+				}],
+			});
+
+			const doneTaskIds = collectDoneTaskIdsForResume(state, root, {
+				mode: "workspace",
+				repos: new Map([
+					["api", { id: "api", path: join(root, "api") }],
+					["docs", { id: "docs", path: join(root, "docs") }],
+				]),
+				routing: { tasksRoot: join(root, "tasks"), defaultRepo: "docs" },
+				configPath: join(root, ".pi", "taskplane-workspace.yaml"),
+			} as any);
+
+			expect([...doneTaskIds]).toContain("TP-001");
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
 	it("falls back to task-level resume logic when mapped segment record is missing", () => {
 		const state = makeState({
 			wavePlan: [["TP-010"], ["TP-010"]],
@@ -463,6 +518,7 @@ describe("TP-169 resume after segment expansion — no crash, taskFolder populat
 				endedAt: null,
 				doneFileFound: false,
 				exitReason: "",
+				resolvedRepoIds: ["api", "web"],
 				segmentIds: ["TP-070::api", "TP-070::web"],
 				activeSegmentId: "TP-070::web",
 			}],
@@ -479,6 +535,7 @@ describe("TP-169 resume after segment expansion — no crash, taskFolder populat
 		expect(typeof task.task.taskFolder).toBe("string");
 		// taskFolder should be "" (the persisted value), NOT undefined
 		expect(task.task.taskFolder).toBe("");
+		expect((task.task as any).resolvedRepoIds).toEqual(["api", "web"]);
 		// Segment metadata should be carried forward
 		expect(task.task.segmentIds).toEqual(["TP-070::api", "TP-070::web"]);
 		expect(task.task.activeSegmentId).toBe("TP-070::web");

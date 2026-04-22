@@ -5,6 +5,7 @@
 import { readFileSync, writeFileSync, existsSync, unlinkSync, copyFileSync, mkdirSync, rmSync, readdirSync } from "fs";
 import { readFile as fsReadFile } from "fs/promises";
 import { execSync, spawnSync } from "child_process";
+import { randomUUID } from "crypto";
 import { join, dirname, resolve, relative } from "path";
 
 import { execLog, isV2AgentAlive, setV2LivenessRegistryCache } from "./execution.ts";
@@ -1154,7 +1155,7 @@ function persistTransactionRecord(record: TransactionRecord, stateRoot: string):
 			: "default";
 		const verifyDir = join(stateRoot, ".pi", "verification", record.opId);
 		mkdirSync(verifyDir, { recursive: true });
-		const fileName = `txn-b${record.batchId}-repo-${repoSlug}-wave-${record.waveIndex}-lane-${record.laneNumber}.json`;
+		const fileName = `txn-${record.waveTransactionId}-repo-${repoSlug}-lane-${record.laneNumber}.json`;
 		writeFileSync(
 			join(verifyDir, fileName),
 			JSON.stringify(record, null, 2),
@@ -1404,11 +1405,14 @@ export async function mergeWave(
 	healthMonitor?: MergeHealthMonitor | null,
 	forceMixedOutcome?: boolean,
 	runtimeBackend?: RuntimeBackend,
+	waveTransactionId?: string,
+	repoAttemptSequence = 0,
 ): Promise<MergeWaveResult> {
 	const startTime = Date.now();
 	const sessionPrefix = config.orchestrator.sessionPrefix;
 	const opId = resolveOperatorId(config);
 	const targetBranch = baseBranch;
+	const effectiveWaveTransactionId = waveTransactionId ?? `wave-${batchId}-w${waveIndex}-${randomUUID()}`;
 	const laneResults: MergeLaneResult[] = [];
 
 	// Build lane outcome lookup for merge eligibility checks.
@@ -1462,6 +1466,7 @@ export async function mergeWave(
 		execLog("merge", `W${waveIndex}`, "no mergeable lanes (all failed or empty)");
 		return {
 			waveIndex,
+			waveTransactionId: effectiveWaveTransactionId,
 			status: "succeeded", // vacuous success — nothing to merge
 			laneResults: [],
 			failedLane: null,
@@ -1500,7 +1505,7 @@ export async function mergeWave(
 	// The merge worktree lives inside the batch container alongside lane worktrees:
 	// {basePath}/{opId}-{batchId}/merge
 	const tempBranch = `_merge-temp-${opId}-${batchId}`;
-	const mergeWorkDir = generateMergeWorktreePath(repoRoot, opId, batchId, config);
+	const mergeWorkDir = generateMergeWorktreePath(repoRoot, opId, batchId, config, repoId);
 
 	// Clean up stale merge worktree/branch from prior failed attempt.
 	// TP-029: Apply forceRemoveMergeWorktree fallback so stale merge worktrees
@@ -1982,7 +1987,9 @@ export async function mergeWave(
 			const txnRecord: TransactionRecord = {
 				opId,
 				batchId,
+				waveTransactionId: effectiveWaveTransactionId,
 				waveIndex,
+				repoAttemptSequence,
 				laneNumber: lane.laneNumber,
 				repoId: repoId ?? null,
 				baseHEAD,
@@ -2033,7 +2040,9 @@ export async function mergeWave(
 			const errorTxnRecord: TransactionRecord = {
 				opId,
 				batchId,
+				waveTransactionId: effectiveWaveTransactionId,
 				waveIndex,
+				repoAttemptSequence,
 				laneNumber: lane.laneNumber,
 				repoId: repoId ?? null,
 				baseHEAD,
@@ -2363,6 +2372,7 @@ export async function mergeWave(
 
 	const result: MergeWaveResult = {
 		waveIndex,
+		waveTransactionId: effectiveWaveTransactionId,
 		status,
 		laneResults,
 		failedLane,
@@ -2586,6 +2596,7 @@ export async function mergeWaveByRepo(
 	runtimeBackend?: RuntimeBackend,
 ): Promise<MergeWaveResult> {
 	const startTime = Date.now();
+	const waveTransactionId = `wave-${batchId}-w${waveIndex}-${randomUUID()}`;
 
 	// Build lane outcome lookup for merge eligibility (same logic as mergeWave).
 	const laneOutcomeByNumber = new Map<number, LaneExecutionResult>();
@@ -2627,6 +2638,7 @@ export async function mergeWaveByRepo(
 		execLog("merge", `W${waveIndex}`, "no mergeable lanes (all failed or empty)");
 		return {
 			waveIndex,
+			waveTransactionId,
 			status: "succeeded",
 			laneResults: [],
 			failedLane: null,
@@ -2662,6 +2674,8 @@ export async function mergeWaveByRepo(
 			healthMonitor,
 			forceMixedOutcome,
 			runtimeBackend,
+			waveTransactionId,
+			0,
 		);
 		// Attach empty repoResults for consistent shape
 		return { ...result, repoResults: [] };
@@ -2691,7 +2705,7 @@ export async function mergeWaveByRepo(
 	// TP-033: Track rollback failures across all repo groups
 	let anyRollbackFailed = false;
 
-	for (const group of repoGroups) {
+	for (const [groupIndex, group] of repoGroups.entries()) {
 		const groupRepoRoot = resolveRepoRoot(group.repoId, repoRoot, workspaceConfig);
 		// In workspace mode with orch branch, always merge into the orch branch
 		// (passed as baseBranch from engine.ts). Do NOT use resolveBaseBranch()
@@ -2737,6 +2751,8 @@ export async function mergeWaveByRepo(
 			healthMonitor,
 			forceMixedOutcome,
 			runtimeBackend,
+			waveTransactionId,
+			groupIndex,
 		);
 
 		// Accumulate lane results
@@ -2944,6 +2960,7 @@ export async function mergeWaveByRepo(
 
 	const aggregateResult: MergeWaveResult = {
 		waveIndex,
+		waveTransactionId,
 		status,
 		laneResults: allLaneResults,
 		failedLane: firstFailedLane,

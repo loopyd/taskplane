@@ -1487,6 +1487,35 @@ export function resolveDependencies(
 /** Repo ID validation: lowercase alphanumeric + hyphens, starting with alnum */
 const ROUTING_REPO_ID_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 
+function extractRoutingRepoPrefix(fileScopeEntry: string): string | null {
+	const normalized = fileScopeEntry.replace(/\\/g, "/").trim();
+	if (!normalized) return null;
+	const firstSegment = normalized.split("/")[0]?.trim().toLowerCase();
+	if (!firstSegment || !ROUTING_REPO_ID_PATTERN.test(firstSegment)) {
+		return null;
+	}
+	return firstSegment;
+}
+
+function collectRoutingRepoIdsFromFileScope(
+	fileScope: string[],
+	validRepoIds: ReadonlyMap<string, unknown>,
+): string[] {
+	const repoIds: string[] = [];
+	const seen = new Set<string>();
+
+	for (const fileScopeEntry of fileScope) {
+		const repoId = extractRoutingRepoPrefix(fileScopeEntry);
+		if (!repoId || !validRepoIds.has(repoId) || seen.has(repoId)) {
+			continue;
+		}
+		seen.add(repoId);
+		repoIds.push(repoId);
+	}
+
+	return repoIds;
+}
+
 /**
  * Resolve the target repo for each discovered task using the routing
  * precedence chain:
@@ -1568,7 +1597,34 @@ export function resolveTaskRouting(
 			continue;
 		}
 
+		const declaredExecutionRepoIds = task.promptRepoIds && task.promptRepoIds.length > 0
+			? [...task.promptRepoIds]
+			: task.promptRepoId
+				? [task.promptRepoId]
+				: [];
+		const fileScopeRepoIds = collectRoutingRepoIdsFromFileScope(task.fileScope ?? [], validRepoIds);
+		if (declaredExecutionRepoIds.length > 0 && fileScopeRepoIds.length > 0) {
+			const unexpectedFileScopeRepos = fileScopeRepoIds.filter(
+				(repoId) => !declaredExecutionRepoIds.includes(repoId),
+			);
+			if (unexpectedFileScopeRepos.length > 0) {
+				errors.push({
+					code: "TASK_REPO_SCOPE_MISMATCH",
+					message:
+						`Task ${task.taskId} declares execution target repo ID(s) ${declaredExecutionRepoIds.join(", ")}, ` +
+						`but repo-prefixed file scope entries reference ${unexpectedFileScopeRepos.join(", ")}. ` +
+						`Align ## Execution Target with ## File Scope so every repo-prefixed path belongs to a declared target repo.`,
+					taskId: task.taskId,
+					taskPath: task.promptPath,
+				});
+				continue;
+			}
+		}
+
 		// Precedence 1: prompt-declared repo
+		let resolvedRepoIds = task.promptRepoIds && task.promptRepoIds.length > 0
+			? [...task.promptRepoIds]
+			: undefined;
 		let resolvedId = task.promptRepoIds?.[0] ?? task.promptRepoId;
 		let source = task.promptRepoIds && task.promptRepoIds.length > 0 ? "prompt:repos" : "prompt";
 
@@ -1584,37 +1640,12 @@ export function resolveTaskRouting(
 			}
 		}
 
-		// Precedence 3: file scope inference — match file path prefixes against
-		// known workspace repo IDs. If file scope entries like "web-client/src/..."
-		// start with a repo name, route the task to that repo.
-		if (!resolvedId && task.fileScope && task.fileScope.length > 0) {
-			const repoIds = [...validRepoIds.keys()];
-			const repoCounts = new Map<string, number>();
-			for (const filePath of task.fileScope) {
-				const normalized = filePath.replace(/\\/g, "/");
-				for (const repoId of repoIds) {
-					if (normalized.startsWith(repoId + "/") || normalized === repoId) {
-						repoCounts.set(repoId, (repoCounts.get(repoId) || 0) + 1);
-						break; // first matching repo wins for this path
-					}
-				}
-			}
-			// Use the repo with the most file scope matches (majority vote)
-			if (repoCounts.size === 1) {
-				resolvedId = repoCounts.keys().next().value!;
-				source = "file-scope";
-			} else if (repoCounts.size > 1) {
-				// Multiple repos in file scope — pick the one with most entries.
-				// (Future: #51 will handle multi-repo tasks properly)
-				let maxCount = 0;
-				for (const [repoId, count] of repoCounts) {
-					if (count > maxCount) {
-						maxCount = count;
-						resolvedId = repoId;
-					}
-				}
-				source = "file-scope";
-			}
+		// Precedence 3: file scope inference — preserve first-appearance repo order
+		// from repo-prefixed file scope entries like "web-client/src/...".
+		if (!resolvedId && fileScopeRepoIds.length > 0) {
+			resolvedId = fileScopeRepoIds[0];
+			resolvedRepoIds = fileScopeRepoIds;
+			source = "file-scope";
 		}
 
 		// Precedence 4: workspace default repo
@@ -1651,7 +1682,8 @@ export function resolveTaskRouting(
 			continue;
 		}
 
-		// Attach resolved repo to the task
+		// Attach resolved repo(s) to the task
+		task.resolvedRepoIds = resolvedRepoIds ?? [resolvedId];
 		task.resolvedRepoId = resolvedId;
 
 		// ── Step-segment mapping: resolve placeholders and validate repo IDs (TP-173) ──
@@ -1870,9 +1902,11 @@ export function formatDiscoveryResults(result: DiscoveryResult): string {
 						? ` → depends on: ${task.dependencies.join(", ")}`
 						: "";
 				const repo =
-					task.resolvedRepoId
-						? ` → repo: ${task.resolvedRepoId}`
-						: "";
+					task.resolvedRepoIds && task.resolvedRepoIds.length > 1
+						? ` → repos: ${task.resolvedRepoIds.join(", ")}`
+						: task.resolvedRepoId
+							? ` → repo: ${task.resolvedRepoId}`
+							: "";
 				lines.push(
 					`    ${task.taskId} [${task.size}] ${task.taskName}${deps}${repo}`,
 				);

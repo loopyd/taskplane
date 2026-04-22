@@ -217,6 +217,11 @@ Example:
 
 Describe intended modification surface to improve planning/review quality.
 
+Notes:
+
+- In workspace mode, repo-prefixed entries like `api/src/...` or `web-client/src/...` are used for repo inference when `## Execution Target` is omitted.
+- When `## Execution Target` is present, every repo-prefixed `## File Scope` entry must belong to one of the declared target repos.
+
 ---
 
 ## `Execution Target` (repo targeting)
@@ -253,6 +258,7 @@ Notes:
 - `Repos:` targets multiple repos and enables workspace-mode multi-repo routing.
 - Repo IDs are normalized to lowercase.
 - Repo IDs must exist in the workspace configuration.
+- When `## File Scope` uses repo-prefixed paths, those prefixes must agree with `Repo:` or `Repos:`.
 
 ## `Segment DAG` (optional explicit multi-repo ordering)
 

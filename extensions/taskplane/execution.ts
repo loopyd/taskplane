@@ -225,6 +225,7 @@ export function buildExecutionRepoPaths(
 	worktreePath: string,
 	repoRoot: string,
 	workspaceConfig?: WorkspaceConfig | null,
+	repoWorktrees?: Record<string, { path: string }>,
 ): Record<string, string> {
 	const orderedRepoIds: string[] = [];
 	const seenRepoIds = new Set<string>();
@@ -233,6 +234,9 @@ export function buildExecutionRepoPaths(
 		appendRepoIdCandidate(orderedRepoIds, seenRepoIds, repoId);
 	}
 	for (const repoId of task.promptRepoIds ?? []) {
+		appendRepoIdCandidate(orderedRepoIds, seenRepoIds, repoId);
+	}
+	for (const repoId of task.resolvedRepoIds ?? []) {
 		appendRepoIdCandidate(orderedRepoIds, seenRepoIds, repoId);
 	}
 	for (const repoId of task.explicitSegmentDag?.repoIds ?? []) {
@@ -246,7 +250,12 @@ export function buildExecutionRepoPaths(
 	const repoPaths: Record<string, string> = {};
 	for (const repoId of orderedRepoIds) {
 		if (repoId === executionRepoId) {
-			repoPaths[repoId] = worktreePath;
+			repoPaths[repoId] = repoWorktrees?.[repoId]?.path ?? worktreePath;
+			continue;
+		}
+		const laneRepoWorktreePath = repoWorktrees?.[repoId]?.path;
+		if (laneRepoWorktreePath) {
+			repoPaths[repoId] = laneRepoWorktreePath;
 			continue;
 		}
 		const repoPath = workspaceConfig?.repos.get(repoId)?.path;
@@ -260,7 +269,7 @@ export function buildExecutionRepoPaths(
 	}
 
 	if (!repoPaths[executionRepoId]) {
-		repoPaths[executionRepoId] = worktreePath;
+		repoPaths[executionRepoId] = repoWorktrees?.[executionRepoId]?.path ?? worktreePath;
 	}
 
 	return repoPaths;
@@ -2279,22 +2288,24 @@ export function buildExecutionUnit(
 			task.taskId,
 		);
 	}
+	const executionRepoId = lane.repoId ?? "default";
+	const executionWorktreePath = lane.repoWorktrees?.[executionRepoId]?.path ?? lane.worktreePath;
 	const resolved = resolveCanonicalTaskPaths(
 		taskFolder,
-		lane.worktreePath,
+		executionWorktreePath,
 		repoRoot,
 		isWorkspaceMode,
 	);
 
-	const executionRepoId = lane.repoId ?? "default";
 	const packetHomeRepoId = task.task.packetRepoId ?? executionRepoId;
 	const repoPaths = buildExecutionRepoPaths(
 		task.task,
 		executionRepoId,
 		packetHomeRepoId,
-		lane.worktreePath,
+		executionWorktreePath,
 		repoRoot,
 		workspaceConfig,
+		lane.repoWorktrees,
 	);
 
 	// Build a segment-style ID if this is a segment execution,
@@ -2326,7 +2337,7 @@ export function buildExecutionUnit(
 		executionRepoId,
 		packetHomeRepoId,
 		repoPaths,
-		worktreePath: lane.worktreePath,
+		worktreePath: executionWorktreePath,
 		packet,
 		task: task.task,
 	};

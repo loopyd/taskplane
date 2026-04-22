@@ -13,13 +13,13 @@ import type { MonitorUpdateCallback } from "./execution.ts";
 // from the diagnostic-reports pipeline (populated by assembleDiagnosticInput).
 import { getCurrentBranch, runGit } from "./git.ts";
 import { killAllMergeAgentsV2, mergeWaveByRepo, MergeHealthMonitor } from "./merge.ts";
-import { applyMergeRetryLoop, computeCleanupGatePolicy, computeMergeFailurePolicy, extractFailedRepoId, formatRepoAtomicFailureSummary, formatRepoMergeSummary, ORCH_MESSAGES } from "./messages.ts";
+import { applyMergeRetryLoop, computeCleanupGatePolicy, computeMergeFailurePolicy, extractFailedRepoId, formatRepoAtomicFailureSummary, formatRepoMergeSummary, mergeRequiresRollbackSafeStop, ORCH_MESSAGES } from "./messages.ts";
 import type { CleanupGateRepoFailure } from "./messages.ts";
 import { assembleDiagnosticInput, emitDiagnosticReports } from "./diagnostic-reports.ts";
 import { resolveOperatorId } from "./naming.ts";
 import { applyPartialProgressToOutcomes, buildTier0EventBase, deleteBatchState, emitEngineEvent, emitTier0Event, loadBatchHistory, loadBatchState, persistRuntimeState, saveBatchHistory, seedPendingOutcomesForAllocatedLanes, syncTaskOutcomesFromMonitor, upsertTaskOutcome } from "./persistence.ts";
 import { readRegistrySnapshot, isTerminalStatus, isProcessAlive as registryIsProcessAlive } from "./process-registry.ts";
-import { buildBatchProgressSnapshot, buildEngineEventBase, buildSegmentId, buildSupervisorSegmentFrontierSnapshot, defaultResilienceState, FATAL_DISCOVERY_CODES, generateBatchId, TIER0_RETRYABLE_CLASSIFICATIONS, TIER0_RETRY_BUDGETS, tier0ScopeKey, tier0WaveScopeKey } from "./types.ts";
+import { buildBatchProgressSnapshot, buildEngineEventBase, buildSegmentId, buildSupervisorTaskFailureAlert, defaultResilienceState, FATAL_DISCOVERY_CODES, generateBatchId, TIER0_RETRYABLE_CLASSIFICATIONS, TIER0_RETRY_BUDGETS, tier0ScopeKey, tier0WaveScopeKey } from "./types.ts";
 import type { AllocatedLane, AllocatedTask, BatchHistorySummary, BatchTaskSummary, BatchWaveSummary, DiscoveryResult, EngineEventCallback, EscalationContext, LaneExecutionResult, LaneTaskOutcome, MergeWaveResult, OrchBatchPhase, OrchBatchRuntimeState, OrchestratorConfig, ParsedTask, PersistedSegmentRecord, SegmentExpansionRequest, SupervisorAlert, SupervisorAlertCallback, TaskRunnerConfig, TaskSegmentPlan, TaskSegmentPlanMap, TaskSegmentNode, Tier0EscalationPattern, Tier0RecoveryPattern, TokenCounts, WaveExecutionResult, WorkspaceConfig } from "./types.ts";
 import { buildDependencyGraph, computeWaveAssignments, resolveBaseBranch, resolveRepoRoot, validateGraph } from "./waves.ts";
 import { deleteBranchBestEffort, forceCleanupWorktree, formatPreflightResults, listWorktrees, preserveFailedLaneProgress, preserveSkippedLaneProgress, removeAllWorktrees, removeWorktree, runPreflight, safeResetWorktree, sleepSync } from "./worktree.ts";
@@ -1172,6 +1172,7 @@ export function buildSegmentFrontierWaves(
 		const dependsOnBySegmentId = buildSegmentDependencyMap(plan);
 		task.segmentIds = orderedSegments.map((segment) => segment.segmentId);
 		task.participatingRepoIds = collectOrderedSegmentRepoIds(orderedSegments);
+		task.resolvedRepoIds = [...task.participatingRepoIds];
 		task.activeSegmentId = null;
 		if (packetRepoId) {
 			task.packetRepoId = packetRepoId;
@@ -2224,11 +2225,11 @@ export async function executeOrchBatch(
 		batchState.errors.push("Discovery had fatal errors — cannot proceed");
 		onNotify("❌ Cannot execute due to discovery errors above.", "error");
 		const hasRoutingErrors = fatalErrors.some(
-			(e) => e.code === "TASK_REPO_UNRESOLVED" || e.code === "TASK_REPO_UNKNOWN",
+			(e) => e.code === "TASK_REPO_UNRESOLVED" || e.code === "TASK_REPO_UNKNOWN" || e.code === "TASK_REPO_SCOPE_MISMATCH",
 		);
 		if (hasRoutingErrors) {
 			onNotify(
-				"💡 Check PROMPT Repo: fields, area repo_id config, and routing.default_repo in workspace config.",
+				"💡 Check PROMPT Repo:/Repos: fields, repo-prefixed file scope entries, area repo_id config, and routing.default_repo in workspace config.",
 				"info",
 			);
 		}
@@ -2436,6 +2437,7 @@ export async function executeOrchBatch(
 
 			task.segmentIds = segmentState.orderedSegments.map((segment) => segment.segmentId);
 			task.participatingRepoIds = collectOrderedSegmentRepoIds(segmentState.orderedSegments);
+			task.resolvedRepoIds = [...task.participatingRepoIds];
 			const activeSegment = segmentState.orderedSegments[segmentState.nextSegmentIndex] ?? null;
 			if (!activeSegment) {
 				segmentState.terminalStatus = "succeeded";
@@ -2831,6 +2833,7 @@ export async function executeOrchBatch(
 							);
 							task.segmentIds = segmentState.orderedSegments.map((segment) => segment.segmentId);
 							task.participatingRepoIds = collectOrderedSegmentRepoIds(segmentState.orderedSegments);
+							task.resolvedRepoIds = [...task.participatingRepoIds];
 							const afterSegmentIds = [...task.segmentIds];
 							const persistedInsertedSegments = upsertPendingExpandedSegmentRecords(
 								batchState,
@@ -3070,54 +3073,23 @@ export async function executeOrchBatch(
 			const allocatedTask = laneForTask?.tasks.find(t => t.taskId === taskId)?.task;
 			const exitReason = outcome?.exitReason || "unknown";
 			const hasPartialProgress = (outcome?.partialProgressCommits ?? 0) > 0;
-			const segmentFrontier = buildSupervisorSegmentFrontierSnapshot(
+			emitAlert(buildSupervisorTaskFailureAlert({
 				taskId,
-				allocatedTask?.segmentIds,
-				allocatedTask?.activeSegmentId,
-				batchState.segments,
-				outcome?.segmentId,
-			);
-			const segmentId = outcome?.segmentId
-				?? allocatedTask?.activeSegmentId
-				?? segmentFrontier?.activeSegmentId
-				?? undefined;
-			const repoId = segmentId
-				? (segmentFrontier?.segments.find((segment) => segment.segmentId === segmentId)?.repoId ?? laneForTask?.repoId)
-				: laneForTask?.repoId;
-			const segmentSummary = segmentId
-				? `  Segment: ${segmentId}${repoId ? ` (repo: ${repoId})` : ""}\n`
-				: "";
-			const frontierSummary = segmentFrontier
-				? `  Segment frontier: ${segmentFrontier.terminalSegments}/${segmentFrontier.totalSegments} terminal\n`
-				: "";
-			emitAlert({
-				category: "task-failure",
-				summary:
-					`⚠️ Task failure: ${taskId}\n` +
-					`  Exit reason: ${exitReason}\n` +
-					segmentSummary +
-					frontierSummary +
-					`  Lane: ${laneForTask?.laneId ?? "unknown"} (lane ${laneForTask?.laneNumber ?? "?"})\n` +
-					`  Partial progress preserved: ${hasPartialProgress ? "yes" : "no"}\n` +
-					`  Batch: wave ${resolveDisplayWaveNumber(waveIdx, roundToTaskWave, taskLevelWaveCount).displayWave}/${taskLevelWaveCount}, ` +
-					`${batchState.succeededTasks} succeeded, ${batchState.failedTasks} failed\n\n` +
-					`Available actions:\n` +
-					`  - orch_status() to inspect current state\n` +
-					`  - orch_resume(force=true) to retry\n` +
-					`  - Read STATUS.md and lane logs for diagnosis`,
-				context: {
-					taskId,
-					segmentId,
-					repoId,
-					segmentFrontier,
-					laneId: laneForTask?.laneId,
-					laneNumber: laneForTask?.laneNumber,
-					waveIndex: waveIdx,
-					exitReason,
-					partialProgress: hasPartialProgress,
-					batchProgress: buildBatchProgressSnapshot(batchState),
-				},
-			});
+				failurePolicy: waveResult.policyApplied,
+				exitReason,
+				partialProgress: hasPartialProgress,
+				laneId: laneForTask?.laneId,
+				laneNumber: laneForTask?.laneNumber,
+				laneRepoId: laneForTask?.repoId,
+				taskSegmentIds: allocatedTask?.segmentIds,
+				taskActiveSegmentId: allocatedTask?.activeSegmentId,
+				persistedSegments: batchState.segments,
+				outcomeSegmentId: outcome?.segmentId,
+				blockedTaskIds: waveResult.policyApplied === "skip-dependents" ? [...waveResult.blockedTaskIds] : undefined,
+				batchProgress: buildBatchProgressSnapshot(batchState),
+				displayWave: resolveDisplayWaveNumber(waveIdx, roundToTaskWave, taskLevelWaveCount).displayWave,
+				totalDisplayWaves: taskLevelWaveCount,
+			}));
 		}
 
 		// ── TS-009: Persist state after wave execution ──
@@ -3429,7 +3401,7 @@ export async function executeOrchBatch(
 		// When a verification rollback failed, force paused regardless of
 		// on_merge_failure policy. The merge worktree and temp branch are
 		// preserved for manual recovery using commands in the transaction record.
-		if (mergeResult?.rollbackFailed) {
+		if (mergeResult?.rollbackFailed || (mergeResult && mergeRequiresRollbackSafeStop(mergeResult))) {
 			// TP-033 R004-2: Include persistence error warning when transaction
 			// record files may be missing, so operator knows to inspect manually
 			const hasPersistErrors = mergeResult.persistenceErrors && mergeResult.persistenceErrors.length > 0;

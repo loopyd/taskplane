@@ -319,6 +319,9 @@ export function persistRuntimeState(
 					if (taskRecord.resolvedRepoId === undefined && parsedTask.resolvedRepoId !== undefined) {
 						taskRecord.resolvedRepoId = parsedTask.resolvedRepoId;
 					}
+					if ((taskRecord as any).resolvedRepoIds === undefined && parsedTask.resolvedRepoIds !== undefined) {
+						(taskRecord as any).resolvedRepoIds = parsedTask.resolvedRepoIds;
+					}
 					if ((taskRecord as any).participatingRepoIds === undefined && parsedTask.participatingRepoIds !== undefined) {
 						(taskRecord as any).participatingRepoIds = parsedTask.participatingRepoIds;
 					}
@@ -664,6 +667,22 @@ export function validatePersistedState(data: unknown): PersistedBatchState {
 				`tasks[${i}].resolvedRepoId is not a string (got ${typeof t.resolvedRepoId})`,
 			);
 		}
+		if ((t as any).resolvedRepoIds !== undefined) {
+			if (!Array.isArray((t as any).resolvedRepoIds)) {
+				throw new StateFileError(
+					"STATE_SCHEMA_INVALID",
+					`tasks[${i}].resolvedRepoIds is not an array (got ${typeof (t as any).resolvedRepoIds})`,
+				);
+			}
+			for (let j = 0; j < ((t as any).resolvedRepoIds as unknown[]).length; j++) {
+				if (typeof ((t as any).resolvedRepoIds as unknown[])[j] !== "string") {
+					throw new StateFileError(
+						"STATE_SCHEMA_INVALID",
+						`tasks[${i}].resolvedRepoIds[${j}] is not a string`,
+					);
+				}
+			}
+		}
 		// TP-028 optional fields: partialProgressCommits (number | undefined), partialProgressBranch (string | undefined)
 		if (t.partialProgressCommits !== undefined && typeof t.partialProgressCommits !== "number") {
 			throw new StateFileError(
@@ -748,6 +767,43 @@ export function validatePersistedState(data: unknown): PersistedBatchState {
 				`lanes[${i}].laneNumber is missing or not a number`,
 			);
 		}
+		if (l.repoWorktrees !== undefined) {
+			if (!l.repoWorktrees || typeof l.repoWorktrees !== "object" || Array.isArray(l.repoWorktrees)) {
+				throw new StateFileError(
+					"STATE_SCHEMA_INVALID",
+					`lanes[${i}].repoWorktrees is not an object`,
+				);
+			}
+			for (const [repoId, worktree] of Object.entries(l.repoWorktrees as Record<string, unknown>)) {
+				if (!worktree || typeof worktree !== "object" || Array.isArray(worktree)) {
+					throw new StateFileError(
+						"STATE_SCHEMA_INVALID",
+						`lanes[${i}].repoWorktrees[${repoId}] is not an object`,
+					);
+				}
+				const wt = worktree as Record<string, unknown>;
+				for (const field of ["path", "branch"] as const) {
+					if (typeof wt[field] !== "string") {
+						throw new StateFileError(
+							"STATE_SCHEMA_INVALID",
+							`lanes[${i}].repoWorktrees[${repoId}].${field} is missing or not a string`,
+						);
+					}
+				}
+				if (typeof wt.laneNumber !== "number") {
+					throw new StateFileError(
+						"STATE_SCHEMA_INVALID",
+						`lanes[${i}].repoWorktrees[${repoId}].laneNumber is missing or not a number`,
+					);
+				}
+				if (wt.repoId !== undefined && typeof wt.repoId !== "string") {
+					throw new StateFileError(
+						"STATE_SCHEMA_INVALID",
+						`lanes[${i}].repoWorktrees[${repoId}].repoId is not a string`,
+					);
+				}
+			}
+		}
 		if (!Array.isArray(l.taskIds)) {
 			throw new StateFileError(
 				"STATE_SCHEMA_INVALID",
@@ -784,6 +840,12 @@ export function validatePersistedState(data: unknown): PersistedBatchState {
 			throw new StateFileError(
 				"STATE_SCHEMA_INVALID",
 				`mergeResults[${i}].waveIndex is missing or not a number`,
+			);
+		}
+		if (m.waveTransactionId !== undefined && typeof m.waveTransactionId !== "string") {
+			throw new StateFileError(
+				"STATE_SCHEMA_INVALID",
+				`mergeResults[${i}].waveTransactionId is not a string (got ${typeof m.waveTransactionId})`,
 			);
 		}
 		if (typeof m.status !== "string" || !VALID_PERSISTED_MERGE_STATUSES.has(m.status)) {
@@ -1316,6 +1378,9 @@ export function serializeBatchState(
 			if (allocated?.allocatedTask.task?.resolvedRepoId !== undefined) {
 				record.resolvedRepoId = allocated.allocatedTask.task.resolvedRepoId;
 			}
+			if ((allocated?.allocatedTask.task as any)?.resolvedRepoIds !== undefined) {
+				(record as any).resolvedRepoIds = (allocated!.allocatedTask.task as any).resolvedRepoIds;
+			}
 			if (allocated?.allocatedTask.task?.participatingRepoIds !== undefined) {
 				(record as any).participatingRepoIds = allocated.allocatedTask.task.participatingRepoIds;
 			}
@@ -1360,6 +1425,9 @@ export function serializeBatchState(
 			branch: lane.branch,
 			taskIds: lane.tasks.map((t) => t.taskId),
 		};
+		if (lane.repoWorktrees !== undefined) {
+			record.repoWorktrees = lane.repoWorktrees;
+		}
 		if (lane.repoId !== undefined) {
 			record.repoId = lane.repoId;
 		}
@@ -1379,6 +1447,9 @@ export function serializeBatchState(
 				failedLane: mr.failedLane,
 				failureReason: mr.failureReason,
 			};
+			if (typeof mr.waveTransactionId === "string" && mr.waveTransactionId.length > 0) {
+				record.waveTransactionId = mr.waveTransactionId;
+			}
 			if (mr.rollbackFailed) {
 				record.rollbackFailed = true;
 			}

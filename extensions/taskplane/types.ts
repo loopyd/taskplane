@@ -110,6 +110,13 @@ export interface ParsedTask {
 	promptRepoIds?: string[];
 	/** Ordered repo IDs participating in the current segment frontier for this task. */
 	participatingRepoIds?: string[];
+	/**
+	 * Ordered repo IDs after applying routing precedence in workspace mode.
+	 *
+	 * Preserves plural execution-target intent while `resolvedRepoId` remains
+	 * the primary repo for existing single-repo consumers.
+	 */
+	resolvedRepoIds?: string[];
 	/** Resolved repo ID after routing precedence (workspace mode only). Undefined in repo mode. */
 	resolvedRepoId?: string;
 	/** Optional explicit segment DAG metadata from `## Segment DAG`. */
@@ -443,6 +450,8 @@ export interface WorktreeInfo {
 	branch: string;
 	/** Lane number (1-indexed) this worktree is assigned to */
 	laneNumber: number;
+	/** Repo ID this worktree targets in workspace mode. Undefined in repo mode. */
+	repoId?: string;
 }
 
 /** Options for createWorktree() */
@@ -457,6 +466,8 @@ export interface CreateWorktreeOptions {
 	prefix: string;
 	/** Operator identifier (sanitized, e.g., "henrylach") */
 	opId: string;
+	/** Repo ID for repo-scoped batch container naming in workspace mode. */
+	repoId?: string;
 	/** Full orchestrator config (optional; used for worktree_location) */
 	config?: OrchestratorConfig;
 }
@@ -603,6 +614,7 @@ export interface DiscoveryError {
 		| "DEP_SOURCE_FALLBACK"
 		| "TASK_REPO_UNRESOLVED"
 		| "TASK_REPO_UNKNOWN"
+		| "TASK_REPO_SCOPE_MISMATCH"
 		| "TASK_ROUTING_STRICT"
 		| "SEGMENT_DAG_INVALID"
 		| "SEGMENT_REPO_UNKNOWN"
@@ -629,6 +641,7 @@ export const FATAL_DISCOVERY_CODES: ReadonlyArray<DiscoveryError["code"]> = [
 	"PARSE_MISSING_ID",
 	"TASK_REPO_UNRESOLVED",
 	"TASK_REPO_UNKNOWN",
+	"TASK_REPO_SCOPE_MISMATCH",
 	"TASK_ROUTING_STRICT",
 	"SEGMENT_DAG_INVALID",
 	"SEGMENT_REPO_UNKNOWN",
@@ -730,10 +743,12 @@ export interface AllocatedLane {
 	laneId: string;
 	/** Lane session identifier (e.g., "orch-lane-1") — used by Step 2 */
 	laneSessionId: string;
-	/** Absolute path to the lane's worktree directory */
+	/** Absolute path to the lane's primary worktree directory */
 	worktreePath: string;
 	/** Git branch name checked out in the worktree */
 	branch: string;
+	/** Additional repo-scoped worktree metadata for multi-repo lanes. */
+	repoWorktrees?: Record<string, WorktreeInfo>;
 	/** Tasks assigned to this lane, ordered for sequential execution */
 	tasks: AllocatedTask[];
 	/** Assignment strategy that was used (for diagnostics) */
@@ -1387,6 +1402,8 @@ export interface MergeLaneResult {
 /** Overall wave merge outcome. */
 export interface MergeWaveResult {
 	waveIndex: number;
+	/** Stable wave-level merge transaction identifier shared across repo groups. */
+	waveTransactionId?: string;
 	status: "succeeded" | "failed" | "partial";
 	laneResults: MergeLaneResult[];
 	failedLane: number | null;
@@ -1458,8 +1475,12 @@ export interface TransactionRecord {
 	opId: string;
 	/** Batch identifier */
 	batchId: string;
+	/** Stable wave-level merge transaction identifier */
+	waveTransactionId: string;
 	/** Wave index (0-based) */
 	waveIndex: number;
+	/** Repo-group attempt order within the wave merge */
+	repoAttemptSequence: number;
 	/** Lane number within the wave */
 	laneNumber: number;
 	/** Repo ID (undefined/null in repo mode, string in workspace mode) */
@@ -2131,6 +2152,8 @@ export interface SupervisorSegmentFrontierSnapshot {
 export interface SupervisorAlertContext {
 	/** Task ID (for task-failure alerts) */
 	taskId?: string;
+	/** Failure policy active when the alert was emitted */
+	failurePolicy?: "skip-dependents" | "stop-wave" | "stop-all";
 	/** Segment ID (for segment-aware task-failure alerts) */
 	segmentId?: string;
 	/** Repo ID associated with the failure (task segment or merge target) */
@@ -2153,6 +2176,10 @@ export interface SupervisorAlertContext {
 	expansionRequestId?: string;
 	/** Whether partial progress was preserved (for task-failure alerts) */
 	partialProgress?: boolean;
+	/** Task IDs newly blocked by skip-dependents continuation policy */
+	blockedTaskIds?: string[];
+	/** Whether unrelated ready tasks continue after this failure */
+	continueUnaffected?: boolean;
 	/** Batch progress summary */
 	batchProgress?: {
 		succeededTasks: number;
@@ -2283,6 +2310,90 @@ export function buildSupervisorSegmentFrontierSnapshot(
 		terminalSegments,
 		activeSegmentId: resolvedActiveSegmentId,
 		segments,
+	};
+}
+
+export interface BuildSupervisorTaskFailureAlertInput {
+	taskId: string;
+	failurePolicy: "skip-dependents" | "stop-wave" | "stop-all";
+	exitReason: string;
+	partialProgress: boolean;
+	laneId?: string;
+	laneNumber?: number;
+	laneRepoId?: string;
+	taskSegmentIds?: string[];
+	taskActiveSegmentId?: string | null;
+	persistedSegments?: PersistedSegmentRecord[];
+	outcomeSegmentId?: string | null;
+	blockedTaskIds?: string[];
+	batchProgress: NonNullable<SupervisorAlertContext["batchProgress"]>;
+	displayWave: number;
+	totalDisplayWaves: number;
+}
+
+export function buildSupervisorTaskFailureAlert(
+	input: BuildSupervisorTaskFailureAlertInput,
+): SupervisorAlert {
+	const segmentFrontier = buildSupervisorSegmentFrontierSnapshot(
+		input.taskId,
+		input.taskSegmentIds,
+		input.taskActiveSegmentId,
+		input.persistedSegments,
+		input.outcomeSegmentId,
+	);
+	const segmentId = input.outcomeSegmentId
+		?? input.taskActiveSegmentId
+		?? segmentFrontier?.activeSegmentId
+		?? undefined;
+	const repoId = segmentId
+		? (segmentFrontier?.segments.find((segment) => segment.segmentId === segmentId)?.repoId ?? input.laneRepoId)
+		: input.laneRepoId;
+	const blockedTaskIds = input.failurePolicy === "skip-dependents"
+		? [...(input.blockedTaskIds ?? [])]
+		: [];
+	const segmentSummary = segmentId
+		? `  Segment: ${segmentId}${repoId ? ` (repo: ${repoId})` : ""}\n`
+		: "";
+	const frontierSummary = segmentFrontier
+		? `  Segment frontier: ${segmentFrontier.terminalSegments}/${segmentFrontier.totalSegments} terminal\n`
+		: "";
+	const policySummary = input.failurePolicy === "skip-dependents"
+		? `  Failure policy: skip-dependents\n`
+			+ `  Newly blocked dependents: ${blockedTaskIds.length > 0 ? blockedTaskIds.join(", ") : "none"}\n`
+			+ `  Unrelated ready tasks continue under skip-dependents.\n`
+		: "";
+
+	return {
+		category: "task-failure",
+		summary:
+			`⚠️ Task failure: ${input.taskId}\n`
+			+ `  Exit reason: ${input.exitReason}\n`
+			+ segmentSummary
+			+ frontierSummary
+			+ `  Lane: ${input.laneId ?? "unknown"} (lane ${input.laneNumber ?? "?"})\n`
+			+ `  Partial progress preserved: ${input.partialProgress ? "yes" : "no"}\n`
+			+ policySummary
+			+ `  Batch: wave ${input.displayWave}/${input.totalDisplayWaves}, `
+			+ `${input.batchProgress.succeededTasks} succeeded, ${input.batchProgress.failedTasks} failed\n\n`
+			+ `Available actions:\n`
+			+ `  - orch_status() to inspect current state\n`
+			+ `  - orch_resume(force=true) to retry\n`
+			+ `  - Read STATUS.md and lane logs for diagnosis`,
+		context: {
+			taskId: input.taskId,
+			failurePolicy: input.failurePolicy,
+			segmentId,
+			repoId,
+			segmentFrontier,
+			laneId: input.laneId,
+			laneNumber: input.laneNumber,
+			waveIndex: input.displayWave - 1,
+			exitReason: input.exitReason,
+			partialProgress: input.partialProgress,
+			...(blockedTaskIds.length > 0 ? { blockedTaskIds } : {}),
+			continueUnaffected: input.failurePolicy === "skip-dependents",
+			batchProgress: input.batchProgress,
+		},
 	};
 }
 
@@ -2728,6 +2839,13 @@ export interface PersistedTaskRecord {
 	 */
 	resolvedRepoId?: string;
 	/**
+	 * Ordered resolved repo IDs after applying routing precedence.
+	 *
+	 * Preserves plural execution-target intent for resume flows before
+	 * dynamic segment expansion has materialized `participatingRepoIds`.
+	 */
+	resolvedRepoIds?: string[];
+	/**
 	 * Ordered repo IDs participating in this task's current segment frontier.
 	 *
 	 * Used to restore cross-repo worker context on resume, including
@@ -2887,6 +3005,8 @@ export interface PersistedLaneRecord {
 	laneSessionId: string;
 	/** Absolute path to the lane's worktree directory */
 	worktreePath: string;
+	/** Repo-scoped worktree map for multi-repo lanes. */
+	repoWorktrees?: Record<string, WorktreeInfo>;
 	/** Git branch name checked out in the worktree */
 	branch: string;
 	/** Task IDs assigned to this lane in execution order */
@@ -2906,6 +3026,8 @@ export interface PersistedLaneRecord {
 export interface PersistedMergeResult {
 	/** Wave index (0-based) */
 	waveIndex: number;
+	/** Stable wave-level merge transaction identifier when available. */
+	waveTransactionId?: string;
 	/** Merge status */
 	status: "succeeded" | "failed" | "partial";
 	/** Which lane failed (null if all succeeded) */
