@@ -504,6 +504,12 @@ export function detectUnreachableGitlinks(cwd: string): UnreachableGitlinkState[
 		if (!gitlinkCommit) continue;
 		ensureSubmoduleCheckout(cwd, submodulePath);
 		const absolutePath = join(cwd, submodulePath);
+
+		// Ensure remotes are fresh before reachability checks. In merge worktrees,
+		// submodules may have stale local refs from the branch's original checkout.
+		// A quick fetch ensures ls-remote and merge-base queries see current state.
+		runGit(["fetch", "--all", "--quiet"], absolutePath);
+
 		const remoteName = existsSync(absolutePath) ? resolvePreferredRemote(absolutePath) : null;
 		const submoduleGitDir = resolveSubmoduleGitDir(cwd, submodulePath);
 		const gitDirRemoteName = submoduleGitDir ? resolvePreferredRemoteFromGitDir(submoduleGitDir) : null;
