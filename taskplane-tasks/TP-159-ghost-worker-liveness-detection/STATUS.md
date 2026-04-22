@@ -1,67 +1,67 @@
 # TP-159: Detect and recover ghost workers after silent subprocess death (#461) — Status
 
-**Current Step:** Step 5: Documentation & Delivery
-**Status:** ✅ Complete
+**Current Step:** None
+**Status:** Pending
 **Last Updated:** 2026-04-11
 **Review Level:** 2
-**Review Counter:** 6
+**Review Counter:** 0
 **Iteration:** 1
 **Size:** M
 
 ---
 
 ### Step 0: Preflight
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Read `monitorLanes()` in `execution.ts`
-- [x] Read `resolveTaskMonitorState()` — understand grace periods
-- [x] Read `detectOrphans()` and `markOrphansCrashed()` in `process-registry.ts`
-- [x] Verify test baseline
+- [ ] Read `monitorLanes()` in `execution.ts`
+- [ ] Read `resolveTaskMonitorState()` — understand grace periods
+- [ ] Read `detectOrphans()` and `markOrphansCrashed()` in `process-registry.ts`
+- [ ] Verify test baseline
 
 ---
 
 ### Step 1: Wire orphan detection into the monitor poll loop
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Add orphan detection block after liveness registry refresh
-- [x] Wrap in try/catch — monitor loop must never throw
-- [x] Refresh cache after marking orphans
+- [ ] Add orphan detection block after liveness registry refresh
+- [ ] Wrap in try/catch — monitor loop must never throw
+- [ ] Refresh cache after marking orphans
 
 ---
 
 ### Step 2: Fast-fail on dead PID + stale snapshot
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Read existing grace period logic carefully
-- [x] **AMENDED (R003)**: Target is `else` branch (`snap.taskId === taskId`), NOT null/mismatch branch. That branch does `sessionAlive = snap.status === "running"` unconditionally — the bug — because if the worker died silently the snapshot still says "running" and Priority 3 never fires.
-- [x] Implement fast-fail in the `else` branch: when `snap.updatedAt` stale > stallTimeoutMs/2 AND trackerAgeMs >= 60s AND isV2AgentAlive returns false, set sessionAlive = false
-- [x] Only applies after startup grace (trackerAgeMs >= 60s)
-- [x] Null-guard snap.updatedAt to avoid false positives from old schema
+- [ ] Read existing grace period logic carefully
+- [ ] **AMENDED (R003)**: Target is `else` branch (`snap.taskId === taskId`), NOT null/mismatch branch. That branch does `sessionAlive = snap.status === "running"` unconditionally — the bug — because if the worker died silently the snapshot still says "running" and Priority 3 never fires.
+- [ ] Implement fast-fail in the `else` branch: when `snap.updatedAt` stale > stallTimeoutMs/2 AND trackerAgeMs >= 60s AND isV2AgentAlive returns false, set sessionAlive = false
+- [ ] Only applies after startup grace (trackerAgeMs >= 60s)
+- [ ] Null-guard snap.updatedAt to avoid false positives from old schema
 
 ---
 
 ### Step 3: Verify supervisor/operator visibility
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Confirm read_agent_status / list_active_agents reflect crashed status
-- [x] Trace failed task path through monitor loop to engine failure handling
+- [ ] Confirm read_agent_status / list_active_agents reflect crashed status
+- [ ] Trace failed task path through monitor loop to engine failure handling
 
 ---
 
 ### Step 4: Testing & Verification
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Full test suite passing (3253/3255 pass; 2 pre-existing failures unrelated to TP-159)
-- [x] CLI smoke passing
-- [x] Fix all failures (14.5 window fixed; pre-existing failures verified pre-existing)
+- [ ] Full test suite passing (3253/3255 pass; 2 pre-existing failures unrelated to TP-159)
+- [ ] CLI smoke passing
+- [ ] Fix all failures (14.5 window fixed; pre-existing failures verified pre-existing)
 
 ---
 
 ### Step 5: Documentation & Delivery
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Inline comments for new logic
-- [x] Discoveries logged
+- [ ] Inline comments for new logic
+- [ ] Discoveries logged
 
 ---
 

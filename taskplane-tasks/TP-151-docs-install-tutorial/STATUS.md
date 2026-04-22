@@ -1,7 +1,7 @@
 # TP-151: Update install tutorial for current architecture — Status
 
-**Current Step:** Step 2: Documentation & Delivery
-**Status:** ✅ Complete
+**Current Step:** None
+**Status:** Pending
 **Last Updated:** 2026-04-07
 **Review Level:** 0
 **Review Counter:** 0
@@ -11,33 +11,33 @@
 ---
 
 ### Step 0: Preflight
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Read `docs/tutorials/install.md` fully and catalog all stale references
-- [x] Read root `README.md` for current prerequisites and install flow
+- [ ] Read `docs/tutorials/install.md` fully and catalog all stale references
+- [ ] Read root `README.md` for current prerequisites and install flow
 
 ---
 
 ### Step 1: Update docs/tutorials/install.md
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Remove tmux from prerequisites and delete "Installing tmux" subsection
-- [x] Remove all `/task` references
-- [x] Update config references to `taskplane-config.json` as primary
-- [x] Remove tmux detection subsection
-- [x] Update "Verify Commands" section
-- [x] Update "Quick Smoke Test" section
-- [x] Update troubleshooting section
-- [x] Fix YAML vs JSON tip
-- [x] Update "Next Step" link if needed
+- [ ] Remove tmux from prerequisites and delete "Installing tmux" subsection
+- [ ] Remove all `/task` references
+- [ ] Update config references to `taskplane-config.json` as primary
+- [ ] Remove tmux detection subsection
+- [ ] Update "Verify Commands" section
+- [ ] Update "Quick Smoke Test" section
+- [ ] Update troubleshooting section
+- [ ] Fix YAML vs JSON tip
+- [ ] Update "Next Step" link if needed
 
 ---
 
 ### Step 2: Documentation & Delivery
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Verify all internal doc links resolve correctly
-- [x] Discoveries logged
+- [ ] Verify all internal doc links resolve correctly
+- [ ] Discoveries logged
 
 ---
 

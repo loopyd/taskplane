@@ -1,58 +1,58 @@
 # TP-097: Stable Sidecar Identity and TMUX Lifecycle — Status
 
-**Current Step:** Complete
-**Status:** ✅ Complete
+**Current Step:** None
+**Status:** Pending
 **Last Updated:** 2026-03-29
 **Review Level:** 2
-**Review Counter:** 2
+**Review Counter:** 0
 **Iteration:** 4
 **Size:** L
 
 ---
 
 ### Step 0: Preflight
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Read spawnAgentTmux and iteration loop
-- [x] Read GitHub issues #354, #242, #335
+- [ ] Read spawnAgentTmux and iteration loop
+- [ ] Read GitHub issues #354, #242, #335
 
 ---
 
 ### Step 1: Stable sidecar identity (#354)
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Move sidecar path generation to caller
-- [x] Preserve tailState across iterations
+- [ ] Move sidecar path generation to caller
+- [ ] Preserve tailState across iterations
 
 ---
 
 ### Step 2: Orphan process cleanup (#242)
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] PID file write in rpc-wrapper
-- [x] Orphan detection and cleanup on task end
+- [ ] PID file write in rpc-wrapper
+- [ ] Orphan detection and cleanup on task end
 
 ---
 
 ### Step 3: Spawn retry improvements (#335)
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Increase retry budget and delays
+- [ ] Increase retry budget and delays
 
 ---
 
 ### Step 4: Testing & Verification
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Behavioral tests for all fixes
-- [x] Full test suite passing
+- [ ] Behavioral tests for all fixes
+- [ ] Full test suite passing
 
 ---
 
 ### Step 5: Documentation & Delivery
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Log discoveries
+- [ ] Log discoveries
 
 ---
 

@@ -1,88 +1,88 @@
 # TP-180: Forward Project and Global Extensions to Spawned Agents — Status
 
-**Current Step:** Step 6: Documentation & Delivery
-**Status:** ✅ Complete
+**Current Step:** None
+**Status:** Pending
 **Last Updated:** 2026-04-20
 **Review Level:** 2
-**Review Counter:** 11
+**Review Counter:** 0
 **Iteration:** 1
 **Size:** L
 
 ---
 
 ### Step 0: Preflight
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Required files and paths exist
-- [x] Dependencies satisfied
-- [x] Read `agent-host.ts` to confirm `--no-extensions` + `-e` pattern
-- [x] Read all three spawn points to understand current extension wiring
+- [ ] Required files and paths exist
+- [ ] Dependencies satisfied
+- [ ] Read `agent-host.ts` to confirm `--no-extensions` + `-e` pattern
+- [ ] Read all three spawn points to understand current extension wiring
 
 ---
 
 ### Step 1: Create settings-loader utility
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Implement `loadPiSettingsPackages(stateRoot)` — project `.pi/settings.json`
-- [x] Implement global packages loading from `~/.pi/agent/settings.json`
-- [x] Merge: union, deduplicated, project first
-- [x] Filter out taskplane packages
-- [x] Return `string[]` specifiers or empty array
-- [x] Handle missing/malformed files gracefully
+- [ ] Implement `loadPiSettingsPackages(stateRoot)` — project `.pi/settings.json`
+- [ ] Implement global packages loading from `~/.pi/agent/settings.json`
+- [ ] Merge: union, deduplicated, project first
+- [ ] Filter out taskplane packages
+- [ ] Return `string[]` specifiers or empty array
+- [ ] Handle missing/malformed files gracefully
 
 ---
 
 ### Step 2: Add per-agent-type exclusion config
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Add `excludeExtensions?: string[]` to worker config in schema + types
-- [x] Add `excludeExtensions?: string[]` to reviewer config in schema + types
-- [x] Add `excludeExtensions?: string[]` to merge config in schema + types
-- [x] Update config-loader to load and default `excludeExtensions`
-- [x] Implement `filterExcludedExtensions()` in settings-loader
+- [ ] Add `excludeExtensions?: string[]` to worker config in schema + types
+- [ ] Add `excludeExtensions?: string[]` to reviewer config in schema + types
+- [ ] Add `excludeExtensions?: string[]` to merge config in schema + types
+- [ ] Update config-loader to load and default `excludeExtensions`
+- [ ] Implement `filterExcludedExtensions()` in settings-loader
 
 ---
 
 ### Step 3: Wire extensions into all three spawn points
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Worker: inject packages into `extensions` array in lane-runner.ts
-- [x] Reviewer: thread state root via env for settings resolution, add `-e` flags in agent-bridge-extension.ts
-- [x] Merge agent: add `extensions` field to opts in merge.ts
-- [x] Thread exclusion config to each spawn point
+- [ ] Worker: inject packages into `extensions` array in lane-runner.ts
+- [ ] Reviewer: thread state root via env for settings resolution, add `-e` flags in agent-bridge-extension.ts
+- [ ] Merge agent: add `extensions` field to opts in merge.ts
+- [ ] Thread exclusion config to each spawn point
 
 ---
 
 ### Step 4: Add Settings TUI submenu
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Discover installed packages via `loadPiSettingsPackages()`
-- [x] Display toggle list per agent type (Worker, Reviewer, Merger)
-- [x] Toggle off → add to `excludeExtensions`; toggle on → remove
-- [x] Save to `taskplane-config.json`
-- [x] Follow existing settings-tui save/reload patterns
-- [x] R010: Fix discovery root to use configRoot for runtime alignment
-- [x] R010: Fix toggle mutations to use merged effective config base
-- [x] R010: Update settings-tui tests for 14 sections
+- [ ] Discover installed packages via `loadPiSettingsPackages()`
+- [ ] Display toggle list per agent type (Worker, Reviewer, Merger)
+- [ ] Toggle off → add to `excludeExtensions`; toggle on → remove
+- [ ] Save to `taskplane-config.json`
+- [ ] Follow existing settings-tui save/reload patterns
+- [ ] R010: Fix discovery root to use configRoot for runtime alignment
+- [ ] R010: Fix toggle mutations to use merged effective config base
+- [ ] R010: Update settings-tui tests for 14 sections
 
 ---
 
 ### Step 5: Testing & Verification
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Create `settings-loader.test.ts` with project, global, merge, filter tests
-- [x] Create `extension-forwarding.test.ts` with spawn arg validation tests
-- [x] Run FULL test suite
-- [x] Fix all failures (no failures — 3410 tests pass)
+- [ ] Create `settings-loader.test.ts` with project, global, merge, filter tests
+- [ ] Create `extension-forwarding.test.ts` with spawn arg validation tests
+- [ ] Run FULL test suite
+- [ ] Fix all failures (no failures — 3410 tests pass)
 
 ---
 
 ### Step 6: Documentation & Delivery
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Update `docs/how-to/configure-task-runner.md`
-- [x] Check `docs/reference/commands.md` for settings section
-- [x] Discoveries logged in STATUS.md
+- [ ] Update `docs/how-to/configure-task-runner.md`
+- [ ] Check `docs/reference/commands.md` for settings section
+- [ ] Discoveries logged in STATUS.md
 
 ---
 

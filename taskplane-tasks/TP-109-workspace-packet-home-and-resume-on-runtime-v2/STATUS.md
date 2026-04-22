@@ -1,6 +1,6 @@
 # TP-109: Workspace Packet-Home and Resume on Runtime V2 — Status
 
-**Current Step:** Not Started
+**Current Step:** None
 **Status:** 🔵 Ready for Execution
 **Last Updated:** 2026-03-30
 **Review Level:** 3

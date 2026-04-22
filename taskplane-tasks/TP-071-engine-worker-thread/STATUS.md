@@ -1,6 +1,6 @@
 # TP-071: Engine Worker Thread — Status
 
-**Current Step:** Not Started
+**Current Step:** None
 **Status:** 🔵 Ready for Execution
 **Last Updated:** 2026-03-25
 **Review Level:** 2

@@ -1,53 +1,53 @@
 # TP-163: Fix ENOENT when task folders are uncommitted at batch start (#471) — Status
 
-**Current Step:** Step 3: Documentation & Delivery
-**Status:** ✅ Complete
+**Current Step:** None
+**Status:** Pending
 **Last Updated:** 2026-04-11
 **Review Level:** 2
-**Review Counter:** 3
+**Review Counter:** 0
 **Iteration:** 1
 **Size:** S
 
 ---
 
 ### Step 0: Preflight
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Read `ensureTaskFilesCommitted` — understand staging commit flow
-- [x] Read `executeWave` — confirm sequencing (staging before worktree creation)
-- [x] Read orch branch creation in `engine.ts` — confirm it runs before `executeWave`
-- [x] Confirm `baseBranch` param in `executeWave` is the orch branch name
-- [x] Verify test baseline
+- [ ] Read `ensureTaskFilesCommitted` — understand staging commit flow
+- [ ] Read `executeWave` — confirm sequencing (staging before worktree creation)
+- [ ] Read orch branch creation in `engine.ts` — confirm it runs before `executeWave`
+- [ ] Confirm `baseBranch` param in `executeWave` is the orch branch name
+- [ ] Verify test baseline
 
 ---
 
 ### Step 1: Fast-forward orch branch after staging commit
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Add `orchBranch?: string` param to `ensureTaskFilesCommitted`
-- [x] After staging commit: get orchBranch tip SHA + HEAD SHA
-- [x] Check ancestry: if `merge-base --is-ancestor <orchTip> <newHead>` → FF case: `update-ref` with expected-old-sha
-- [x] Non-FF case (orchBranch advanced with wave merges): use `git merge-tree --write-tree <orchTip> <newHead>` to compute merged tree, then `commit-tree` to create merge commit, then `update-ref` with expected-old-sha
-- [x] Wrap entire ref-update in try/catch — non-fatal on failure (log warning)
-- [x] Pass `orchBranch` (= `baseBranch`) from `executeWave` to `ensureTaskFilesCommitted`
-- [x] Verify workspace mode correctness
+- [ ] Add `orchBranch?: string` param to `ensureTaskFilesCommitted`
+- [ ] After staging commit: get orchBranch tip SHA + HEAD SHA
+- [ ] Check ancestry: if `merge-base --is-ancestor <orchTip> <newHead>` → FF case: `update-ref` with expected-old-sha
+- [ ] Non-FF case (orchBranch advanced with wave merges): use `git merge-tree --write-tree <orchTip> <newHead>` to compute merged tree, then `commit-tree` to create merge commit, then `update-ref` with expected-old-sha
+- [ ] Wrap entire ref-update in try/catch — non-fatal on failure (log warning)
+- [ ] Pass `orchBranch` (= `baseBranch`) from `executeWave` to `ensureTaskFilesCommitted`
+- [ ] Verify workspace mode correctness
 
 ---
 
 ### Step 2: Testing & Verification
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Full test suite passing
-- [x] CLI smoke passing
-- [x] Fix all failures
+- [ ] Full test suite passing
+- [ ] CLI smoke passing
+- [ ] Fix all failures
 
 ---
 
 ### Step 3: Documentation & Delivery
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Inline comment explaining the fix
-- [x] Discoveries logged
+- [ ] Inline comment explaining the fix
+- [ ] Discoveries logged
 
 ---
 

@@ -1,65 +1,65 @@
 # TP-053: Expose Orchestrator Commands as Tools for Supervisor Agent — Status
 
-**Current Step:** Step 4: Documentation & Delivery
-**Status:** ✅ Complete
+**Current Step:** None
+**Status:** Pending
 **Last Updated:** 2026-03-24
 **Review Level:** 2
-**Review Counter:** 2
+**Review Counter:** 0
 **Iteration:** 2
 **Size:** M
 
 ---
 
 ### Step 0: Preflight
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Read each command handler (resume, integrate, pause, abort, status)
-- [x] Read review_step tool registration as pattern reference
-- [x] Understand pi registerTool() API
-- [x] Identify execCtx dependencies per command
+- [ ] Read each command handler (resume, integrate, pause, abort, status)
+- [ ] Read review_step tool registration as pattern reference
+- [ ] Understand pi registerTool() API
+- [ ] Identify execCtx dependencies per command
 
 ---
 
 ### Step 1: Register orchestrator tools
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Add `Type` import from `@mariozechner/pi-ai` to extension.ts
-- [x] Extract `doOrchStatus` helper (shared by command + tool)
-- [x] Extract `doOrchPause` helper (shared by command + tool)
-- [x] Extract `doOrchResume` helper (shared by command + tool) — returns status message, calls startBatchAsync internally
-- [x] Extract `doOrchAbort` helper (shared by command + tool) — works without execCtx
-- [x] Extract `doOrchIntegrate` helper (shared by command + tool) — wraps parseIntegrateArgs + resolveIntegrationContext + executeIntegration
-- [x] Refactor existing command handlers to call the extracted helpers
-- [x] Register all 5 tools with Type.Object parameters, description, promptSnippet, promptGuidelines
-- [x] Verify all tools return `{content: [{type: "text", text}], details: undefined}` and catch errors
+- [ ] Add `Type` import from `@mariozechner/pi-ai` to extension.ts
+- [ ] Extract `doOrchStatus` helper (shared by command + tool)
+- [ ] Extract `doOrchPause` helper (shared by command + tool)
+- [ ] Extract `doOrchResume` helper (shared by command + tool) — returns status message, calls startBatchAsync internally
+- [ ] Extract `doOrchAbort` helper (shared by command + tool) — works without execCtx
+- [ ] Extract `doOrchIntegrate` helper (shared by command + tool) — wraps parseIntegrateArgs + resolveIntegrationContext + executeIntegration
+- [ ] Refactor existing command handlers to call the extracted helpers
+- [ ] Register all 5 tools with Type.Object parameters, description, promptSnippet, promptGuidelines
+- [ ] Verify all tools return `{content: [{type: "text", text}], details: undefined}` and catch errors
 
 ---
 
 ### Step 2: Update supervisor prompt with tool awareness
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Add Available Orchestrator Tools section to supervisor monitoring prompt
-- [x] Include tool names, parameters, and usage guidance
-- [x] Add proactive usage examples
+- [ ] Add Available Orchestrator Tools section to supervisor monitoring prompt
+- [ ] Include tool names, parameters, and usage guidance
+- [ ] Add proactive usage examples
 
 ---
 
 ### Step 3: Testing & Verification
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] All existing tests pass
-- [x] Tests for each tool registration (5 tools)
-- [x] Tests for tool parameter schemas
-- [x] Tests for supervisor prompt mentions tools
+- [ ] All existing tests pass
+- [ ] Tests for each tool registration (5 tools)
+- [ ] Tests for tool parameter schemas
+- [ ] Tests for supervisor prompt mentions tools
 
 ---
 
 ### Step 4: Documentation & Delivery
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Check affected docs
-- [x] Discoveries logged
-- [x] `.DONE` created
+- [ ] Check affected docs
+- [ ] Discoveries logged
+- [ ] `.DONE` created
 
 ---
 

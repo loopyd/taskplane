@@ -1,47 +1,47 @@
 # TP-167: Init Windows Backslash Path Normalization — Status
 
-**Current Step:** Step 3: Documentation & Delivery
-**Status:** ✅ Complete
+**Current Step:** None
+**Status:** Pending
 **Last Updated:** 2026-04-12
 **Review Level:** 1
-**Review Counter:** 1
+**Review Counter:** 0
 **Iteration:** 1
 **Size:** S
 
 ---
 
 ### Step 0: Preflight
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Read bin/taskplane.mjs init path-writing code
-- [x] Identify all unguarded path writes
-- [x] Check for existing normalize utility
+- [ ] Read bin/taskplane.mjs init path-writing code
+- [ ] Identify all unguarded path writes
+- [ ] Check for existing normalize utility
 
 ---
 
 ### Step 1: Normalize Paths to Forward Slashes
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Normalize paths in workspace YAML writes
-- [x] Normalize paths in taskplane-config.json writes
-- [x] Cover all init presets and modes
-- [x] Run targeted tests
+- [ ] Normalize paths in workspace YAML writes
+- [ ] Normalize paths in taskplane-config.json writes
+- [ ] Cover all init presets and modes
+- [ ] Run targeted tests
 
 ---
 
 ### Step 2: Testing & Verification
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] FULL test suite passing (3196/3196 pass)
-- [x] Add regression test: backslash paths normalized
-- [x] All failures fixed (none found)
+- [ ] FULL test suite passing (3196/3196 pass)
+- [ ] Add regression test: backslash paths normalized
+- [ ] All failures fixed (none found)
 
 ---
 
 ### Step 3: Documentation & Delivery
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Discoveries logged
+- [ ] Discoveries logged
 
 ---
 

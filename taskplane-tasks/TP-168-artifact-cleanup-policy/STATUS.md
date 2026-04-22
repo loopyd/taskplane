@@ -1,22 +1,22 @@
 # TP-168: Artifact Cleanup Policy — Status
 
-**Current Step:** Step 4: Documentation & Delivery
-**Status:** ✅ Complete
+**Current Step:** None
+**Status:** Pending
 **Last Updated:** 2026-04-12
 **Review Level:** 2
-**Review Counter:** 6
+**Review Counter:** 0
 **Iteration:** 1
 **Size:** M
 
 ---
 
 ### Step 0: Preflight
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Read cleanup.ts — current cleanup functions and coverage
-- [x] Read extension.ts — where cleanup is called
-- [x] Identify all artifact types and gaps
-- [x] Document findings
+- [ ] Read cleanup.ts — current cleanup functions and coverage
+- [ ] Read extension.ts — where cleanup is called
+- [ ] Identify all artifact types and gaps
+- [ ] Document findings
 
 **Findings:**
 - cleanup.ts has 3 layers: (1) post-integrate batch-scoped, (2) age-based preflight sweep, (3) size-capped log rotation
@@ -35,44 +35,44 @@
 ---
 
 ### Step 1: Expand Age Sweep Scope
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Reduce telemetry age to 3 days
-- [x] Add verification/ to sweep
-- [x] Add worker-conversation-*.jsonl to sweep
-- [x] Add lane-state-*.json to sweep
-- [x] Run targeted tests
-- [x] R002: Fix verification cleanup to sweep per-op subdirectories (not top-level files)
+- [ ] Reduce telemetry age to 3 days
+- [ ] Add verification/ to sweep
+- [ ] Add worker-conversation-*.jsonl to sweep
+- [ ] Add lane-state-*.json to sweep
+- [ ] Run targeted tests
+- [ ] R002: Fix verification cleanup to sweep per-op subdirectories (not top-level files)
 
 ---
 
 ### Step 2: Add Size Cap and Batch-Start Cleanup
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Implement telemetry size cap (500MB, oldest-first eviction)
-- [x] Wire size cap into preflight cleanup (engine.ts batch-start path)
-- [x] Add batch-start cleanup for prior completed batch artifacts (never delete active batch)
-- [x] Make thresholds clearly documented as named exported constants
-- [x] Run targeted tests
+- [ ] Implement telemetry size cap (500MB, oldest-first eviction)
+- [ ] Wire size cap into preflight cleanup (engine.ts batch-start path)
+- [ ] Add batch-start cleanup for prior completed batch artifacts (never delete active batch)
+- [ ] Make thresholds clearly documented as named exported constants
+- [ ] Run targeted tests
 
 ---
 
 ### Step 3: Testing & Verification
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] FULL test suite passing
-- [x] Tests for expanded age sweep
-- [x] Tests for size cap eviction
-- [x] Tests for batch-start cleanup
-- [x] All failures fixed
+- [ ] FULL test suite passing
+- [ ] Tests for expanded age sweep
+- [ ] Tests for size cap eviction
+- [ ] Tests for batch-start cleanup
+- [ ] All failures fixed
 
 ---
 
 ### Step 4: Documentation & Delivery
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Docs reviewed — no doc changes needed (cleanup thresholds are internal constants, not user-configurable)
-- [x] Discoveries logged
+- [ ] Docs reviewed — no doc changes needed (cleanup thresholds are internal constants, not user-configurable)
+- [ ] Discoveries logged
 
 ---
 

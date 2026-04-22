@@ -1,56 +1,56 @@
 # TP-078: Force Merge and Supervisor Recovery Playbooks — Status
 
-**Current Step:** Complete
-**Status:** ✅ Done
+**Current Step:** None
+**Status:** Pending
 **Last Updated:** 2026-03-27
 **Review Level:** 2
-**Review Counter:** 1
+**Review Counter:** 0
 **Iteration:** 1
 **Size:** M
 
 ---
 
 ### Step 0: Preflight
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Read spec, merge.ts mixed-result rejection, current primer
+- [ ] Read spec, merge.ts mixed-result rejection, current primer
 
 ---
 
 ### Step 1: Implement orch_force_merge
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Register tool with waveIndex and skipFailed parameters
-- [x] Validate batch is paused due to merge failure
-- [x] Bypass mixed-result check, merge succeeded commits
-- [x] Persist result, return confirmation
+- [ ] Register tool with waveIndex and skipFailed parameters
+- [ ] Validate batch is paused due to merge failure
+- [ ] Bypass mixed-result check, merge succeeded commits
+- [ ] Persist result, return confirmation
 
 ---
 
 ### Step 2: Supervisor Recovery Playbooks
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Task failure playbook (race condition vs genuine, retry vs skip vs escalate)
-- [x] Merge failure playbook (skip failed → force merge → escalate if conflicts)
-- [x] Batch complete playbook (report, suggest integrate)
-- [x] Decision trees for each
+- [ ] Task failure playbook (race condition vs genuine, retry vs skip vs escalate)
+- [ ] Merge failure playbook (skip failed → force merge → escalate if conflicts)
+- [ ] Batch complete playbook (report, suggest integrate)
+- [ ] Decision trees for each
 
 ---
 
 ### Step 3: Testing & Verification
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Create supervisor-force-merge.test.ts
-- [x] Test force merge, validation, playbook existence
-- [x] FULL test suite passing
+- [ ] Create supervisor-force-merge.test.ts
+- [ ] Test force merge, validation, playbook existence
+- [ ] FULL test suite passing
 
 ---
 
 ### Step 4: Documentation & Delivery
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Update spec and commands docs
-- [x] Discoveries logged
+- [ ] Update spec and commands docs
+- [ ] Discoveries logged
 
 ---
 

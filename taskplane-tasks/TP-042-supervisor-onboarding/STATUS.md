@@ -1,7 +1,7 @@
 # TP-042: Supervisor Onboarding & /orch Routing — Status
 
-**Current Step:** Complete
-**Status:** ✅ Complete
+**Current Step:** None
+**Status:** Pending
 **Last Updated:** 2026-03-23
 **Review Level:** 2
 **Review Counter:** 0
@@ -11,52 +11,52 @@
 ---
 
 ### Step 0: Preflight
-**Status:** ✅ Complete
-- [x] Read spec Section 14
-- [x] Read /orch command handler
-- [x] Read supervisor.ts
+**Status:** Pending
+- [ ] Read spec Section 14
+- [ ] Read /orch command handler
+- [ ] Read supervisor.ts
 
 ---
 
 ### Step 1: /orch Routing Logic
-**Status:** ✅ Complete
-- [x] Implement state detection (config, batch, tasks)
-- [x] Route to appropriate supervisor flow
-- [x] Preserve existing /orch with args behavior
+**Status:** Pending
+- [ ] Implement state detection (config, batch, tasks)
+- [ ] Route to appropriate supervisor flow
+- [ ] Preserve existing /orch with args behavior
 
 ---
 
 ### Step 2: Onboarding Flow (Scripts 1-5)
-**Status:** ✅ Complete
-- [x] Project detection and analysis
-- [x] Task area setup conversation
-- [x] Git branching assessment
-- [x] Config generation
-- [x] First-task guidance
+**Status:** Pending
+- [ ] Project detection and analysis
+- [ ] Task area setup conversation
+- [ ] Git branching assessment
+- [ ] Config generation
+- [ ] First-task guidance
 
 ---
 
 ### Step 3: Returning User Flows (Scripts 6-8)
-**Status:** ✅ Complete
-- [x] Batch planning flow
-- [x] Health check flow
-- [x] Retrospective flow
+**Status:** Pending
+- [ ] Batch planning flow
+- [ ] Health check flow
+- [ ] Retrospective flow
 
 ---
 
 ### Step 4: Testing & Verification
-**Status:** ✅ Complete
-- [x] Routing tests for all project states
-- [x] Existing behavior preserved test
-- [x] Full test suite passes
+**Status:** Pending
+- [ ] Routing tests for all project states
+- [ ] Existing behavior preserved test
+- [ ] Full test suite passes
 
 ---
 
 ### Step 5: Documentation & Delivery
-**Status:** ✅ Complete
-- [x] Commands reference updated
-- [x] Tutorial updated
-- [x] `.DONE` created
+**Status:** Pending
+- [ ] Commands reference updated
+- [ ] Tutorial updated
+- [ ] `.DONE` created
 
 ---
 

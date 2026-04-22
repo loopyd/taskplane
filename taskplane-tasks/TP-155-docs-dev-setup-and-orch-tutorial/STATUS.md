@@ -1,7 +1,7 @@
 # TP-155: Update dev setup and orchestration tutorial — Status
 
-**Current Step:** Step 3: Documentation & Delivery
-**Status:** ✅ Complete
+**Current Step:** None
+**Status:** Pending
 **Last Updated:** 2026-04-07
 **Review Level:** 0
 **Review Counter:** 0
@@ -11,37 +11,37 @@
 ---
 
 ### Step 0: Preflight
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Read both files and catalog all stale references
+- [ ] Read both files and catalog all stale references
 
 ---
 
 ### Step 1: Update docs/maintainers/development-setup.md
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Update "Run extensions locally" — remove standalone task-runner subsection
-- [x] Update "Recommended local dev loop" — remove `/task` from smoke flows
-- [x] Update "Suggested scratch-repo smoke test" — remove `/task` command
-- [x] Update "File map" — clarify task-runner.ts is internal
+- [ ] Update "Run extensions locally" — remove standalone task-runner subsection
+- [ ] Update "Recommended local dev loop" — remove `/task` from smoke flows
+- [ ] Update "Suggested scratch-repo smoke test" — remove `/task` command
+- [ ] Update "File map" — clarify task-runner.ts is internal
 
 ---
 
 ### Step 2: Update docs/tutorials/run-your-first-orchestration.md
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Update "Before You Start" — config refs to `taskplane-config.json`
-- [x] Update "Step 1" — convert YAML task_areas to JSON taskAreas
-- [x] Update "Step 4" — remove `/task` semantics reference
-- [x] Check "Related guides" links — both resolve correctly, no stale names
+- [ ] Update "Before You Start" — config refs to `taskplane-config.json`
+- [ ] Update "Step 1" — convert YAML task_areas to JSON taskAreas
+- [ ] Update "Step 4" — remove `/task` semantics reference
+- [ ] Check "Related guides" links — both resolve correctly, no stale names
 
 ---
 
 ### Step 3: Documentation & Delivery
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Verify all internal doc links resolve correctly
-- [x] Discoveries logged
+- [ ] Verify all internal doc links resolve correctly
+- [ ] Discoveries logged
 
 ---
 

@@ -1,6 +1,6 @@
 # TP-046: Async Merge Polling — Status
 
-**Current Step:** Not Started
+**Current Step:** None
 **Status:** 🔵 Ready for Execution
 **Last Updated:** 2026-03-23
 **Review Level:** 2

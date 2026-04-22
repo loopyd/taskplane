@@ -1,37 +1,37 @@
 # TP-065: Artifact Cleanup and Log Rotation — Status
 
-**Current Step:** Step 3: Size-Capped Rotation for Append-Only Logs (Layer 3)
+**Current Step:** None
 **Status:** 🟡 In Progress
 **Last Updated:** 2026-03-25
 **Review Level:** 2
-**Review Counter:** 1
+**Review Counter:** 0
 **Iteration:** 2
 **Size:** M
 
 ---
 
 ### Step 0: Preflight
-**Status:** ✅ Complete
-- [x] Read integrate cleanup logic in extension.ts
-- [x] Read telemetry path generation in execution.ts
-- [x] Read merge result naming in merge.ts
-- [x] Find preflight hook in engine.ts
+**Status:** Pending
+- [ ] Read integrate cleanup logic in extension.ts
+- [ ] Read telemetry path generation in execution.ts
+- [ ] Read merge result naming in merge.ts
+- [ ] Find preflight hook in engine.ts
 
 ---
 
 ### Step 1: Post-Integrate Cleanup (Layer 1)
-**Status:** ✅ Complete
-- [x] Delete batch-specific telemetry files after integrate
-- [x] Delete merge result files after integrate
-- [x] Guard: only clean completed batches, log results
+**Status:** Pending
+- [ ] Delete batch-specific telemetry files after integrate
+- [ ] Delete merge result files after integrate
+- [ ] Guard: only clean completed batches, log results
 
 ---
 
 ### Step 2: Age-Based Sweep on Preflight (Layer 2)
-**Status:** ✅ Complete
-- [x] Sweep telemetry/merge files older than 7 days
-- [x] Guard: skip if batch is actively executing
-- [x] Non-fatal with logging
+**Status:** Pending
+- [ ] Sweep telemetry/merge files older than 7 days
+- [ ] Guard: skip if batch is actively executing
+- [ ] Non-fatal with logging
 
 ---
 

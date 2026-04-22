@@ -1,50 +1,50 @@
 # TP-176: Dashboard Segment-Scoped Progress — Status
 
-**Current Step:** Step 4: Documentation & Delivery
-**Status:** ✅ Complete
+**Current Step:** None
+**Status:** Pending
 **Last Updated:** 2026-04-13
 **Review Level:** 1
-**Review Counter:** 3
+**Review Counter:** 0
 **Iteration:** 1
 **Size:** S
 
 ---
 
 ### Step 0: Preflight
-**Status:** ✅ Complete
-- [x] Read dashboard app.js and server.cjs
-- [x] Understand sidecar telemetry data flow
+**Status:** Pending
+- [ ] Read dashboard app.js and server.cjs
+- [ ] Understand sidecar telemetry data flow
 
 ---
 
 ### Step 1: Segment-Scoped STATUS.md Viewer
-**Status:** ✅ Complete
-- [x] Client-side: resolve active segmentId → repoId + current step from task/lane data; filter STATUS.md to show only the current segment's `#### Segment: <repoId>` checkbox blocks (across steps that belong to this segment's repoId); remove non-matching segment blocks from other repos
-- [x] Add fallback: if multi-segment but segment block cannot be resolved, show full STATUS.md
-- [x] Render segment header context (e.g., "Segment 2/3: shared-libs") in viewer title
-- [x] Preserve full STATUS.md for single-segment tasks (no markers)
+**Status:** Pending
+- [ ] Client-side: resolve active segmentId → repoId + current step from task/lane data; filter STATUS.md to show only the current segment's `#### Segment: <repoId>` checkbox blocks (across steps that belong to this segment's repoId); remove non-matching segment blocks from other repos
+- [ ] Add fallback: if multi-segment but segment block cannot be resolved, show full STATUS.md
+- [ ] Render segment header context (e.g., "Segment 2/3: shared-libs") in viewer title
+- [ ] Preserve full STATUS.md for single-segment tasks (no markers)
 
 ---
 
 ### Step 2: Segment-Scoped Progress Bar
-**Status:** ✅ Complete
-- [x] Per-task progress bar uses V2 snapshot segment-scoped counts (already done by TP-174; verify and fix for succeeded tasks)
-- [x] Force 100% for succeeded tasks regardless of statusData/sidecar state (#491)
+**Status:** Pending
+- [ ] Per-task progress bar uses V2 snapshot segment-scoped counts (already done by TP-174; verify and fix for succeeded tasks)
+- [ ] Force 100% for succeeded tasks regardless of statusData/sidecar state (#491)
 
 ---
 
 ### Step 3: Testing & Verification
-**Status:** ✅ Complete
-- [x] Run full test suite to verify no regressions
-- [x] Verify JavaScript logic correctness of filterStatusMdForSegment
-- [x] Verify resolveActiveSegmentForTask handles edge cases
-- [x] Verify progress bar #491 fix logic
+**Status:** Pending
+- [ ] Run full test suite to verify no regressions
+- [ ] Verify JavaScript logic correctness of filterStatusMdForSegment
+- [ ] Verify resolveActiveSegmentForTask handles edge cases
+- [ ] Verify progress bar #491 fix logic
 
 ---
 
 ### Step 4: Documentation & Delivery
-**Status:** ✅ Complete
-- [x] Discoveries logged
+**Status:** Pending
+- [ ] Discoveries logged
 
 ---
 

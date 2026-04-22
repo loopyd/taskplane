@@ -1,43 +1,43 @@
 # TP-124: Comment and Type Doc De-TMUX Sweep — Status
 
-**Current Step:** Step 4: Delivery
-**Status:** ✅ Complete
+**Current Step:** None
+**Status:** Pending
 **Last Updated:** 2026-04-02
 **Review Level:** 1
-**Review Counter:** 3
+**Review Counter:** 0
 **Iteration:** 1
 **Size:** M
 
 ---
 
 ### Step 0: Inventory doc-only TMUX references
-**Status:** ✅ Complete
-- [x] Use audit output to identify doc/comment/type-description references
-- [x] Mark true external-contract literals that must remain
-- [x] Log inventory split in STATUS.md
+**Status:** Pending
+- [ ] Use audit output to identify doc/comment/type-description references
+- [ ] Mark true external-contract literals that must remain
+- [ ] Log inventory split in STATUS.md
 
 ### Step 1: Update comments and JSDoc
-**Status:** ✅ Complete
-- [x] Replace TMUX-era wording with Runtime V2/session terminology
-- [x] Keep migration-history comments concise and accurate
-- [x] Remove stale references to deleted TMUX flows
+**Status:** Pending
+- [ ] Replace TMUX-era wording with Runtime V2/session terminology
+- [ ] Keep migration-history comments concise and accurate
+- [ ] Remove stale references to deleted TMUX flows
 
 ### Step 2: Update type descriptions (non-breaking)
-**Status:** ✅ Complete
-- [x] Update descriptive comments on interfaces/type fields
-- [x] Keep literal enum/error-code values unchanged unless backward-compatible
-- [x] Ensure comments match current behavior
+**Status:** Pending
+- [ ] Update descriptive comments on interfaces/type fields
+- [ ] Keep literal enum/error-code values unchanged unless backward-compatible
+- [ ] Ensure comments match current behavior
 
 ### Step 3: Validation
-**Status:** ✅ Complete
-- [x] Run lint/typecheck-equivalent checks used in project workflow
-- [x] Run targeted tests for impacted source-structure assertions
-- [x] Fix regressions
+**Status:** Pending
+- [ ] Run lint/typecheck-equivalent checks used in project workflow
+- [ ] Run targeted tests for impacted source-structure assertions
+- [ ] Fix regressions
 
 ### Step 4: Delivery
-**Status:** ✅ Complete
-- [x] Record before/after count for comment/doc references
-- [x] Note which compatibility literals remain and why
+**Status:** Pending
+- [ ] Record before/after count for comment/doc references
+- [ ] Note which compatibility literals remain and why
 
 ---
 

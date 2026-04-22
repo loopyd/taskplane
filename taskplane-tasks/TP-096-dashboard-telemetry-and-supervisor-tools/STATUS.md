@@ -1,64 +1,64 @@
 # TP-096: Dashboard Telemetry Completeness and Supervisor Recovery Tools — Status
 
-**Current Step:** Complete
-**Status:** ✅ Complete
+**Current Step:** None
+**Status:** Pending
 **Last Updated:** 2026-03-29
 **Review Level:** 2
-**Review Counter:** 3
+**Review Counter:** 0
 **Iteration:** 4
 **Size:** M
 
 ---
 
 ### Step 0: Preflight
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Read dashboard merge telemetry and supervisor tool patterns
+- [ ] Read dashboard merge telemetry and supervisor tool patterns
 
 ---
 
 ### Step 1: Merge agent telemetry in dashboard (#328)
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Server-side sidecar reading for merge agents
-- [x] Client-side telemetry rendering
+- [ ] Server-side sidecar reading for merge agents
+- [ ] Client-side telemetry rendering
 
 ---
 
 ### Step 2: read_agent_status supervisor tool
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Read STATUS.md + lane-state for agent status
+- [ ] Read STATUS.md + lane-state for agent status
 
 ---
 
 ### Step 3: trigger_wrap_up supervisor tool
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Write .task-wrap-up file for target lane
+- [ ] Write .task-wrap-up file for target lane
 
 ---
 
 ### Step 4: read_lane_logs and list_active_agents tools
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Read stderr logs, list tmux sessions with metadata
+- [ ] Read stderr logs, list tmux sessions with metadata
 
 ---
 
 ### Step 5: Testing & Verification
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Behavioral tests for all tools
-- [x] Full test suite passing
+- [ ] Behavioral tests for all tools
+- [ ] Full test suite passing
 
 ---
 
 ### Step 6: Documentation & Delivery
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Update supervisor-primer.md
-- [x] Log discoveries
+- [ ] Update supervisor-primer.md
+- [ ] Log discoveries
 
 ---
 

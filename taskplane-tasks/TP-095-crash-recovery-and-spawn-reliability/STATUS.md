@@ -1,65 +1,65 @@
 # TP-095: Crash Recovery and Spawn Reliability — Status
 
-**Current Step:** Complete
-**Status:** ✅ Complete
+**Current Step:** None
+**Status:** Pending
 **Last Updated:** 2026-03-29
 **Review Level:** 2
-**Review Counter:** 2
+**Review Counter:** 0
 **Iteration:** 4
 **Size:** L
 
 ---
 
 ### Step 0: Preflight
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Read spawn, lane-state, and execution paths
-- [x] Read GitHub issues #333, #334, #335, #339
+- [ ] Read spawn, lane-state, and execution paths
+- [ ] Read GitHub issues #333, #334, #335, #339
 
 ---
 
 ### Step 1: Worker spawn reliability (#335)
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Add post-spawn verification with retry
-- [x] Log failures for diagnosis
+- [ ] Add post-spawn verification with retry
+- [ ] Log failures for diagnosis
 
 ---
 
 ### Step 2: Lane-state reset on worker restart (#333)
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Reset stale fields before new worker spawn
-- [x] Write lane-state immediately
+- [ ] Reset stale fields before new worker spawn
+- [ ] Write lane-state immediately
 
 ---
 
 ### Step 3: Telemetry accumulation across restarts (#334)
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Preserve and accumulate telemetry across iterations
+- [ ] Preserve and accumulate telemetry across iterations
 
 ---
 
 ### Step 4: Lane session stderr capture (#339)
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Redirect lane stderr to log file
+- [ ] Redirect lane stderr to log file
 
 ---
 
 ### Step 5: Testing & Verification
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Behavioral tests for all four fixes
-- [x] Full test suite passing (3009/3009)
+- [ ] Behavioral tests for all four fixes
+- [ ] Full test suite passing (3009/3009)
 
 ---
 
 ### Step 6: Documentation & Delivery
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Log discoveries
+- [ ] Log discoveries
 
 ---
 

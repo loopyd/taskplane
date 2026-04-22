@@ -1,57 +1,57 @@
 # TP-111: Runtime V2 Conversation Event Fidelity — Status
 
-**Current Step:** Complete
+**Current Step:** None
 **Status:** 🟢 Completed
 **Last Updated:** 2026-04-01
 **Review Level:** 2
-**Review Counter:** 2
+**Review Counter:** 0
 **Iteration:** 2
 **Size:** M
 
 ---
 
 ### Step 0: Preflight
-**Status:** ✅ Completed
+**Status:** Pending
 
-- [x] Trace current Runtime V2 event emission and payloads
-- [x] Compare against dashboard renderer and observability spec expectations
+- [ ] Trace current Runtime V2 event emission and payloads
+- [ ] Compare against dashboard renderer and observability spec expectations
 
 ---
 
 ### Step 1: Runtime V2 conversation event emission
-**Status:** ✅ Completed
+**Status:** Pending
 
-- [x] Emit `prompt_sent` with bounded payload
-- [x] Emit `assistant_message` with bounded payload
-- [x] Preserve existing lifecycle/tool/telemetry events
-- [x] Validate payload bounds and compatibility
+- [ ] Emit `prompt_sent` with bounded payload
+- [ ] Emit `assistant_message` with bounded payload
+- [ ] Preserve existing lifecycle/tool/telemetry events
+- [ ] Validate payload bounds and compatibility
 
 ---
 
 ### Step 2: Dashboard rendering parity
-**Status:** ✅ Completed
+**Status:** Pending
 
-- [x] Align `renderV2Event(...)` mappings to emitted payload contracts
-- [x] Ensure coherent normalized-event conversation rendering
-- [x] Keep legacy fallback secondary
+- [ ] Align `renderV2Event(...)` mappings to emitted payload contracts
+- [ ] Ensure coherent normalized-event conversation rendering
+- [ ] Keep legacy fallback secondary
 
 ---
 
 ### Step 3: Testing & Verification
-**Status:** ✅ Completed
+**Status:** Pending
 
-- [x] Add/extend tests for prompt/assistant normalized events
-- [x] Run targeted tests
-- [x] Run full suite
-- [x] Fix all failures
+- [ ] Add/extend tests for prompt/assistant normalized events
+- [ ] Run targeted tests
+- [ ] Run full suite
+- [ ] Fix all failures
 
 ---
 
 ### Step 4: Documentation & Delivery
-**Status:** ✅ Completed
+**Status:** Pending
 
-- [x] Update Runtime V2 observability docs
-- [x] Log discoveries in STATUS.md
+- [ ] Update Runtime V2 observability docs
+- [ ] Log discoveries in STATUS.md
 
 ---
 

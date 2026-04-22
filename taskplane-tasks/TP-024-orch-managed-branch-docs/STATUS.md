@@ -1,7 +1,7 @@
 # TP-024: Orch-Managed Branch Documentation — Status
 
-**Current Step:** Step 4: Documentation & Delivery
-**Status:** ✅ Complete
+**Current Step:** None
+**Status:** Pending
 **Last Updated:** 2026-03-18
 **Review Level:** 0
 **Review Counter:** 0
@@ -11,46 +11,46 @@
 ---
 
 ### Step 0: Preflight
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Read current commands reference
-- [x] Read current settings reference
-- [x] Read README command table
-- [x] Read architecture doc
+- [ ] Read current commands reference
+- [ ] Read current settings reference
+- [ ] Read README command table
+- [ ] Read architecture doc
 
 ---
 
 ### Step 1: Add `/orch-integrate` to Commands Reference
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Add `/orch-integrate` entry with modes, safety check, examples
-- [x] Update `/orch` entry for managed branch behavior
-- [x] Update batch completion flow
+- [ ] Add `/orch-integrate` entry with modes, safety check, examples
+- [ ] Update `/orch` entry for managed branch behavior
+- [ ] Update batch completion flow
 
 ---
 
 ### Step 2: Update Settings Reference
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Add Integration setting to Orchestrator section
+- [ ] Add Integration setting to Orchestrator section
 
 ---
 
 ### Step 3: Update README and Architecture
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Add `/orch-integrate` to README command table
-- [x] Update orchestrator workflow description
-- [x] Update architecture doc if needed
+- [ ] Add `/orch-integrate` to README command table
+- [ ] Update orchestrator workflow description
+- [ ] Update architecture doc if needed
 
 ---
 
 ### Step 4: Documentation & Delivery
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Review consistency
-- [x] Discoveries logged
-- [x] `.DONE` created
+- [ ] Review consistency
+- [ ] Discoveries logged
+- [ ] `.DONE` created
 
 ---
 

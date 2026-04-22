@@ -1,56 +1,56 @@
 # TP-101: Refresh create-taskplane-task Skill for Runtime V2 — Status
 
-**Current Step:** Complete
+**Current Step:** None
 **Status:** 🟢 Completed
 **Last Updated:** 2026-04-01
 **Review Level:** 1
-**Review Counter:** 2
+**Review Counter:** 0
 **Iteration:** 2
 **Size:** M
 
 ---
 
 ### Step 0: Preflight
-**Status:** ✅ Completed
+**Status:** Pending
 
-- [x] Read the current skill, prompt template, and AGENTS/config guidance
-- [x] Identify every place the skill still assumes `/task`, TMUX, `PROGRESS.md`, or YAML-first config behavior
+- [ ] Read the current skill, prompt template, and AGENTS/config guidance
+- [ ] Identify every place the skill still assumes `/task`, TMUX, `PROGRESS.md`, or YAML-first config behavior
 
 ---
 
 ### Step 1: Update Skill Workflow and Guidance
-**Status:** ✅ Completed
+**Status:** Pending
 
-- [x] Switch the skill guidance to JSON config precedence while preserving fallback notes only where necessary
-- [x] Replace `/task` launch/reporting guidance with `/orch`-based execution guidance
-- [x] Remove TMUX-centric phrasing from the skill's architecture and workflow sections
-- [x] Remove `PROGRESS.md` as a required tracking artifact for this project/workflow
+- [ ] Switch the skill guidance to JSON config precedence while preserving fallback notes only where necessary
+- [ ] Replace `/task` launch/reporting guidance with `/orch`-based execution guidance
+- [ ] Remove TMUX-centric phrasing from the skill's architecture and workflow sections
+- [ ] Remove `PROGRESS.md` as a required tracking artifact for this project/workflow
 
 ---
 
 ### Step 2: Update Templates and References
-**Status:** ✅ Completed
+**Status:** Pending
 
-- [x] Refresh the prompt/status template language so it does not imply `/task` is the canonical runtime path
-- [x] Align command references, task-creation checklists, and examples with Runtime V2/V3 direction
-- [x] Review user-facing docs touched by the skill for consistency
+- [ ] Refresh the prompt/status template language so it does not imply `/task` is the canonical runtime path
+- [ ] Align command references, task-creation checklists, and examples with Runtime V2/V3 direction
+- [ ] Review user-facing docs touched by the skill for consistency
 
 ---
 
 ### Step 3: Testing & Verification
-**Status:** ✅ Completed
+**Status:** Pending
 
-- [x] Verify markdown links and file references in the updated skill and templates
-- [x] Run CI and confirm green
-- [x] Full suite verification remained green in PR validation
+- [ ] Verify markdown links and file references in the updated skill and templates
+- [ ] Run CI and confirm green
+- [ ] Full suite verification remained green in PR validation
 
 ---
 
 ### Step 4: Documentation & Delivery
-**Status:** ✅ Completed
+**Status:** Pending
 
-- [x] Document deliberate compatibility wording where fallback behavior remains
-- [x] Log discoveries in STATUS.md
+- [ ] Document deliberate compatibility wording where fallback behavior remains
+- [ ] Log discoveries in STATUS.md
 
 ---
 

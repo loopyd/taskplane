@@ -1,66 +1,66 @@
 # TP-112: Runtime V2 Resume and Monitor De-TMUX Parity — Status
 
-**Current Step:** Step 5 — Documentation & Delivery
-**Status:** ✅ Complete
+**Current Step:** None
+**Status:** Pending
 **Last Updated:** 2026-03-31
 **Review Level:** 3
-**Review Counter:** 2
+**Review Counter:** 0
 **Iteration:** 2
 **Size:** L
 
 ---
 
 ### Step 0: Preflight mapping
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Enumerate Runtime V2 TMUX dependencies in resume/monitor paths
-- [x] Separate legacy-only vs V2-critical dependencies
-- [x] Record migration contract in STATUS.md
+- [ ] Enumerate Runtime V2 TMUX dependencies in resume/monitor paths
+- [ ] Separate legacy-only vs V2-critical dependencies
+- [ ] Record migration contract in STATUS.md
 
 ---
 
 ### Step 1: Resume path de-TMUX for V2
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Replace V2 reconnect/re-exec TMUX dependency chain
-- [x] Keep legacy fallback behavior where required
-- [x] Validate resumed task outcomes and persistence parity
+- [ ] Replace V2 reconnect/re-exec TMUX dependency chain
+- [ ] Keep legacy fallback behavior where required
+- [ ] Validate resumed task outcomes and persistence parity
 
 ---
 
 ### Step 2: Monitor path de-TMUX for V2
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Make monitoring/liveness checks backend-aware
-- [x] Use registry/snapshot/event signals for V2 liveness
-- [x] Preserve status transition semantics
+- [ ] Make monitoring/liveness checks backend-aware
+- [ ] Use registry/snapshot/event signals for V2 liveness
+- [ ] Preserve status transition semantics
 
 ---
 
 ### Step 3: Recovery and policy parity
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Validate stop-wave/skip-dependents/stop-all semantics
-- [x] Validate pause/abort/resume behavior
-- [x] Validate retry/escalation parity
+- [ ] Validate stop-wave/skip-dependents/stop-all semantics
+- [ ] Validate pause/abort/resume behavior
+- [ ] Validate retry/escalation parity
 
 ---
 
 ### Step 4: Testing & verification
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Add behavioral tests for V2 no-TMUX resume/monitor correctness
-- [x] Run targeted tests
-- [x] Run full suite
-- [x] Fix all failures
+- [ ] Add behavioral tests for V2 no-TMUX resume/monitor correctness
+- [ ] Run targeted tests
+- [ ] Run full suite
+- [ ] Fix all failures
 
 ---
 
 ### Step 5: Documentation & delivery
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Update Runtime V2 rollout/process docs for de-TMUX status
-- [x] Log discoveries and remaining boundaries
+- [ ] Update Runtime V2 rollout/process docs for de-TMUX status
+- [ ] Log discoveries and remaining boundaries
 
 ---
 

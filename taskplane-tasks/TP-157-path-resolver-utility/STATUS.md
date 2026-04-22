@@ -1,59 +1,59 @@
 # TP-157: Consolidate npm/package path resolution into path-resolver.ts — Status
 
-**Current Step:** Step 4: Documentation & Delivery
-**Status:** ✅ Complete
+**Current Step:** None
+**Status:** Pending
 **Last Updated:** 2026-04-11
 **Review Level:** 2
-**Review Counter:** 4
+**Review Counter:** 0
 **Iteration:** 1
 **Size:** M
 
 ---
 
 ### Step 0: Preflight
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Read all three source files and catalog every path resolution function
-- [x] Verify test suite baseline
+- [ ] Read all three source files and catalog every path resolution function
+- [ ] Verify test suite baseline
 
 ---
 
 ### Step 1: Create extensions/taskplane/path-resolver.ts
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Implement `getNpmGlobalRoot()` — cached, ESM-safe, shell:true for Windows
-- [x] Implement `resolvePiCliPath()` — dynamic-first, all platforms, clear error
-- [x] Implement `resolveTaskplanePackageFile()` — dynamic-first, local dev fallback
-- [x] Implement `resolveTaskplaneAgentTemplate()` — convenience wrapper
-- [x] Add JSDoc with platform notes to all exports
+- [ ] Implement `getNpmGlobalRoot()` — cached, ESM-safe, shell:true for Windows
+- [ ] Implement `resolvePiCliPath()` — dynamic-first, all platforms, clear error
+- [ ] Implement `resolveTaskplanePackageFile()` — dynamic-first, local dev fallback
+- [ ] Implement `resolveTaskplaneAgentTemplate()` — convenience wrapper
+- [ ] Add JSDoc with platform notes to all exports
 
 ---
 
 ### Step 2: Refactor callers to use path-resolver.ts
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] `execution.ts` — remove local functions, import from path-resolver.ts
-- [x] `agent-host.ts` — remove local functions, import from path-resolver.ts
-- [x] `agent-bridge-extension.ts` — remove local functions, import from path-resolver.ts
-- [x] Verify no other files import removed functions directly
+- [ ] `execution.ts` — remove local functions, import from path-resolver.ts
+- [ ] `agent-host.ts` — remove local functions, import from path-resolver.ts
+- [ ] `agent-bridge-extension.ts` — remove local functions, import from path-resolver.ts
+- [ ] Verify no other files import removed functions directly
 
 ---
 
 ### Step 3: Testing & Verification
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Full test suite passing
-- [x] CLI smoke checks passing
-- [x] Fix all failures (2 pre-existing failures unrelated to path-resolver changes)
+- [ ] Full test suite passing
+- [ ] CLI smoke checks passing
+- [ ] Fix all failures (2 pre-existing failures unrelated to path-resolver changes)
 
 ---
 
 ### Step 4: Documentation & Delivery
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] JSDoc file header on path-resolver.ts
-- [x] Check AGENTS.md and development-setup.md for affected references
-- [x] Discoveries logged
+- [ ] JSDoc file header on path-resolver.ts
+- [ ] Check AGENTS.md and development-setup.md for affected references
+- [ ] Discoveries logged
 
 ---
 

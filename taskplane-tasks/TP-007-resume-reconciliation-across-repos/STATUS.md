@@ -1,10 +1,10 @@
 # TP-007: Resume Reconciliation and Continuation Across Repos — Status
 
-**Current Step:** Step 4: Documentation & Delivery
-​**Status:** ✅ Complete
+**Current Step:** None
+​**Status:** Pending
 **Last Updated:** 2026-03-15
 **Review Level:** 3
-**Review Counter:** 9
+**Review Counter:** 0
 **Iteration:** 4
 **Size:** L
 
@@ -15,7 +15,7 @@
 ---
 
 ### Step 0: Implement repo-aware reconciliation
-**Status:** ✅ Complete
+**Status:** Pending
 
 **Identity matching rules (deterministic key precedence):**
 - v2 path: `persistedState.tasks[].resolvedRepoId` + `persistedState.lanes[].repoId` identify repo affinity.
@@ -37,11 +37,11 @@
 - No changes to wave continuation logic (Step 1 scope).
 - No cross-repo dependency graph changes.
 
-- [x] Fix `resumeOrchBatch` to use `resolveRepoRoot()` for per-lane repo roots in: reconnect polling, re-execute spawning, inter-wave worktree reset, and terminal worktree cleanup
+- [ ] Fix `resumeOrchBatch` to use `resolveRepoRoot()` for per-lane repo roots in: reconnect polling, re-execute spawning, inter-wave worktree reset, and terminal worktree cleanup
   - FINDING: All four areas were already repo-aware (done in prior TP-005/TP-006 work). Added `collectRepoRoots` helper function for test/reuse.
-- [x] Ensure v1 state files (no repo fields) resume identically to pre-polyrepo behavior
+- [ ] Ensure v1 state files (no repo fields) resume identically to pre-polyrepo behavior
   - Verified: `resolveRepoRoot(undefined, repoRoot, null)` returns `repoRoot` — v1 fallback works.
-- [x] Add tests for mixed-repo reconciliation scenarios:
+- [ ] Add tests for mixed-repo reconciliation scenarios:
   - Workspace v2 state: one repo lane alive + another dead → correct reconcile actions ✅
   - Workspace v2 state: `.DONE` in one repo + dead session in another → mark-complete vs mark-failed ✅
   - v1 state (no repo fields) reconciles correctly with all-undefined repo fields ✅
@@ -53,7 +53,7 @@
 ---
 
 ### Step 1: Compute repo-aware resume point
-**Status:** ✅ Complete
+**Status:** Pending
 
 **Decision table — reconciled action → continuation outcome:**
 
@@ -85,21 +85,21 @@
 - `computeResumePoint` pending aggregation: skipped tasks with `persistedStatus === "skipped"` are NOT re-queued.
 - Wave execution filtering: already excluded by `failedTaskSet`/`completedTaskSet`/`blockedTaskIds` + discovery filter.
 
-- [x] Seed `blockedTaskIds` from reconciled failures before wave loop (import + call `computeTransitiveDependents` in `resumeOrchBatch` after reconciliation/reconnect/re-execute phases)
+- [ ] Seed `blockedTaskIds` from reconciled failures before wave loop (import + call `computeTransitiveDependents` in `resumeOrchBatch` after reconciliation/reconnect/re-execute phases)
   - Already present in source (section 9b). Verified and tested.
-- [x] Fix `computeResumePoint` to treat `persistedStatus === "skipped"` as terminal for wave-skip and NOT re-queue skipped tasks
+- [ ] Fix `computeResumePoint` to treat `persistedStatus === "skipped"` as terminal for wave-skip and NOT re-queue skipped tasks
   - Added `"skipped"` to wave-skip condition in `computeResumePoint` (was missing — pre-existing gap)
   - Added `"pending"` reconciliation action for never-started tasks (pending + no session) to prevent incorrect mark-failed
   - Fixed blocked task counter double-counting with `persistedBlockedTaskIds` tracking
   - Separated `mark-complete` from `skip` case in categorization switch for clarity
-- [x] Add tests: reconciled failure in repo A blocks dependent in repo B under `skip-dependents`; persisted skipped tasks not re-queued; blocked/skipped counter stability across pause/resume; v1 fallback parity
+- [ ] Add tests: reconciled failure in repo A blocks dependent in repo B under `skip-dependents`; persisted skipped tasks not re-queued; blocked/skipped counter stability across pause/resume; v1 fallback parity
   - 8 new test cases: pending-vs-failed distinction, skipped wave-skip, all-failed wave, counter stability, cross-repo blocked propagation, v1 fallback, workspace resume semantics
   - All 290 tests passing across 12 test files
 
 ---
 
 ### Step 2: Execute resumed waves safely
-**Status:** ✅ Complete
+**Status:** Pending
 
 **Blocked counter contract across pause/resume:**
 - `batchState.blockedTasks` is initialized from `persistedState.blockedTasks` (carried from prior run).
@@ -136,47 +136,47 @@
 | Inter-wave reset | `encounteredRepoRoots` (persisted + wave-allocated) | ✅ Yes |
 | Terminal cleanup | `encounteredRepoRoots` (persisted + wave-allocated) | ✅ Yes |
 
-- [x] Reconstruct `AllocatedLane[]` from persisted lanes + discovery at resume init to preserve lane/task metadata across checkpoints
-- [x] Carry forward task repo attribution (`repoId`, `resolvedRepoId`, `taskFolder`) from persisted task records for non-pending tasks
-- [x] Fix blocked counter: count persisted-blocked-but-never-wave-entered tasks at resume init
-- [x] Fix re-exec merge indexing: use sentinel value and clamp persistence normalization
-- [x] Replace duplicated per-repo root loops with `encounteredRepoRoots` tracking set + `collectAllRepoRoots()` helper
-- [x] Augment `encounteredRepoRoots` in `onLanesAllocated` callback to cover repos from new waves
-- [x] Add tests: checkpoint round-trip, blocked counter pause/resume, re-exec merge persistence, metadata preservation, collectAllRepoRoots, reconstructAllocatedLanes (740 total assertions, 0 failures)
+- [ ] Reconstruct `AllocatedLane[]` from persisted lanes + discovery at resume init to preserve lane/task metadata across checkpoints
+- [ ] Carry forward task repo attribution (`repoId`, `resolvedRepoId`, `taskFolder`) from persisted task records for non-pending tasks
+- [ ] Fix blocked counter: count persisted-blocked-but-never-wave-entered tasks at resume init
+- [ ] Fix re-exec merge indexing: use sentinel value and clamp persistence normalization
+- [ ] Replace duplicated per-repo root loops with `encounteredRepoRoots` tracking set + `collectAllRepoRoots()` helper
+- [ ] Augment `encounteredRepoRoots` in `onLanesAllocated` callback to cover repos from new waves
+- [ ] Add tests: checkpoint round-trip, blocked counter pause/resume, re-exec merge persistence, metadata preservation, collectAllRepoRoots, reconstructAllocatedLanes (740 total assertions, 0 failures)
 
 ---
 
 ### Step 3: Testing & Verification
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] Unit/regression tests passing
+- [ ] Unit/regression tests passing
   - Full suite: 290/290 tests pass across 12 test files (41.85s)
-- [x] Targeted tests for changed modules passing
+- [ ] Targeted tests for changed modules passing
   - orch-state-persistence.test.ts: 2/2 pass
   - orch-direct-implementation.test.ts: 2/2 pass (note: only 2 tests in this file — integration-style)
   - orch-pure-functions.test.ts: pass
   - merge-repo-scoped.test.ts: pass
   - waves-repo-scoped.test.ts: pass
   - All 5 targeted files: 23/23 pass
-- [x] All failures fixed
+- [ ] All failures fixed
   - Zero failures across entire suite
-- [x] CLI smoke checks passing
+- [ ] CLI smoke checks passing
   - `taskplane help`: works correctly, shows all commands
   - `taskplane doctor`: core checks pass (pi, node, git, tmux, package installed); config file warnings expected in worktree context
 
 ---
 
 ### Step 4: Documentation & Delivery
-**Status:** ✅ Complete
+**Status:** Pending
 
-- [x] "Must Update" docs modified
+- [ ] "Must Update" docs modified
   - `.pi/local/docs/taskplane/polyrepo-support-spec.md`: Added Resume subsection under Section 9 with implementation status, reconciliation details, metadata preservation, counter stability, v1 backward compatibility, guarantees, and limitations. Updated Phase 2 milestone and spec version to v0.4.
-- [x] "Check If Affected" docs reviewed
+- [ ] "Check If Affected" docs reviewed
   - `docs/explanation/persistence-and-resume.md`: Updated resume algorithm to include `pending` action, blocked-task seeding, and terminal wave skipping. Added workspace mode (polyrepo) resume subsection. Updated state file description with repo fields (mode, repo ID, repo attribution, repo-grouped merge summaries).
-- [x] Discoveries logged
+- [ ] Discoveries logged
   - 11 discoveries logged in STATUS.md (all from Steps 0-2)
-- [x] `.DONE` created
-- [x] Archive and push (orchestrated — .DONE only, no archive)
+- [ ] `.DONE` created
+- [ ] Archive and push (orchestrated — .DONE only, no archive)
 
 ---
 

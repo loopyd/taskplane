@@ -1,7 +1,7 @@
 # TP-092: Mailbox Broadcast and Rate Limiting — Status
 
-**Current Step:** Complete
-**Status:** ✅ Complete
+**Current Step:** None
+**Status:** Pending
 **Last Updated:** 2026-03-30
 **Review Level:** 2
 **Review Counter:** 0
@@ -11,16 +11,16 @@
 ---
 
 ### Step 0–3: All Complete
-**Status:** ✅ Complete
+**Status:** Pending
 
 Core implementation delivered under TP-106 (Runtime V2 mailbox rollout).
 TP-092 delta closure completed as part of combined remediation.
 
 **Delta items addressed:**
-- [x] Broadcast policy: all-or-none rate-limit behavior codified and tested
-- [x] Audit completeness: all send/blocked decisions emit mailbox audit events
-- [x] Per-recipient rate-limit audit events include agentId, reason, retryAfterMs
-- [x] Docs parity: commands.md, spec, tool guidelines all synced to V2 behavior
+- [ ] Broadcast policy: all-or-none rate-limit behavior codified and tested
+- [ ] Audit completeness: all send/blocked decisions emit mailbox audit events
+- [ ] Per-recipient rate-limit audit events include agentId, reason, retryAfterMs
+- [ ] Docs parity: commands.md, spec, tool guidelines all synced to V2 behavior
 
 ---
 

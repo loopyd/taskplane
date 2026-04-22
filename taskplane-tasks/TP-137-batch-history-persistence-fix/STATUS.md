@@ -1,45 +1,45 @@
 # TP-137: Batch History Persistence Fix — Status
 
-**Current Step:** Step 4: Documentation & Delivery
-**Status:** ✅ Complete
+**Current Step:** None
+**Status:** Pending
 **Last Updated:** 2026-04-05
 **Review Level:** 1
-**Review Counter:** 3
+**Review Counter:** 0
 **Iteration:** 1
 **Size:** S
 
 ---
 
 ### Step 0: Preflight
-**Status:** ✅ Complete
-- [x] Read PROMPT.md and STATUS.md
-- [x] Trace batch completion path
-- [x] Trace orch_integrate .pi/ file handling
-- [x] Check .gitignore for batch-history.json
-- [x] Determine root cause
+**Status:** Pending
+- [ ] Read PROMPT.md and STATUS.md
+- [ ] Trace batch completion path
+- [ ] Trace orch_integrate .pi/ file handling
+- [ ] Check .gitignore for batch-history.json
+- [ ] Determine root cause
 
 ### Step 1: Diagnose and fix root cause
-**Status:** ✅ Complete
-- [x] Fix identified root cause
-- [x] Verify history written correctly
+**Status:** Pending
+- [ ] Fix identified root cause
+- [ ] Verify history written correctly
 
 ### Step 2: Ensure history survives integration
-**Status:** ✅ Complete
-- [x] Verify after orch_integrate
-- [x] Post-integration hook if needed
-- [x] Handle resumed batch edge case
+**Status:** Pending
+- [ ] Verify after orch_integrate
+- [ ] Post-integration hook if needed
+- [ ] Handle resumed batch edge case
 
 ### Step 3: Tests
-**Status:** ✅ Complete
-- [x] Test history written on completion
-- [x] Test history survives integration
-- [x] Test dashboard loadHistory
-- [x] Run full suite, fix failures
+**Status:** Pending
+- [ ] Test history written on completion
+- [ ] Test history survives integration
+- [ ] Test dashboard loadHistory
+- [ ] Run full suite, fix failures
 
 ### Step 4: Documentation & Delivery
-**Status:** ✅ Complete
-- [x] Update STATUS.md
-- [x] Close #423
+**Status:** Pending
+- [ ] Update STATUS.md
+- [ ] Close #423
 
 ---
 

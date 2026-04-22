@@ -1,52 +1,52 @@
 # TP-134: Segment-Aware Lane Execution — Status
 
-**Current Step:** Step 5: Documentation & Delivery
-**Status:** ✅ Complete
+**Current Step:** None
+**Status:** Pending
 **Last Updated:** 2026-04-03
 **Review Level:** 2
-**Review Counter:** 8
+**Review Counter:** 0
 **Iteration:** 1
 **Size:** M
 
 ---
 
 ### Step 0: Preflight
-**Status:** ✅ Complete
-- [x] Read PROMPT.md and STATUS.md
-- [x] Trace ExecutionUnit flow
-- [x] Identify path derivation points
+**Status:** Pending
+- [ ] Read PROMPT.md and STATUS.md
+- [ ] Trace ExecutionUnit flow
+- [ ] Identify path derivation points
 
 ### Step 1: Propagate segmentId
-**Status:** ✅ Complete
-- [x] Pass segmentId to emitSnapshot
-- [x] Include in lane snapshots
-- [x] Include in telemetry/outcomes
+**Status:** Pending
+- [ ] Pass segmentId to emitSnapshot
+- [ ] Include in lane snapshots
+- [ ] Include in telemetry/outcomes
 
 ### Step 2: Separate execution cwd from packet paths
-**Status:** ✅ Complete
-- [x] Worker cwd from segment repo worktree
-- [x] STATUS/PROMPT from packet paths
-- [x] .DONE from packet.donePath
-- [x] .reviews from packet.reviewsDir
-- [x] Reviewer state in packet task folder
+**Status:** Pending
+- [ ] Worker cwd from segment repo worktree
+- [ ] STATUS/PROMPT from packet paths
+- [ ] .DONE from packet.donePath
+- [ ] .reviews from packet.reviewsDir
+- [ ] Reviewer state in packet task folder
 
 ### Step 3: Worker prompt context
-**Status:** ✅ Complete
-- [x] Include execution repo + packet home context
-- [x] Worker knows repo and packet locations
-- [x] Include segment DAG info if available
+**Status:** Pending
+- [ ] Include execution repo + packet home context
+- [ ] Worker knows repo and packet locations
+- [ ] Include segment DAG info if available
 
 ### Step 4: Tests
-**Status:** ✅ Complete
-- [x] Test repo-singleton unchanged
-- [x] Test segment cwd correct
-- [x] Test packet paths in packet home
-- [x] Test snapshots include segmentId
-- [x] Run full suite, fix failures
+**Status:** Pending
+- [ ] Test repo-singleton unchanged
+- [ ] Test segment cwd correct
+- [ ] Test packet paths in packet home
+- [ ] Test snapshots include segmentId
+- [ ] Run full suite, fix failures
 
 ### Step 5: Documentation & Delivery
-**Status:** ✅ Complete
-- [x] Update STATUS.md
+**Status:** Pending
+- [ ] Update STATUS.md
 
 ---
 

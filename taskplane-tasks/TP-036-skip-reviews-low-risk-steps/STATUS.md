@@ -1,6 +1,6 @@
 # TP-036: Skip Reviews for Low-Risk Steps — Status
 
-**Current Step:** Not Started
+**Current Step:** None
 **Status:** 🔵 Ready for Execution
 **Last Updated:** 2026-03-20
 **Review Level:** 1
