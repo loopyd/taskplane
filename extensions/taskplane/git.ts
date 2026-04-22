@@ -392,13 +392,6 @@ const isCommitReachableOnRemote = checkSubmoduleCommitReachable;
 
 	// Final fallback: check against origin/HEAD as a local ref.
 	return runGit(["merge-base", "--is-ancestor", commit, `${remoteName}/HEAD`], cwd).ok;
-}$/i.test(sha)),
-	);
-
-	for (const tip of remoteTips) {
-		if (tip === commit) return true;
-		const ancestorResult = runGit(["merge-base", "--is-ancestor", commit, tip], cwd);
-		if (ancestorResult.ok) return true;
 	}
 
 	return false;
