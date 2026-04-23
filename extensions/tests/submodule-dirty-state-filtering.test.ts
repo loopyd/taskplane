@@ -49,7 +49,8 @@ describe("filterArtifactStatusLines — segment matching for nested artifacts", 
 
 		// Create submodule with __pycache__ at root
 		initRepo(subDir);
-		writeFileSync(join(subDir, "__pycache__/test.pyc"), "# cache", { recursive: true });
+		mkdirSync(join(subDir, "__pycache__"), { recursive: true });
+		writeFileSync(join(subDir, "__pycache__/test.pyc"), "# cache", "utf-8");
 		git(subDir, ["add", "."]);
 		git(subDir, ["commit", "-m", "initial"]);
 
@@ -59,7 +60,7 @@ describe("filterArtifactStatusLines — segment matching for nested artifacts", 
 		commitAll(superDir, "add my_sub");
 
 		// Now dirty the submodule's __pycache__ (simulating worker creating it)
-		writeFileSync(join(subDir, "__pycache__/new.pyc"), "# new cache", { recursive: true });
+		writeFileSync(join(subDir, "__pycache__/new.pyc"), "# new cache", "utf-8");
 
 		const findings = detectUnsafeSubmoduleStates(superDir);
 		
@@ -125,7 +126,8 @@ describe("filterArtifactStatusLines — segment matching for nested artifacts", 
 		const subDir = join(superDir, "real_sub");
 
 		initRepo(subDir);
-		writeFileSync(join(subDir, "src/main.c"), "#include <stdio.h>", { recursive: true });
+		mkdirSync(join(subDir, "src"), { recursive: true });
+		writeFileSync(join(subDir, "src/main.c"), "#include <stdio.h>", "utf-8");
 		git(subDir, ["add", "."]);
 		git(subDir, ["commit", "-m", "initial"]);
 
@@ -199,13 +201,17 @@ describe("filterGitIgnoredStatusLines — respects recursive .gitignore rules", 
 		writeFileSync(join(subDir, ".gitignore"), "__pycache__/\n", { recursive: true }); // Only ignores __pycache__, not src/
 		mkdirSync(join(subDir, "__pycache__/"), { recursive: true });
 		writeFileSync(join(subDir, "__pycache__/cached.pyc"), "# cache", { recursive: true });
-		writeFileSync(join(subDir, "src/main.c"), "// source\n"); // Not gitignored!
+		mkdirSync(join(subDir, "src"), { recursive: true });
+		writeFileSync(join(subDir, "src/main.c"), "// source\n", "utf-8"); // Not gitignored!
 		git(subDir, ["add", "."]);
 		git(subDir, ["commit", "-m", "initial partial ignore"]);
 
 		initRepo(superDir);
 		execFileSync("git", ["-c", "protocol.file.allow=always", "submodule", "add", subDir, "sub_partial_ignore"], { cwd: superDir });
 		commitAll(superDir, "add partial");
+
+		// Modify a tracked source file after the submodule is added so the worktree is actually dirty.
+		writeFileSync(join(subDir, "src/main.c"), "// source\nint main(void) { return 0; }\n", "utf-8");
 
 		const findings = detectUnsafeSubmoduleStates(superDir);
 

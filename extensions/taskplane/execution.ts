@@ -856,16 +856,22 @@ function parseStatusMdText(text: string, mtime: number): ParsedWorktreeStatus {
 	let reviewCounter = 0;
 	let iteration = 0;
 	let currentStepLabel: string | null = null;
+	let inCodeFence = false;
 
 	for (const line of normalizedText.split("\n")) {
+		if (/^```/.test(line.trim())) {
+			inCodeFence = !inCodeFence;
+			continue;
+		}
 		const rcMatch = line.match(/\*\*Review Counter:\*\*\s*(\d+)/);
 		if (rcMatch) reviewCounter = parseInt(rcMatch[1], 10);
 		const itMatch = line.match(/\*\*Iteration:\*\*\s*(\d+)/);
 		if (itMatch) iteration = parseInt(itMatch[1], 10);
 		const currentStepMatch = line.match(/\*\*Current Step:\*\*\s*(.+)/);
 		if (currentStepMatch) currentStepLabel = currentStepMatch[1].trim();
+		if (inCodeFence) continue;
 
-		const stepMatch = line.match(/^###\s+Step\s+(\d+):\s*(.+)/);
+		const stepMatch = line.match(/^#{2,6}\s+Step\s+(\d+)(?::\s*|\s+)(.+)$/);
 		if (stepMatch) {
 			if (currentStep) {
 				const totalChecked = currentStep.checkboxes.filter(c => c).length;
@@ -883,6 +889,18 @@ function parseStatusMdText(text: string, mtime: number): ParsedWorktreeStatus {
 				status: "not-started",
 				checkboxes: [],
 			};
+			continue;
+		}
+		if (currentStep && /^#{1,6}\s+/.test(line) && !/^####\s+Segment:\s*/.test(line)) {
+			const totalChecked = currentStep.checkboxes.filter(c => c).length;
+			steps.push({
+				number: currentStep.number,
+				name: currentStep.name,
+				status: currentStep.status,
+				totalChecked,
+				totalItems: currentStep.checkboxes.length,
+			});
+			currentStep = null;
 			continue;
 		}
 		if (currentStep) {

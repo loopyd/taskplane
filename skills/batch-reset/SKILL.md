@@ -94,3 +94,6 @@ After resume, poll until:
 - After reset, run `/orch-plan <areas> --sync` to create a fresh batch plan
 - This skill is idempotent; repeated runs produce the same clean taskplane state
 - **Key fix**: After batch reset, check phase and wave state before resuming. Do not call `orch_resume()` repeatedly if the batch is already in a valid executing state with running tasks.
+- **Submodule gitlink**: When submodules are present, ensure they are initialized and their commits are reachable from origin before starting the batch. Use `git submodule status` to verify.
+- **Worktree cleanup**: Always remove worktrees and temporary branches during reset. Stale worktrees can cause merge conflicts.
+- **TASK-037**: For bugfix loops, use `reset_strategy: full` for the first iteration (clean slate) and `reset_strategy: light` for subsequent iterations (faster reset).

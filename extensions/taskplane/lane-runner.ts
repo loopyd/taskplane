@@ -69,8 +69,164 @@ import {
 } from "./types.ts";
 
 import { captureSubmoduleStatusSnapshot } from "./git.ts";
+import { classifyExit, type TaskExitDiagnostic } from "./diagnostics.ts";
 
 const LANE_RUNNER_DIR = dirname(fileURLToPath(import.meta.url));
+
+export function readGitHead(cwd: string): string | null {
+	try {
+		return execSync("git rev-parse HEAD", {
+			cwd,
+			timeout: 5000,
+			encoding: "utf-8",
+			stdio: ["pipe", "pipe", "pipe"],
+		}).trim() || null;
+	} catch {
+		return null;
+	}
+}
+
+export function detectSoftProgress(
+	worktreePath: string,
+	previousHead: string | null,
+): { hasProgress: boolean; reason: string | null } {
+	const currentHead = readGitHead(worktreePath);
+	if (previousHead && currentHead && previousHead !== currentHead) {
+		return {
+			hasProgress: true,
+			reason: `HEAD advanced from ${previousHead.slice(0, 8)} to ${currentHead.slice(0, 8)}`,
+		};
+	}
+
+	try {
+		const diffOutput = execSync("git diff --stat HEAD", {
+			cwd: worktreePath,
+			timeout: 5000,
+			encoding: "utf-8",
+			stdio: ["pipe", "pipe", "pipe"],
+		}).trim();
+		const changedFiles = diffOutput.split("\n").filter(line => line.includes("|"));
+		const sourceChanges = changedFiles.filter(line => !line.includes("STATUS.md") && !line.includes(".steering"));
+		if (sourceChanges.length > 0) {
+			return {
+				hasProgress: true,
+				reason: `uncommitted worktree changes in ${sourceChanges.length} file(s)`,
+			};
+		}
+	} catch {
+		// Treat command failures as no soft progress.
+	}
+
+	return { hasProgress: false, reason: null };
+}
+
+export function getStatusProgressTotals(statusContent: string): { checked: number; total: number } {
+	const parsed = parseStatusMd(statusContent);
+	return {
+		checked: parsed.steps.reduce((sum, step) => sum + step.totalChecked, 0),
+		total: parsed.steps.reduce((sum, step) => sum + step.totalItems, 0),
+	};
+}
+
+function readLastKnownProgress(statusPath?: string): { lastKnownStep: number | null; lastKnownCheckbox: string | null } {
+	if (!statusPath || !existsSync(statusPath)) {
+		return { lastKnownStep: null, lastKnownCheckbox: null };
+	}
+
+	try {
+		const parsed = parseStatusMd(readFileSync(statusPath, "utf-8"));
+		const lastStep = parsed.steps[parsed.steps.length - 1] ?? null;
+		const lastCheckbox = lastStep?.checkboxes[lastStep.checkboxes.length - 1] ?? null;
+		return {
+			lastKnownStep: lastStep?.number ?? null,
+			lastKnownCheckbox: lastCheckbox?.text ?? null,
+		};
+	} catch {
+		return { lastKnownStep: null, lastKnownCheckbox: null };
+	}
+}
+
+function detectUnsafeSubmoduleKind(exitReason: string): "dirty-worktree" | "unpublished-commit" | "unreachable-ref" | null {
+	if (/submodule_unreachable_ref/i.test(exitReason) || /unreachable gitlink refs/i.test(exitReason)) {
+		return "unreachable-ref";
+	}
+	if (/Unsafe submodule state after task success:/i.test(exitReason)) {
+		if (/has uncommitted submodule changes/i.test(exitReason)) {
+			return "dirty-worktree";
+		}
+		if (/points to local commit .* not reachable on /i.test(exitReason)) {
+			return "unpublished-commit";
+		}
+	}
+	return null;
+}
+
+export function buildLaneExitDiagnostic(
+	status: LaneTaskStatus,
+	exitReason: string,
+	doneFileFound: boolean,
+	finalTelemetry?: Partial<AgentHostResult>,
+	statusPath?: string,
+	repoId = "default",
+): TaskExitDiagnostic | undefined {
+	if (status === "skipped") return undefined;
+
+	const stallDetected = /No progress after \d+ iterations?/i.test(exitReason);
+	const timerKilled = /wall-clock timeout/i.test(exitReason);
+	const contextKilled = /context limit/i.test(exitReason);
+	const userKilled = /paused by user|aborted by user|killed by user/i.test(exitReason);
+	const unsafeSubmoduleKind = detectUnsafeSubmoduleKind(exitReason);
+	const telemetryExitCode = finalTelemetry?.exitCode ?? null;
+	const syntheticExitCode = stallDetected
+		? 0
+		: (telemetryExitCode ?? (status === "failed" ? 1 : 0));
+	const syntheticSummary = {
+		exitCode: syntheticExitCode,
+		exitSignal: finalTelemetry?.signal ?? null,
+		tokens: {
+			input: finalTelemetry?.inputTokens ?? 0,
+			output: finalTelemetry?.outputTokens ?? 0,
+			cacheRead: finalTelemetry?.cacheReadTokens ?? 0,
+			cacheWrite: finalTelemetry?.cacheWriteTokens ?? 0,
+		},
+		cost: finalTelemetry?.costUsd ?? 0,
+		toolCalls: finalTelemetry?.toolCalls ?? 0,
+		retries: [],
+		compactions: finalTelemetry?.compactions ?? 0,
+		durationSec: Math.max(0, Math.round((finalTelemetry?.durationMs ?? 0) / 1000)),
+		lastToolCall: finalTelemetry?.lastTool ?? null,
+		error: status === "failed"
+			? (finalTelemetry?.error ?? exitReason)
+			: (finalTelemetry?.error ?? null),
+	};
+	const classification = classifyExit({
+		exitSummary: syntheticSummary,
+		doneFileFound: doneFileFound || status === "succeeded",
+		timerKilled,
+		contextKilled,
+		unsafeSubmoduleKind,
+		stallDetected,
+		userKilled,
+		contextPct: finalTelemetry?.contextUsage?.percent ?? null,
+	});
+	const { lastKnownStep, lastKnownCheckbox } = readLastKnownProgress(statusPath);
+
+	return {
+		classification,
+		exitCode: syntheticExitCode,
+		errorMessage: status === "failed"
+			? (finalTelemetry?.error ?? exitReason)
+			: (finalTelemetry?.error ?? null),
+		tokensUsed: syntheticSummary.tokens,
+		contextPct: finalTelemetry?.contextUsage?.percent ?? null,
+		partialProgressCommits: 0,
+		partialProgressBranch: null,
+		durationSec: syntheticSummary.durationSec,
+		lastKnownStep,
+		lastKnownCheckbox,
+		repoId,
+	};
+}
 
 // ── Segment Scoping Helpers (Phase A, TP-174) ────────────────────────
 
@@ -118,13 +274,13 @@ export function getSegmentCheckboxes(
 	const text = statusContent.replace(/\r\n/g, "\n");
 
 	// Find the step section
-	const stepHeaderPattern = new RegExp(`^###\\s+Step\\s+${stepNumber}:`, "m");
+	const stepHeaderPattern = new RegExp(`^#{2,6}\\s+Step\\s+${stepNumber}(?::\\s*|\\s+)`, "m");
 	const stepMatch = text.match(stepHeaderPattern);
 	if (!stepMatch || stepMatch.index === undefined) return null;
 
 	// Find the end of this step section (next ### or end of file)
 	const afterStep = text.slice(stepMatch.index + stepMatch[0].length);
-	const nextStepMatch = afterStep.search(/^###\s+Step\s+\d+:/m);
+	const nextStepMatch = afterStep.search(/^#{2,6}\s+Step\s+\d+(?::\s*|\s+)/m);
 	const stepContent = nextStepMatch !== -1 ? afterStep.slice(0, nextStepMatch) : afterStep;
 
 	// Find the segment header within this step
@@ -134,7 +290,7 @@ export function getSegmentCheckboxes(
 
 	// Extract content from segment header to next #### header or ### header or ---
 	const afterSeg = stepContent.slice(segMatch.index + segMatch[0].length);
-	const nextSectionMatch = afterSeg.search(/^(?:####\s|###\s|---)/m);
+	const nextSectionMatch = afterSeg.search(/^(?:####\s|###\s|##\s|---)/m);
 	const segContent = nextSectionMatch !== -1 ? afterSeg.slice(0, nextSectionMatch) : afterSeg;
 
 	// Count checkboxes
@@ -414,6 +570,7 @@ export async function executeTaskV2(
 		} else {
 			prevTotalChecked = currentStatus.steps.reduce((sum, s) => sum + s.totalChecked, 0);
 		}
+		const prevHeadCommit = readGitHead(unit.worktreePath);
 
 		// ── Build worker prompt ─────────────────────────────────────
 		const wrapUpFile = join(taskFolder, ".task-wrap-up");
@@ -644,11 +801,14 @@ export async function executeTaskV2(
 							const segCbs = getSegmentCheckboxes(statusContent, firstStep.number, currentRepoId);
 							midTotalChecked = segCbs ? segCbs.checked : 0;
 						} else {
-							const midStatus = parseStatusMd(statusContent);
-							midTotalChecked = midStatus.steps.reduce((sum, s) => sum + s.totalChecked, 0);
+							midTotalChecked = getStatusProgressTotals(statusContent).checked;
 						}
 						if (midTotalChecked > prevTotalChecked) {
 							// Worker checked off checkboxes — let it exit normally
+							return null;
+						}
+						const softProgress = detectSoftProgress(unit.worktreePath, prevHeadCommit);
+						if (softProgress.hasProgress) {
 							return null;
 						}
 						// Check for blocker entries: extract Blockers section and see if non-empty
@@ -669,16 +829,14 @@ export async function executeTaskV2(
 					const segCbs = getSegmentCheckboxes(statusContent, firstStep.number, currentRepoId);
 					totalChecked = segCbs ? segCbs.checked : 0;
 				} else {
-					const midStatus = parseStatusMd(statusContent);
-					totalChecked = midStatus.steps.reduce((sum, s) => sum + s.totalChecked, 0);
+					totalChecked = getStatusProgressTotals(statusContent).checked;
 				}
 				let totalSteps: number;
 				if (repoStepNumbers && currentRepoId) {
 					const segCbs = getSegmentCheckboxes(statusContent, firstStep.number, currentRepoId);
 					totalSteps = segCbs ? segCbs.total : 0;
 				} else {
-					const midStatus = parseStatusMd(statusContent);
-					totalSteps = midStatus.steps.reduce((sum, s) => sum + s.totalChecked, 0);
+					totalSteps = getStatusProgressTotals(statusContent).total;
 				}
 				if (totalSteps > 0 && totalChecked >= totalSteps) {
 					// All task items are checked — worker completed an already-done or just-completed task.
@@ -965,29 +1123,13 @@ export async function executeTaskV2(
 		const progressDelta = afterTotalChecked - prevTotalChecked;
 
 		if (progressDelta <= 0) {
-			// Check for soft progress: uncommitted changes in the worktree
-			// indicate the worker is actively editing code even if no checkbox
-			// was checked yet. This avoids false stall detection on complex
-			// steps where analysis + editing spans multiple tool calls.
-			let hasSoftProgress = false;
-			try {
-				const diffOutput = execSync("git diff --stat HEAD", {
-					cwd: unit.worktreePath,
-					timeout: 5000,
-					encoding: "utf-8",
-					stdio: ["pipe", "pipe", "pipe"],
-				}).trim();
-				// Only count source file changes as soft progress, not just STATUS.md
-				const changedFiles = diffOutput.split("\n").filter(l => l.includes("|"));
-				const sourceChanges = changedFiles.filter(l => !l.includes("STATUS.md") && !l.includes(".steering"));
-				hasSoftProgress = sourceChanges.length > 0;
-			} catch { /* git not available or timeout — treat as no soft progress */ }
+			const softProgress = detectSoftProgress(unit.worktreePath, prevHeadCommit);
 
-			if (hasSoftProgress) {
+			if (softProgress.hasProgress) {
 				// Worker has uncommitted code changes — don't count toward stall.
 				// Reset the counter since the worker is actively editing.
 				logExecution(statusPath, "Soft progress",
-					`Iteration ${totalIterations}: 0 new checkboxes but uncommitted source changes detected — not counting as stall`);
+					`Iteration ${totalIterations}: 0 new checkboxes but ${softProgress.reason ?? "durable progress detected"} — not counting as stall`);
 				noProgressCount = 0;
 			} else {
 				noProgressCount++;
@@ -1237,6 +1379,14 @@ function makeResult(
 			doneFileFound,
 			laneNumber: config?.laneNumber,
 			telemetry,
+			exitDiagnostic: buildLaneExitDiagnostic(
+				status,
+				exitReason,
+				doneFileFound,
+				finalTelemetry,
+				statusPath,
+				config?.repoId ?? "default",
+			),
 		},
 		iterations,
 		costUsd,
