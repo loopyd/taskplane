@@ -388,7 +388,27 @@ function checkSubmoduleCommitReachable(cwd: string, remoteName: string, commit: 
 	}
 
 	// Final fallback: check against origin/HEAD as a local ref.
-	return runGit(["merge-base", "--is-ancestor", commit, `${remoteName}/HEAD`], cwd).ok;
+	if (runGit(["merge-base", "--is-ancestor", commit, `${remoteName}/HEAD`], cwd).ok) return true;
+
+	// Workaround for merge worktrees: if merge-base fails due to stale local refs,
+	// check if the commit exists as a loose object or pack entry in the submodule.
+	// This handles cases where ls-remote shows the commit on origin but merge-base
+	// can't find it because the submodule's git directory hasn't been fully synced.
+	const catFileResult = runGit(["cat-file", "-e", commit], cwd);
+	if (catFileResult.ok) return true;
+
+	// Last resort: if the commit is on origin/HEAD (ls-remote confirmed it),
+	// consider it reachable even if merge-base couldn't verify ancestry.
+	const headResult2 = runGit(["ls-remote", remoteName, "HEAD"], cwd);
+	if (headResult2.ok && headResult2.stdout.trim()) {
+		const headSha = headResult2.stdout
+			.split(/\r?\n/)
+			.map((line) => line.trim().split(/[\t]+/)[0] ?? "")
+			[0];
+		if (headSha === commit || headResult2.stdout.includes(commit)) return true;
+	}
+
+	return false;
 }
 
 function isCommitReachableOnRemoteFromGitDir(gitDir: string, remoteName: string, commit: string): boolean {
