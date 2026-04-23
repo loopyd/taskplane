@@ -408,6 +408,11 @@ function checkSubmoduleCommitReachable(cwd: string, remoteName: string, commit: 
 		if (headSha === commit || headResult2.stdout.includes(commit)) return true;
 	}
 
+	// NEW: If the commit appears in ls-remote output at all (even if not exactly
+	// matched to HEAD), consider it reachable. This handles cases where the commit
+	// is on a branch/tag tip but not at HEAD.
+	if (refsResult.ok && refsResult.stdout.includes(commit)) return true;
+
 	return false;
 }
 
