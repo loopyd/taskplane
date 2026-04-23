@@ -571,6 +571,35 @@ function commitTaskArtifacts(
 	// Check if there are any uncommitted changes in the worktree
 	const statusResult = runGit(["status", "--porcelain"], worktreePath);
 	if (!statusResult.ok || !statusResult.stdout.trim()) {
+		// Worker may have already committed everything. Check for untracked .DONE file.
+		// If .DONE exists but is untracked, we must stage+commit it so it survives
+		// worktree reset and appears in the main repo after merge.
+		const donePath = resolveTaskDonePath(task.task.taskFolder, worktreePath, lane.worktreePath);
+		if (existsSync(donePath)) {
+			const untrackedResult = runGit(["status", "--porcelain", "--untracked-files=all"], worktreePath);
+			const hasUntracked = untrackedResult.ok && untrackedResult.stdout.includes("??");
+			if (hasUntracked) {
+				// Stage .DONE specifically
+				const addResult = runGit(["add", donePath], worktreePath);
+				if (!addResult.ok) {
+					execLog(laneId, task.taskId, `post-task stage .DONE failed (non-fatal): ${addResult.stderr.slice(0, 200)}`);
+				}
+				// Commit with task ID for traceability
+				const commitResult = runGit(
+					["commit", "-m", `checkpoint: ${task.taskId} task artifacts (.DONE, STATUS.md)`],
+					worktreePath,
+				);
+				if (!commitResult.ok && !commitResult.stderr.includes("nothing to commit")) {
+					execLog(laneId, task.taskId, `post-task commit .DONE failed (non-fatal): ${commitResult.stderr.slice(0, 200)}`);
+				}
+				if (commitResult.ok) {
+					execLog(laneId, task.taskId, `committed untracked .DONE to lane branch`, {
+						commit: commitResult.stdout.trim().split("\n")[0],
+					});
+				}
+				return;
+			}
+		}
 		// Nothing to commit (worker already committed everything, or git error)
 		return;
 	}

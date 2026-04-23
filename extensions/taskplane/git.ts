@@ -365,9 +365,6 @@ function checkSubmoduleCommitReachable(cwd: string, remoteName: string, commit: 
 		if (headSha === commit) return true;
 	}
 
-// Legacy name — kept for backward compatibility with detectUnsafeSubmoduleStates.
-const isCommitReachableOnRemote = checkSubmoduleCommitReachable;
-
 	// Check all named branch and tag tips.
 	const refsResult = runGit(["ls-remote", remoteName, "refs/heads/*", "refs/tags/*"], cwd);
 	if (!refsResult.ok || !refsResult.stdout.trim()) {
@@ -392,9 +389,6 @@ const isCommitReachableOnRemote = checkSubmoduleCommitReachable;
 
 	// Final fallback: check against origin/HEAD as a local ref.
 	return runGit(["merge-base", "--is-ancestor", commit, `${remoteName}/HEAD`], cwd).ok;
-	}
-
-	return false;
 }
 
 function isCommitReachableOnRemoteFromGitDir(gitDir: string, remoteName: string, commit: string): boolean {
@@ -539,7 +533,7 @@ export function detectUnsafeSubmoduleStates(cwd: string): UnsafeSubmoduleState[]
 		if (!indexCommit || indexCommit === headCommit) continue;
 
 		const remoteName = resolvePreferredRemote(absolutePath);
-		if (!remoteName || !isCommitReachableOnRemote(absolutePath, remoteName, headCommit)) {
+		if (!remoteName || !checkSubmoduleCommitReachable(absolutePath, remoteName, headCommit)) {
 			findings.push({
 				path: submodulePath,
 				kind: "unpublished-commit",
